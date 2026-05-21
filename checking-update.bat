@@ -13,6 +13,11 @@ if /i "%~1" neq "__RUN" (
     exit /b %errorlevel%
 )
 
+echo [*] Log file: %LOG_FILE%
+echo [*] Script directory: %SCRIPT_DIR%
+echo [*] Environment: USERNAME=%USERNAME% USERDOMAIN=%USERDOMAIN% COMPUTERNAME=%COMPUTERNAME%
+echo [*] TEMP=%TEMP%
+
 :: Derived paths - everything lives directly in SCRIPT_DIR
 set "SUNSHINE_DIR=%SCRIPT_DIR%\sunshine"
 set "SUNSHINE_ZIP=%SCRIPT_DIR%\sunshine.zip"
@@ -43,12 +48,17 @@ for /f "tokens=2 delims==" %%A in ('findstr "DOMAIN=" "%DOMAIN_FILE%"') do set "
 for /f "tokens=2 delims==" %%A in ('findstr "PUBLIC_IP=" "%DOMAIN_FILE%"') do set "PUBLIC_IP=%%A"
 for /f "tokens=2 delims==" %%A in ('findstr "COMPUTER_NAME=" "%DOMAIN_FILE%"') do set "COMPUTER_NAME=%%A"
 
-if not defined PUBLIC_IP (echo [ERROR] PUBLIC_IP missing. & goto update_fail)
-if not defined COMPUTER_NAME (echo [ERROR] COMPUTER_NAME missing. & goto update_fail)
+if not defined PUBLIC_IP (echo [ERROR] PUBLIC_IP missing from domain.txt. & goto update_fail)
+if not defined COMPUTER_NAME (echo [ERROR] COMPUTER_NAME missing from domain.txt. & goto update_fail)
 
+echo [*] domain.txt: %DOMAIN_FILE%
 echo [*] Public IP: !PUBLIC_IP!
-echo [*] Computer Name: !COMPUTER_NAME!
+echo [*] Computer Name (from domain.txt): !COMPUTER_NAME!
+echo [*] Windows COMPUTERNAME (pairing host): %COMPUTERNAME%
 echo [*] Domain: !DOMAIN!
+if /i not "!COMPUTER_NAME!"=="%COMPUTERNAME%" (
+    echo [!] NOTE: domain.txt COMPUTER_NAME differs from Windows COMPUTERNAME - config uses domain.txt, pairing uses %%COMPUTERNAME%%.
+)
 
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /i "192.168.1."') do (
     for /f "tokens=* delims= " %%b in ("%%a") do (set "PRIVATE_IP=%%b" & goto :private_ip_found)
@@ -91,8 +101,14 @@ echo [+] Update check started.
 set "UPDATING={\"computer_name\":\"!COMPUTER_NAME!\",\"publicIP\":\"!PUBLIC_IP!\",\"privateIP\":\"%PRIVATE_IP%\",\"status\":\"updating\"}"
 echo updating>"%STATUS_FLAG_FILE%"
 curl -s -X POST https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus -H "Content-Type: application/json" -d "!UPDATING!"
-powershell -NoLogo -NoProfile -Command "$f='%DOMAIN_FILE%';$lines=Get-Content $f;$lines=$lines|ForEach-Object{if($_ -match '^STATUS='){'STATUS=updating'}else{$_}};if(-not($lines-match'^STATUS=')){$lines+='STATUS=updating'};$lines|Set-Content $f"
-echo [*] Status set to updating.
+set "ML_DOMAIN_FILE=!DOMAIN_FILE!"
+powershell -NoLogo -NoProfile -Command "try{$f=$env:ML_DOMAIN_FILE;$lines=Get-Content -LiteralPath $f;$lines=$lines|ForEach-Object{if($_ -match '^STATUS='){'STATUS=updating'}else{$_}};if(-not($lines-match'^STATUS=')){$lines+='STATUS=updating'};$lines|Set-Content -LiteralPath $f -Encoding UTF8; exit 0}catch{ Write-Output $_.Exception.Message; exit 1 }"
+if !errorlevel! neq 0 (
+    echo [!] WARNING: Failed to write STATUS=updating to domain.txt ^(exit !errorlevel!^).
+) else (
+    echo [*] domain.txt STATUS=updating written.
+)
+echo [*] Remote status set to updating.
 
 set "NEEDS_PAIRING=0"
 
@@ -237,8 +253,19 @@ if exist "%LOCAL_ML_DIR%\VERSION.txt" (
 )
 
 if "!LOCAL_ML_VERSION!"=="!REMOTE_ML_VERSION!" (
-    echo [*] Moonlight up to date: !LOCAL_ML_VERSION!
+    echo [*] Moonlight up to date: !LOCAL_ML_VERSION! - skipping download/reinstall.
     del "%TEMP%\remote_ml_version.txt" >nul 2>&1
+    set "ML_CONFIG_CHECK=%LOCAL_ML_DIR%\server\config.json"
+    if exist "!ML_CONFIG_CHECK!" (
+        findstr /c:"{{computer_name}}" "!ML_CONFIG_CHECK!" >nul 2>&1
+        if not errorlevel 1 (
+            echo [!] Moonlight config still contains {{computer_name}} placeholder - config substitution only runs on Moonlight update.
+        ) else (
+            echo [*] Moonlight config placeholder check: OK ^(no {{computer_name}} in file^).
+        )
+    ) else (
+        echo [!] Moonlight config not found at: !ML_CONFIG_CHECK!
+    )
     goto check_pairing
 )
 
@@ -311,21 +338,18 @@ sc query %MOONLIGHT_SERVICE% >nul 2>&1 && (
 )
 
 mkdir "%LOCAL_ML_DIR%\server" 2>nul
-if exist "%LOCAL_ML_DIR%\server\config.json" del "%LOCAL_ML_DIR%\server\config.json"
-curl -L "https://github.com/Nguyenanvu202/bongsenvang-config/raw/refs/heads/main/config.json" -o "%LOCAL_ML_DIR%\server\config.json"
-if !errorlevel! neq 0 (
-    powershell -Command "try{[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;$ProgressPreference='SilentlyContinue';Invoke-WebRequest -Uri 'https://github.com/Nguyenanvu202/bongsenvang-config/raw/refs/heads/main/config.json' -OutFile '%LOCAL_ML_DIR%\server\config.json' -UseBasicParsing}catch{}"
-)
+call :apply_moonlight_config_substitution
+if errorlevel 1 goto :update_fail
 set "CONFIG_PATH=%LOCAL_ML_DIR%\server\config.json"
-set "COMPUTER_NAME_LOWER="
-for /f "delims=" %%A in ('powershell -NoLogo -NoProfile -Command "$n='!COMPUTER_NAME!'; if([string]::IsNullOrWhiteSpace($n)){''} else {$n.Trim().ToLowerInvariant()}"') do set "COMPUTER_NAME_LOWER=%%A"
-if defined COMPUTER_NAME_LOWER if exist "%CONFIG_PATH%" (
-    powershell -NoLogo -NoProfile -Command "$cfg='%CONFIG_PATH%';$name='!COMPUTER_NAME_LOWER!';try{$c=Get-Content -Raw $cfg;$c=$c -replace '\{\{computer_name\}\}',$name;$enc=New-Object System.Text.UTF8Encoding $false;[System.IO.File]::WriteAllText($cfg,$c,$enc)}catch{}"
-)
 call :validate_json_file "%CONFIG_PATH%" "config.json"
 if errorlevel 1 goto :update_fail
 
-"%NSSM_EXE%" install %MOONLIGHT_SERVICE% "%LOCAL_ML_DIR%\web-server.exe" || (echo ERROR: Failed to install Moonlight service. & goto :update_fail)
+echo [*] Installing Moonlight Windows service via NSSM...
+"%NSSM_EXE%" install %MOONLIGHT_SERVICE% "%LOCAL_ML_DIR%\web-server.exe" || (
+    echo [ERROR] Failed to install Moonlight service ^(nssm install^).
+    goto :update_fail
+)
+echo [*] Moonlight service installed.
 "%NSSM_EXE%" set %MOONLIGHT_SERVICE% AppDirectory "%LOCAL_ML_DIR%" >nul
 "%NSSM_EXE%" set %MOONLIGHT_SERVICE% Start SERVICE_AUTO_START >nul
 "%NSSM_EXE%" set %MOONLIGHT_SERVICE% AppStdout "%LOCAL_ML_DIR%\moonlight-web.log" >nul
@@ -333,6 +357,11 @@ if errorlevel 1 goto :update_fail
 "%NSSM_EXE%" set %MOONLIGHT_SERVICE% DisplayName "Moonlight Web Stream" >nul
 "%NSSM_EXE%" set %MOONLIGHT_SERVICE% Description "Moonlight Web streaming server for remote GPU access" >nul
 net start %MOONLIGHT_SERVICE% >nul
+if !errorlevel! neq 0 (
+    echo [!] WARNING: net start %MOONLIGHT_SERVICE% returned errorlevel !errorlevel!
+) else (
+    echo [*] Moonlight service started after reinstall.
+)
 
 :check_pairing
 if "%NEEDS_PAIRING%"=="0" (echo [*] No updates - skipping pairing. & goto online_status)
@@ -353,9 +382,19 @@ sc query %MOONLIGHT_SERVICE% | find "STOPPED" >nul
 if errorlevel 1 (timeout /t 1 /nobreak >nul & goto :wait_stop_upd)
 
 if exist "%MOONLIGHT_DATA%" del "%MOONLIGHT_DATA%"
+echo [*] Downloading Moonlight data.json to: %MOONLIGHT_DATA%
 curl -L "https://github.com/Nguyenanvu202/bongsenvang-data/raw/refs/heads/main/data.json" -o "%MOONLIGHT_DATA%"
 if !errorlevel! neq 0 (
-    powershell -Command "try{[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;$ProgressPreference='SilentlyContinue';Invoke-WebRequest -Uri 'https://github.com/Nguyenanvu202/bongsenvang-data/raw/refs/heads/main/data.json' -OutFile '%MOONLIGHT_DATA%' -UseBasicParsing}catch{}"
+    echo [!] curl data.json failed ^(errorlevel=!errorlevel!^), trying PowerShell...
+    set "ML_DATA_OUT=%MOONLIGHT_DATA%"
+    powershell -NoLogo -NoProfile -Command "try{[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;$ProgressPreference='SilentlyContinue';Invoke-WebRequest -Uri 'https://github.com/Nguyenanvu202/bongsenvang-data/raw/refs/heads/main/data.json' -OutFile $env:ML_DATA_OUT -UseBasicParsing; exit 0}catch{ Write-Output $_.Exception.Message; exit 1 }"
+    if !errorlevel! neq 0 (
+        echo [ERROR] Failed to download data.json via curl and PowerShell.
+        goto :update_fail
+    )
+    echo [*] data.json downloaded via PowerShell.
+) else (
+    echo [*] data.json downloaded via curl.
 )
 call :validate_json_file "%MOONLIGHT_DATA%" "data.json"
 if errorlevel 1 goto :update_fail
@@ -367,9 +406,18 @@ if errorlevel 1 (timeout /t 1 /nobreak >nul & goto :wait_start_upd)
 
 :: Login
 curl.exe -c "%COOKIES%" -X POST "http://127.0.0.1:8080/api/login" -H "Content-Type: application/json" -d "{\"name\":\"test\",\"password\":\"test123\"}" -o "%TEMP%\moonlight_login.json" -s
-if !errorlevel! neq 0 (echo [!] Login failed. & goto :pairing_cleanup)
+if !errorlevel! neq 0 (
+    echo [!] Moonlight login failed ^(curl errorlevel=!errorlevel!^).
+    if exist "%TEMP%\moonlight_login.json" (
+        echo [!] Login response file:
+        type "%TEMP%\moonlight_login.json"
+    ) else (
+        echo [!] Login response file not created: %TEMP%\moonlight_login.json
+    )
+    goto :pairing_cleanup
+)
 
-echo [*] Using pre-configured host: ID=!HOST_ID! Name=!HOST_NAME!
+echo [*] Using pre-configured host: ID=!HOST_ID! Name=!HOST_NAME! ^(Windows COMPUTERNAME; domain.txt name is !COMPUTER_NAME!^)
 timeout /t 2 /nobreak >nul
 
 :: Pairing loop — PIN request runs in separate cmd /c subprocess (long-poll)
@@ -390,23 +438,41 @@ for /L %%i in (1,1,15) do (
 )
 
 :pin_found_upd
-if not defined PAIRING_PIN (goto :pairing_failed_upd)
+if not defined PAIRING_PIN (
+    echo [!] Pairing attempt !RETRY_COUNT!: no PIN received within 15s.
+    goto :pairing_failed_upd
+)
 
+echo [*] Pairing attempt !RETRY_COUNT!: PIN received, sending to Sunshine...
 curl.exe -u bluefml1:letmeinpls -H "Content-Type: application/json" -X POST -k "https://localhost:47990/api/pin" -d "{\"pin\":\"!PAIRING_PIN!\",\"name\":\"!HOST_NAME!\"}" -o "%TEMP%\moonlight_pair_complete.json" -s --max-time 30
+if !errorlevel! neq 0 echo [!] Sunshine pin API curl errorlevel=!errorlevel!
 
 set "SUNSHINE_STATUS="
 for /f "delims=" %%S in ('powershell -NoLogo -NoProfile -Command "$f='%TEMP%\moonlight_pair_complete.json'; try{ $j=Get-Content -Raw $f | ConvertFrom-Json; Write-Output $j.status }catch{ Write-Output '' }"') do set "SUNSHINE_STATUS=%%S"
+echo [*] Sunshine pin API status: !SUNSHINE_STATUS!
+if not defined SUNSHINE_STATUS (
+    echo [!] Could not parse moonlight_pair_complete.json:
+    if exist "%TEMP%\moonlight_pair_complete.json" type "%TEMP%\moonlight_pair_complete.json"
+)
 
 if /i "!SUNSHINE_STATUS!"=="True" (
     timeout /t 3 /nobreak >nul
     set "PAIR_RESULT="
     for /f "delims=" %%R in ('powershell -NoLogo -NoProfile -Command "$f='%TEMP%\moonlight_pin_response.json'; try{ $raw=Get-Content -Raw $f; if($raw -match 'Paired'){'Paired'}else{'PairError'} }catch{'PairError'}"') do set "PAIR_RESULT=%%R"
+    echo [*] Moonlight pair response: !PAIR_RESULT!
     if "!PAIR_RESULT!"=="Paired" (echo [*] Pairing successful! & goto :pairing_cleanup)
+    echo [!] Sunshine accepted pin but Moonlight did not report Paired.
+) else (
+    echo [!] Sunshine pin API did not return status True.
 )
 
 :pairing_failed_upd
 set /a RETRY_COUNT+=1
-if !RETRY_COUNT! geq %MAX_RETRIES% (echo [!] Pairing failed after %MAX_RETRIES% attempts. & goto :update_fail)
+echo [!] Pairing attempt !RETRY_COUNT! failed.
+if !RETRY_COUNT! geq %MAX_RETRIES% (
+    echo [ERROR] Pairing failed after %MAX_RETRIES% attempts.
+    goto :update_fail
+)
 timeout /t 2 /nobreak >nul
 goto :pin_attempt_upd
 
@@ -418,21 +484,100 @@ if exist "%TEMP%\moonlight_pair_complete.json" del "%TEMP%\moonlight_pair_comple
 if exist "%COOKIES%" del "%COOKIES%" >nul 2>&1
 goto online_status
 
+:apply_moonlight_config_substitution
+set "CONFIG_PATH=%LOCAL_ML_DIR%\server\config.json"
+echo.
+echo [*] Moonlight config: preparing config.json...
+echo [*] Target path: !CONFIG_PATH!
+echo [*] Source COMPUTER_NAME from domain.txt: !COMPUTER_NAME!
+
+if exist "!CONFIG_PATH!" (
+    echo [*] Removing existing config.json before download.
+    del "!CONFIG_PATH!" >nul 2>&1
+)
+
+echo [*] Downloading config.json template ^(curl^)...
+curl -L "https://github.com/Nguyenanvu202/bongsenvang-config/raw/refs/heads/main/config.json" -o "!CONFIG_PATH!"
+if !errorlevel! neq 0 (
+    echo [!] curl download failed ^(errorlevel=!errorlevel!^), trying PowerShell Invoke-WebRequest...
+    set "ML_CFG_OUT=!CONFIG_PATH!"
+    powershell -NoLogo -NoProfile -Command "try{[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;$ProgressPreference='SilentlyContinue';Invoke-WebRequest -Uri 'https://github.com/Nguyenanvu202/bongsenvang-config/raw/refs/heads/main/config.json' -OutFile $env:ML_CFG_OUT -UseBasicParsing; exit 0}catch{ Write-Output $_.Exception.Message; exit 1 }"
+    if !errorlevel! neq 0 (
+        echo [ERROR] Failed to download config.json via curl and PowerShell.
+        exit /b 1
+    )
+    echo [*] config.json downloaded via PowerShell.
+) else (
+    echo [*] config.json downloaded via curl.
+)
+
+if not exist "!CONFIG_PATH!" (
+    echo [ERROR] config.json missing after download: !CONFIG_PATH!
+    exit /b 1
+)
+for %%F in ("!CONFIG_PATH!") do echo [*] config.json size: %%~zF bytes
+
+findstr /c:"{{computer_name}}" "!CONFIG_PATH!" >nul 2>&1
+if errorlevel 1 (
+    echo [!] Downloaded config.json has no {{computer_name}} placeholder - substitution may be unnecessary.
+) else (
+    echo [*] Downloaded config.json contains {{computer_name}} placeholder - applying substitution.
+)
+
+set "ML_COMPUTER_NAME=!COMPUTER_NAME!"
+set "ML_CFG=!CONFIG_PATH!"
+set "ML_SUB_LOG=%TEMP%\checking_update_ml_config_sub.log"
+echo [*] Running config substitution via PowerShell ^(env: ML_CFG, ML_COMPUTER_NAME - avoids %% in path issues^)...
+powershell -NoLogo -NoProfile -Command "try { $n=$env:ML_COMPUTER_NAME; if([string]::IsNullOrWhiteSpace($n)) { Write-Output '[ERROR] ML_COMPUTER_NAME is empty or whitespace'; exit 2 }; $name=$n.Trim().ToLowerInvariant(); Write-Output ('[*] Normalized computer_name: ' + $name); $cfg=$env:ML_CFG; if([string]::IsNullOrWhiteSpace($cfg)) { Write-Output '[ERROR] ML_CFG is empty'; exit 3 }; if(-not (Test-Path -LiteralPath $cfg)) { Write-Output ('[ERROR] Config file not found: ' + $cfg); exit 4 }; $c=[System.IO.File]::ReadAllText($cfg); if($c -notmatch '\{\{computer_name\}\}') { Write-Output '[WARN] No {{computer_name}} placeholder found in config - file unchanged'; exit 0 }; $c2=$c -replace '\{\{computer_name\}\}',$name; $enc=New-Object System.Text.UTF8Encoding $false; [System.IO.File]::WriteAllText($cfg,$c2,$enc); if($c2 -match '\{\{computer_name\}\}') { Write-Output '[ERROR] Placeholder still present after replace'; exit 5 }; Write-Output '[+] config.json substitution successful'; exit 0 } catch { Write-Output ('[ERROR] ' + $_.Exception.Message); exit 1 }" > "!ML_SUB_LOG!" 2>&1
+set "ML_SUB_EXIT=!errorlevel!"
+if exist "!ML_SUB_LOG!" type "!ML_SUB_LOG!"
+if "!ML_SUB_EXIT!" neq "0" (
+    echo [ERROR] Moonlight config {{computer_name}} substitution failed ^(PowerShell exit code: !ML_SUB_EXIT!^).
+    findstr /c:"{{computer_name}}" "!CONFIG_PATH!" >nul 2>&1
+    if not errorlevel 1 echo [ERROR] config.json still contains unreplaced {{computer_name}} placeholder.
+    exit /b 1
+)
+
+findstr /c:"{{computer_name}}" "!CONFIG_PATH!" >nul 2>&1
+if not errorlevel 1 (
+    echo [ERROR] Verification failed: config.json still contains {{computer_name}}.
+    exit /b 1
+)
+echo [+] Verified: config.json has no {{computer_name}} placeholder.
+exit /b 0
+
 :validate_json_file
 set "VJF_PATH=%~1"
 set "VJF_NAME=%~2"
+echo [*] Validating %VJF_NAME%: %VJF_PATH%
 if not exist "%VJF_PATH%" (
     echo [ERROR] %VJF_NAME% not found: %VJF_PATH%
     exit /b 1
 )
-for %%F in ("%VJF_PATH%") do if %%~zF lss 2 (
-    echo [ERROR] %VJF_NAME% is empty or too small: %VJF_PATH%
-    exit /b 1
+for %%F in ("%VJF_PATH%") do (
+    echo [*] %VJF_NAME% size: %%~zF bytes
+    if %%~zF lss 2 (
+        echo [ERROR] %VJF_NAME% is empty or too small: %VJF_PATH%
+        exit /b 1
+    )
 )
-powershell -NoLogo -NoProfile -Command "try{$p='%VJF_PATH%';$raw=Get-Content -Raw $p;if([string]::IsNullOrWhiteSpace($raw)){exit 1};$null=$raw|ConvertFrom-Json;exit 0}catch{exit 1}"
+set "VJF_PS_PATH=!VJF_PATH!"
+set "VJF_JSON_LOG=%TEMP%\checking_update_json_validate.log"
+powershell -NoLogo -NoProfile -Command "try{$p=$env:VJF_PS_PATH;$raw=[IO.File]::ReadAllText($p);if([string]::IsNullOrWhiteSpace($raw)){Write-Output '[ERROR] JSON file is whitespace-only'; exit 1};$null=$raw|ConvertFrom-Json;exit 0}catch{Write-Output ('[ERROR] JSON parse failed: ' + $_.Exception.Message); exit 1}" > "!VJF_JSON_LOG!" 2>&1
 if errorlevel 1 (
+    if exist "!VJF_JSON_LOG!" type "!VJF_JSON_LOG!"
     echo [ERROR] %VJF_NAME% is not valid JSON: %VJF_PATH%
     exit /b 1
+)
+if /i "%VJF_NAME%"=="config.json" (
+    findstr /c:"{{computer_name}}" "!VJF_PATH!" >nul 2>&1
+    if not errorlevel 1 (
+        echo [ERROR] config.json still contains unreplaced {{computer_name}} placeholder after validation.
+        exit /b 1
+    )
+    echo [*] config.json JSON valid and placeholder check passed.
+) else (
+    echo [*] %VJF_NAME% JSON valid.
 )
 exit /b 0
 
