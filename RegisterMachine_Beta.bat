@@ -52,6 +52,11 @@ if "%COMPUTER_NAME_CUSTOM%"=="" (echo ERROR: Computer Name cannot be empty! & go
 set /p "PRICE=Enter Original Price (e.g., 10.99): "
 if "%PRICE%"=="" (echo ERROR: Price cannot be empty! & goto input_price)
 
+:input_vendor_id
+set "VENDOR_ID="
+set /p "VENDOR_ID=Enter Vendor ID (optional, press Enter to skip): "
+for /f "delims=" %%V in ('powershell -NoLogo -NoProfile -Command "$v='%VENDOR_ID%'; if([string]::IsNullOrWhiteSpace($v)){''} else {$v.Trim()}"') do set "VENDOR_ID=%%V"
+
 :input_admin_account
 set /p "ADMIN_ACCOUNT_NAME=Enter current admin account username to rename: "
 if "%ADMIN_ACCOUNT_NAME%"=="" (echo ERROR: Admin account username cannot be empty! & goto input_admin_account)
@@ -61,7 +66,8 @@ echo Configuration Summary:
 echo - API Token: %CF_API_TOKEN:~0,10%...
 echo - Account ID: %ACCOUNT_ID%
 echo - Price: $%PRICE%
-echo - Admin account to rename: %ADMIN_ACCOUNT_NAME% -^> NextGPU-Authority
+if defined VENDOR_ID if not "!VENDOR_ID!"=="" (echo - Vendor ID: !VENDOR_ID!) else (echo - Vendor ID: ^(not set^))
+echo - Admin account (username + full name): %ADMIN_ACCOUNT_NAME% -^> NextGPU-Authority
 echo.
 set /p "CONFIRM=Is this correct? (Y/N): "
 if /i not "%CONFIRM%"=="Y" (
@@ -595,10 +601,13 @@ if exist "%GAMES_OUTPUT_FILE%" (
     del "%GAMES_OUTPUT_FILE%" >nul 2>&1
 )
 
+set "VENDOR_FIELD="
+if defined VENDOR_ID if not "!VENDOR_ID!"=="" set "VENDOR_FIELD=,\"vendor_id\":\"!VENDOR_ID!\""
+
 if defined GAMES_JSON (
-    set PAYLOAD={\"computer_name\":\"%NAME%\",\"publicIP\":\"%PUBLIC_IP%\",\"privateIP\":\"%PRIVATE_IP%\",\"status\":\"%STATUS%\",\"domain\":\"%DOMAIN%\",\"Operation_system\":\"%OS_NAME%\",\"Processor\":\"%CPU%\",\"RAM\":\"%TotalPhysicalMemory% GB\",\"GPU_name\":\"%GPU_NAME%\",\"bench_mark_cpu\":\"%BENCH_MARK_CPU%\",\"bench_mark_gpu\":\"%BENCH_MARK_GPU%\",\"original_price\":\"%PRICE%\",\"last_checkin\":\"%LAST_CHECKIN%\",\"notes\":\"%NOTES%\",!GAMES_JSON!}
+    set PAYLOAD={\"computer_name\":\"%NAME%\",\"publicIP\":\"%PUBLIC_IP%\",\"privateIP\":\"%PRIVATE_IP%\",\"status\":\"%STATUS%\",\"domain\":\"%DOMAIN%\",\"Operation_system\":\"%OS_NAME%\",\"Processor\":\"%CPU%\",\"RAM\":\"%TotalPhysicalMemory% GB\",\"GPU_name\":\"%GPU_NAME%\",\"bench_mark_cpu\":\"%BENCH_MARK_CPU%\",\"bench_mark_gpu\":\"%BENCH_MARK_GPU%\",\"original_price\":\"%PRICE%\"!VENDOR_FIELD!,\"last_checkin\":\"%LAST_CHECKIN%\",\"notes\":\"%NOTES%\",!GAMES_JSON!}
 ) else (
-    set PAYLOAD={\"computer_name\":\"%NAME%\",\"publicIP\":\"%PUBLIC_IP%\",\"privateIP\":\"%PRIVATE_IP%\",\"status\":\"%STATUS%\",\"domain\":\"%DOMAIN%\",\"Operation_system\":\"%OS_NAME%\",\"Processor\":\"%CPU%\",\"RAM\":\"%TotalPhysicalMemory% GB\",\"GPU_name\":\"%GPU_NAME%\",\"bench_mark_cpu\":\"%BENCH_MARK_CPU%\",\"bench_mark_gpu\":\"%BENCH_MARK_GPU%\",\"original_price\":\"%PRICE%\",\"last_checkin\":\"%LAST_CHECKIN%\",\"notes\":\"%NOTES%\"}
+    set PAYLOAD={\"computer_name\":\"%NAME%\",\"publicIP\":\"%PUBLIC_IP%\",\"privateIP\":\"%PRIVATE_IP%\",\"status\":\"%STATUS%\",\"domain\":\"%DOMAIN%\",\"Operation_system\":\"%OS_NAME%\",\"Processor\":\"%CPU%\",\"RAM\":\"%TotalPhysicalMemory% GB\",\"GPU_name\":\"%GPU_NAME%\",\"bench_mark_cpu\":\"%BENCH_MARK_CPU%\",\"bench_mark_gpu\":\"%BENCH_MARK_GPU%\",\"original_price\":\"%PRICE%\"!VENDOR_FIELD!,\"last_checkin\":\"%LAST_CHECKIN%\",\"notes\":\"%NOTES%\"}
 )
 
 echo.
@@ -711,47 +720,30 @@ if not exist "%TASK_SCHEDULER_LAUNCH_GAME_SCRIPT%" (
     )
 )
 :: ===================================================================
-:: Wallpaper
+:: Wallpaper (before admin rename - same as Setup-Wallpaper.bat standalone)
+:: User Configuration GPO; runs Set-DesktopWallpaper-Gpo.ps1 via inline (no extra UAC)
 :: ===================================================================
-echo [*] Setting up public wallpaper...
-set "WALLPAPER_DIR=C:\Users\Public\Wallpaper"
-set "WALLPAPER=%WALLPAPER_DIR%\nextgputobu.jpeg"
-set "WALLPAPER_SRC=%SCRIPT_DIR%\nextgputobu.jpeg"
-
-if not exist "%WALLPAPER_DIR%" mkdir "%WALLPAPER_DIR%"
-
-if not exist "%WALLPAPER_SRC%" (
-    echo ERROR: Wallpaper source not found:
-    echo %WALLPAPER_SRC%
+echo [*] Setting up desktop wallpaper (Group Policy)...
+set "WALLPAPER_BAT=%SCRIPT_DIR%\Setup-Wallpaper.bat"
+if not exist "%WALLPAPER_BAT%" (
+    echo [!] WARNING: Setup-Wallpaper.bat not found, skipping wallpaper.
 ) else (
-    copy /Y "%WALLPAPER_SRC%" "%WALLPAPER%" >nul
+    call "%WALLPAPER_BAT%" inline
     if !errorlevel! neq 0 (
-        echo ERROR: Failed to copy wallpaper to:
-        echo %WALLPAPER%
+        echo [!] WARNING: Wallpaper setup returned exit code !errorlevel!.
+    ) else (
+        echo [*] Wallpaper policy ready. Check gpedit: User Configuration - Desktop Wallpaper.
     )
-)
-
-if not exist "%WALLPAPER%" (
-    echo ERROR: Wallpaper not found:
-    echo %WALLPAPER%
-) else (
-    echo [*] Applying wallpaper for all users...
-    reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System" /v Wallpaper /t REG_SZ /d "%WALLPAPER%" /f >nul
-    reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System" /v WallpaperStyle /t REG_SZ /d "10" /f >nul
-    reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System" /v TileWallpaper /t REG_SZ /d "0" /f >nul
-    gpupdate /force >nul
-    RUNDLL32.EXE user32.dll,UpdatePerUserSystemParameters
-    echo [*] Policy wallpaper applied for all users.
 )
 echo.
 
 :: ===================================================================
-:: Post-Registration: Rename Admin Account
+:: Post-Registration: Set Admin Account Username and Full Name (after wallpaper)
 :: ===================================================================
-echo [*] Renaming admin account "%ADMIN_ACCOUNT_NAME%" to NextGPU-Authority...
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$old='%ADMIN_ACCOUNT_NAME%'.Trim(); $new='NextGPU-Authority'; if($old -ieq $new){Write-Host '[*] SKIP: already named' $new; exit 0}; $u=Get-LocalUser -Name $old -EA SilentlyContinue; if(-not $u){Write-Host '[!] WARN: account not found:' $old; exit 1}; $e=Get-LocalUser -Name $new -EA SilentlyContinue; if($e -and $e.SID -ne $u.SID){Write-Host '[!] ERROR:' $new 'already exists'; exit 1}; Rename-LocalUser -Name $old -NewName $new; Write-Host '[*] OK: renamed' $old 'to' $new; exit 0"
+echo [*] Setting admin account "%ADMIN_ACCOUNT_NAME%" username and full name to NextGPU-Authority...
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$old='%ADMIN_ACCOUNT_NAME%'.Trim(); $new='NextGPU-Authority'; $u=Get-LocalUser -Name $old -EA SilentlyContinue; if(-not $u){$u=Get-LocalUser -Name $new -EA SilentlyContinue}; if(-not $u){Write-Host '[!] WARN: account not found:' $old; exit 1}; $e=Get-LocalUser -Name $new -EA SilentlyContinue; if($e -and $e.SID -ne $u.SID){Write-Host '[!] ERROR:' $new 'already exists'; exit 1}; if($u.Name -ine $new){Rename-LocalUser -Name $u.Name -NewName $new; Write-Host '[*] OK: renamed username' $u.Name 'to' $new}; if((Get-LocalUser -Name $new).FullName -cne $new){Set-LocalUser -Name $new -FullName $new; Write-Host '[*] OK: full name set to' $new} elseif($u.Name -ieq $new){Write-Host '[*] SKIP: username and full name already' $new}; exit 0"
 if !errorlevel! neq 0 (
-    echo [!] WARNING: Failed to rename admin account. It may not exist or was already renamed.
+    echo [!] WARNING: Failed to update admin account. It may not exist or was already configured.
 )
 
 echo [*] Creating new user account...

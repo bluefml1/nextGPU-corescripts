@@ -28,6 +28,7 @@ During setup, `RegisterMachine_Beta.bat` asks for:
 | **API Key** | `x-api-key` header for the register-machine Lambda |
 | **Computer Name** | Display name for the rental node (e.g. `GPU-RENTAL-01`); also used in Moonlight `config.json` (lowercased) |
 | **Original Price** | Listing price sent to the backend (e.g. `10.99`) |
+| **Vendor ID** *(optional)* | If set, sent as `vendor_id` in the `registerMachine` JSON payload; press Enter to omit |
 | **Admin account username** | Existing local admin to rename → `NextGPU-Authority` |
 
 After entry, a summary is shown; confirm with **Y** to continue or re-enter.
@@ -151,7 +152,7 @@ The script resolves its own directory (`SCRIPT_DIR`) so all paths are relative t
 16. **Game list for API** — Queries `http://localhost:8080/api/apps?host_id=0` and builds JSON map of game title → stream URL (`https://{DOMAIN}/stream.html?hostId=0&appId=...`).  
 17. **Register machine** — `POST` to  
     `https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/registerMachine`  
-    with header `x-api-key: {API_KEY}` and JSON payload (name, IPs, status, domain, hardware, benchmarks, price, notes, optional games).  
+    with header `x-api-key: {API_KEY}` and JSON payload (name, IPs, status, domain, hardware, benchmarks, price, optional `vendor_id`, notes, optional games).  
     - Log: `register_api_log.txt`  
 18. **`domain.txt`** — Writes `DOMAIN`, `PUBLIC_IP`, `COMPUTER_NAME` for heartbeat/repair scripts.
 
@@ -165,13 +166,24 @@ The script resolves its own directory (`SCRIPT_DIR`) so all paths are relative t
     - `TaskScheduler.ps1` — Registers **EndSession** task (SYSTEM): on Application log event from `LogoffManager` (Event ID 2002), runs Sunshine `endSession.ps1`.  
     - `launchGameTaskScheduler.ps1` — Registers **auto game launch** at user logon → `Z:\launchGame.ps1` (ensure `Z:` and script exist on the image).
 
-22. **Wallpaper** — Copies `nextgputobu.jpeg` to `C:\Users\Public\Wallpaper\` and sets HKLM policy wallpaper for all users.
+### Phase 6 — Wallpaper, accounts, and finish
 
-### Phase 6 — Accounts and finish
-
-23. **Rename admin** — Renames `{ADMIN_ACCOUNT_NAME}` → **`NextGPU-Authority`** (skip if already named; warn if account missing).  
+22. **Wallpaper** — `Setup-Wallpaper.bat inline` → `Set-DesktopWallpaper-Gpo.ps1` (same as standalone; runs **before** account changes).  
+23. **Rename admin** — Renames `{ADMIN_ACCOUNT_NAME}` → **`NextGPU-Authority`** (username + full name).  
 24. **Create user** — `net user nextGPU /add` (standard user for rental sessions).  
 25. **Completion message** — Prompts for **manual reboot** (drivers, display paths, accounts).
+
+---
+
+## Wallpaper only (standalone)
+
+Run as Administrator (double-click `Setup-Wallpaper.bat` or from an elevated prompt):
+
+```bat
+Setup-Wallpaper.bat
+```
+
+Requires `nextgputobu.jpeg` in the same folder. After success, open **Local Group Policy Editor** → **User Configuration** → **Administrative Templates** → **Desktop** → **Desktop** → **Desktop Wallpaper** — it should show **Enabled**, path `C:\Users\Public\Wallpaper\nextgputobu.jpeg`, style **Fill**. (**Computer Configuration** → same policy stays *Not Configured*; Desktop Wallpaper is a user policy only.)
 
 ---
 
@@ -239,6 +251,8 @@ nextGPU-corescripts/
 ├── Get-BenchmarkScores-Silent.ps1
 ├── Get-DisplayDeviceId.ps1       # Sunshine output_name (VDD)
 ├── ViGEmBus.bat
+├── Setup-Wallpaper.bat           # Standalone wallpaper GPO (or called from main script)
+├── Set-DesktopWallpaper-Gpo.ps1  # User registry.pol + HKCU wallpaper (Fill)
 ├── TaskScheduler.ps1             # EndSession scheduled task
 ├── launchGameTaskScheduler.ps1   # Logon game launch task
 ├── nextgputobu.jpeg                # Wallpaper source
