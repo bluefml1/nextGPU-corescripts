@@ -1,28 +1,30 @@
 @echo off
 setlocal enabledelayedexpansion
 
-:: ViGEm Bus Driver - download and silent install (hidden, no restart)
+:: ViGEm Bus Driver - download and silent install (no restart; console stays visible)
 
 set "SCRIPT_DIR=%~dp0"
 if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 set "LOG_FILE=%SCRIPT_DIR%\ViGEmBus.log"
 
-if /i "%~1"=="inline" goto :vigem_install
-
-if /i not "%~1"=="hidden" (
-    call :log "========== ViGEmBus session start (launcher) =========="
-    call :log "Script=%~f0"
-    fltmc >nul 2>&1
-    if errorlevel 1 (
-        call :log "Not elevated; requesting admin and relaunching hidden."
-        powershell -NoProfile -WindowStyle Hidden -Command "Start-Process -FilePath '%~f0' -ArgumentList 'hidden' -Verb RunAs -WindowStyle Hidden"
-    ) else (
-        call :log "Already elevated; relaunching hidden."
-        powershell -NoProfile -WindowStyle Hidden -Command "Start-Process -FilePath '%~f0' -ArgumentList 'hidden' -WindowStyle Hidden"
-    )
-    call :log "Launcher exiting. Log file: %LOG_FILE%"
-    exit /b
+if /i "%~1"=="inline" (
+    set "VIGEM_CONSOLE=1"
+    goto :vigem_install
 )
+
+call :log "========== ViGEmBus session start (launcher) =========="
+call :log "Script=%~f0"
+fltmc >nul 2>&1
+if errorlevel 1 (
+    call :log "Not elevated; requesting admin (visible window)."
+    echo Requesting Administrator privileges for ViGEmBus...
+    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -ArgumentList 'inline' -Verb RunAs -WindowStyle Normal -Wait"
+    set "ERR=!errorlevel!"
+    call :log "Elevated install finished. Exit code !ERR!"
+    exit /b !ERR!
+)
+set "VIGEM_CONSOLE=1"
+goto :vigem_install
 
 :vigem_install
 call :log "========== ViGEmBus install run =========="
@@ -60,7 +62,7 @@ curl -L -s "%VIGEM_URL%" -o "%VIGEM_EXE%" --retry 3
 set "DL_ERR=!errorlevel!"
 if !DL_ERR! neq 0 (
     call :log "WARN: curl failed with exit code !DL_ERR!; trying PowerShell Invoke-WebRequest."
-    powershell -NoProfile -WindowStyle Hidden -Command ^
+    powershell -NoProfile -Command ^
         "$ProgressPreference='SilentlyContinue';" ^
         "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;" ^
         "Invoke-WebRequest -Uri '%VIGEM_URL%' -OutFile '%VIGEM_EXE%' -UseBasicParsing"
@@ -84,9 +86,7 @@ if not exist "%VIGEM_EXE%" (
 for %%A in ("%VIGEM_EXE%") do call :log "Installer size: %%~zA bytes"
 
 call :log "Installing silently (/exenoui /qn /norestart)..."
-powershell -NoProfile -WindowStyle Hidden -Command ^
-    "$p = Start-Process -FilePath '%VIGEM_EXE%' -ArgumentList '/exenoui','/qn','/norestart' -Wait -PassThru -WindowStyle Hidden;" ^
-    "exit $p.ExitCode"
+"%VIGEM_EXE%" /exenoui /qn /norestart
 set "INSTALL_ERR=!errorlevel!"
 call :log "Installer exit code: !INSTALL_ERR!"
 
@@ -121,5 +121,6 @@ call :log "========== ViGEmBus install run end =========="
 exit /b !INSTALL_ERR!
 
 :log
+if defined VIGEM_CONSOLE echo [%date% %time%] %~1
 >>"%LOG_FILE%" echo [%date% %time%] %~1
 exit /b
