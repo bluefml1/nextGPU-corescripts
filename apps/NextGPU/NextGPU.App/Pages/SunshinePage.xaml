@@ -1,0 +1,20 @@
+<Page x:Class="NextGPU.App.Pages.SunshinePage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16,24,20">
+        <UniformGrid Columns="2" HorizontalAlignment="Stretch">
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,12,14">
+                <StackPanel>
+                    <TextBlock Text="Sunshine Controls" Style="{StaticResource SectionTitleText}"/>
+                    <StackPanel x:Name="ControlPanel"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="Display Binding / Diagnostics" Style="{StaticResource SectionTitleText}"/>
+                    <StackPanel x:Name="DiagPanel"/>
+                </StackPanel>
+            </Border>
+        </UniformGrid>
+    </ScrollViewer>
+</Page>

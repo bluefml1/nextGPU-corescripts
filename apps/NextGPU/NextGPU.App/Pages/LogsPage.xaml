@@ -1,0 +1,42 @@
+<Page x:Class="NextGPU.App.Pages.LogsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      Loaded="Page_Loaded" Unloaded="Page_Unloaded">
+    <Grid Margin="20,16,24,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource CardBorder}" Margin="0,0,0,12" Padding="14">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <WrapPanel Grid.Row="0" Margin="0,0,0,10">
+                    <ComboBox x:Name="LogCombo" Width="300" Margin="0,0,10,8"/>
+                    <TextBox x:Name="FilterBox" Width="220" Margin="0,0,10,8"
+                             ToolTip="Filter displayed lines" TextChanged="FilterBox_TextChanged"/>
+                    <CheckBox x:Name="TailCheck" Content="Live tail" IsChecked="True" VerticalAlignment="Center" Margin="0,0,0,8"
+                              Checked="Tail_Changed" Unchecked="Tail_Changed"/>
+                </WrapPanel>
+                <WrapPanel Grid.Row="1">
+                    <Button Content="Reload" Click="Reload_Click" Margin="0,0,8,0" Style="{StaticResource SecondaryButton}"/>
+                    <Button Content="Open logs folder" Click="OpenLogsFolder_Click" Margin="0,0,8,0" Style="{StaticResource SecondaryButton}"/>
+                    <Button Content="Open in editor" Click="OpenEditor_Click" Margin="0,0,8,0" Style="{StaticResource SecondaryButton}"/>
+                    <Button Content="Copy all" Click="CopyAll_Click" Style="{StaticResource SecondaryButton}"/>
+                </WrapPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1" CornerRadius="12" BorderBrush="{StaticResource BorderSubtleBrush}"
+                BorderThickness="1" Background="{StaticResource ConsoleBgBrush}">
+            <TextBox x:Name="LogText" IsReadOnly="True" TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                     FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                     Background="Transparent" Foreground="{StaticResource ConsoleTextBrush}"
+                     BorderThickness="0" Padding="14"/>
+        </Border>
+    </Grid>
+</Page>

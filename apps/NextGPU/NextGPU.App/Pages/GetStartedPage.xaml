@@ -1,0 +1,13 @@
+<Page x:Class="NextGPU.App.Pages.GetStartedPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16,24,20">
+        <StackPanel>
+            <TextBlock Text="PROVISIONING STEPS" Style="{StaticResource LabelCaptionText}" Margin="0,0,0,10"/>
+            <UniformGrid x:Name="StepsPanel" Columns="2" Margin="0,0,0,24"/>
+
+            <TextBlock Text="TROUBLESHOOTING" Style="{StaticResource LabelCaptionText}" Margin="0,0,0,10"/>
+            <StackPanel x:Name="TroubleshootingPanel"/>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

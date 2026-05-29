@@ -1,0 +1,24 @@
+<Page x:Class="NextGPU.App.Pages.DiskManagementPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16,24,20">
+        <UniformGrid Columns="1" HorizontalAlignment="Stretch">
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="Step 1 — Filesystem Repair (CHKDSK)" Style="{StaticResource SectionTitleText}"/>
+                    <TextBlock Style="{StaticResource PageSubtitleText}" Margin="0,0,0,14"
+                               Text="Choose one fixed disk or all fixed disks. Script schedules chkdsk /f and may ask for restart."/>
+                    <StackPanel x:Name="ChkPanel"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorder}">
+                <StackPanel>
+                    <TextBlock Text="Step 2 — Shrink and Allocate Space" Style="{StaticResource SectionTitleText}"/>
+                    <TextBlock Style="{StaticResource PageSubtitleText}" Margin="0,0,0,14"
+                               Text="Shrink a source volume (e.g. C:), then extend Z: or create a new drive letter."/>
+                    <StackPanel x:Name="PartitionPanel"/>
+                </StackPanel>
+            </Border>
+        </UniformGrid>
+    </ScrollViewer>
+</Page>

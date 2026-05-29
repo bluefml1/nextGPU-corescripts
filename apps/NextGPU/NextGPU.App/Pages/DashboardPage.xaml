@@ -1,0 +1,62 @@
+<Page x:Class="NextGPU.App.Pages.DashboardPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      Loaded="Page_Loaded" Unloaded="Page_Unloaded">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16,24,20">
+        <StackPanel>
+            <Border Style="{StaticResource ToolbarCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="RepoBanner" Foreground="{StaticResource WarnBrush}"
+                               TextWrapping="Wrap" VerticalAlignment="Center" FontSize="12"/>
+                    <Button Grid.Column="1" Content="Refresh now" Style="{StaticResource PrimaryButton}"
+                            Click="Refresh_Click"/>
+                </Grid>
+            </Border>
+
+            <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="320"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="*" MinWidth="320"/>
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource CardBorder}" Margin="0,0,0,14">
+                    <StackPanel>
+                        <TextBlock Text="MACHINE STATUS" Style="{StaticResource LabelCaptionText}"/>
+                        <TextBlock x:Name="StatusLine" TextWrapping="Wrap" Foreground="{StaticResource TextBrush}"
+                                   FontSize="13" Margin="0,0,0,12"/>
+                        <Border Height="1" Background="{StaticResource BorderSubtleBrush}" Margin="0,0,0,12"/>
+                        <TextBlock Text="HTTP endpoints" Style="{StaticResource LabelCaptionText}"/>
+                        <TextBlock x:Name="HttpLine" Margin="0,4,0,12" TextWrapping="Wrap"
+                                   Foreground="{StaticResource SecondaryTextBrush}"/>
+                        <TextBlock Text="Drivers" Style="{StaticResource LabelCaptionText}"/>
+                        <TextBlock x:Name="DriverLine" Margin="0,4,0,12" TextWrapping="Wrap"
+                                   Foreground="{StaticResource SecondaryTextBrush}"/>
+                        <TextBlock x:Name="RefreshedLine" FontSize="12" Foreground="{StaticResource LinkAccentBrush}"/>
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Grid.Column="2">
+                    <TextBlock Text="SERVICES" Style="{StaticResource LabelCaptionText}" Margin="0,0,0,10"/>
+                    <UniformGrid x:Name="ServiceCardsPanel" Columns="2"/>
+                </StackPanel>
+            </Grid>
+
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,0" Padding="14,12">
+                <StackPanel>
+                    <TextBlock Text="QUICK LINKS" Style="{StaticResource LabelCaptionText}" Margin="0,0,0,10"/>
+                    <WrapPanel>
+                        <Button Content="Sunshine UI" Style="{StaticResource PrimaryButton}" Margin="0,0,10,0" Click="OpenSunshine_Click"/>
+                        <Button Content="Moonlight Web" Style="{StaticResource SecondaryButton}" Margin="0,0,10,0" Click="OpenMoonlight_Click"/>
+                        <Button x:Name="OpenPublicBtn" Content="Public domain" Style="{StaticResource SecondaryButton}" Margin="0,0,10,0"
+                                Click="OpenPublic_Click" Visibility="Collapsed"/>
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

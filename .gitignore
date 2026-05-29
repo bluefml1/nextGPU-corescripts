@@ -1,0 +1,7 @@
+s.txt
+**/bin/
+**/obj/
+apps/NextGPU/publish/*
+!apps/NextGPU/publish/README.txt
+!apps/NextGPU/publish/.gitkeep
+/NextGPU.exe
