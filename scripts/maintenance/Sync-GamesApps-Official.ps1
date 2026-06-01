@@ -1,9 +1,20 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Download official NextGPU .zip/.7z releases from Cloudflare R2 with rclone, extract with 7-Zip, delete archive.
+    Download or upload official NextGPU .zip/.7z releases on Cloudflare R2 via rclone.
 .DESCRIPTION
-    R2 path holds top-level archives only. One rclone lsjson lists names and sizes; each pick uses rclone copyto + 7z.
+    Download (default): lsjson list -> pick -> copyto -> 7z extract -> delete zip.
+    Upload (-Push): pick local .zip/.7z -> copyto -> R2 bucket root (same path as official releases).
+.PARAMETER Push
+    Upload mode: push local archive(s) to the R2 origin instead of downloading.
+.PARAMETER LocalFolder
+    Folder to scan for .zip/.7z when -Push (optional; prompts if omitted).
+.PARAMETER LocalZip
+    One or more local archive paths to upload when -Push (skips picker when set).
+.PARAMETER PushAllInFolder
+    With -LocalFolder, upload every .zip/.7z in that folder without per-file selection.
+.PARAMETER ForceOverwrite
+    Overwrite existing objects at the same name on R2 without prompting.
 #>
 [CmdletBinding()]
 param(
@@ -14,7 +25,12 @@ param(
     [switch]$InstallAllZips,
     [switch]$KeepZip,
     [switch]$AllowLegacyFolderSync,
-    [switch]$NoGui
+    [switch]$NoGui,
+    [switch]$Push,
+    [string]$LocalFolder = '',
+    [string[]]$LocalZip = @(),
+    [switch]$PushAllInFolder,
+    [switch]$ForceOverwrite
 )
 
 $ErrorActionPreference = 'Stop'
@@ -60,25 +76,30 @@ function To-RcloneLocalPath([string]$Path) {
     return [System.IO.Path]::GetFullPath($Path).Replace('\', '/')
 }
 
-# Flatten nested Object[] from PS 5.1 "+" / comma quirks into [string[]] for rclone.
-# Comma on return keeps one [string[]] on the pipeline (bare "return $arr" unwraps to Object[] in callers).
+# Flatten nested arrays (PS 5.1 comma-return / @(fn) nests string[] as one element; [string]$nested joins flags).
+function Add-FlattenedRcloneArgs {
+    param(
+        [AllowNull()]$Value,
+        [System.Collections.Generic.List[string]]$List
+    )
+    if ($null -eq $Value) { return }
+    if ($Value -is [string]) {
+        [void]$List.Add($Value)
+        return
+    }
+    if ($Value -is [System.Array]) {
+        foreach ($el in $Value) { Add-FlattenedRcloneArgs -Value $el -List $List }
+        return
+    }
+    [void]$List.Add([string]$Value)
+}
+
 function Join-RcloneArgs {
     param([object[]]$Parts)
     if ($null -eq $Parts) { return ,[string[]]@() }
     $list = New-Object System.Collections.Generic.List[string]
     foreach ($part in @($Parts)) {
-        if ($null -eq $part) { continue }
-        if ($part -is [string]) {
-            [void]$list.Add($part)
-            continue
-        }
-        if ($part -is [System.Array]) {
-            foreach ($item in $part) {
-                if ($null -ne $item) { [void]$list.Add([string]$item) }
-            }
-            continue
-        }
-        [void]$list.Add([string]$part)
+        Add-FlattenedRcloneArgs -Value $part -List $list
     }
     return ,[string[]]$list.ToArray()
 }
@@ -100,14 +121,17 @@ function Invoke-Rclone {
     }
     if (-not $Quiet) {
         Write-Host ("  > rclone {0}" -f ($argv -join ' ')) -ForegroundColor DarkGray
-    }
-    # Assign to $null would still leak native/progress lines to the caller's $code = Invoke-Rclone assignment.
-    $rcloneOut = & $Rclone @argv 2>&1
-    if (-not $Quiet) {
-        foreach ($line in @($rcloneOut)) {
-            $text = if ($line -is [System.Management.Automation.ErrorRecord]) { $line.ToString() } else { [string]$line }
-            if ($text) { Write-Host $text -ForegroundColor DarkGray }
+        if ($LogFile) {
+            Write-Host "  Live progress below (updates every 5s). Log: $LogFile" -ForegroundColor DarkGray
         }
+        else {
+            Write-Host '  Live progress below (updates every 5s).' -ForegroundColor DarkGray
+        }
+        # Do not capture stdout/stderr: 2>&1 buffers until exit, so multi-hour uploads look frozen.
+        & $Rclone @argv
+    }
+    else {
+        $null = & $Rclone @argv 2>&1 | Out-Null
     }
     $exitCode = $LASTEXITCODE
     if ($null -eq $exitCode) { $exitCode = 1 }
@@ -134,7 +158,7 @@ function Get-RcloneJsonLines {
         [Parameter(Mandatory)][string]$Rclone,
         [Parameter(Mandatory)][object[]]$Args
     )
-    $argv = Join-RcloneArgs -Parts @($Args, @('--timeout', '2m', '--contimeout', '30s'))
+    $argv = Join-RcloneArgs -Parts @($Args, @(Get-RcloneR2ExtraArgs), @('--timeout', '2m', '--contimeout', '30s'))
     $text = & $Rclone @argv 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) {
         throw ("rclone lsjson failed (exit $LASTEXITCODE):`n$text")
@@ -148,32 +172,77 @@ function Get-RcloneJsonLines {
     return ,@(ConvertTo-ObjectArray $rows.ToArray())
 }
 
+function Get-RcloneR2ExtraArgs {
+    # R2: use no_check_bucket = true in rclone.conf (Repair-RcloneR2RemoteConfig). CLI flag omitted for older rclone.
+    return @()
+}
+
 function Get-RcloneCopytoArgs {
     param(
         [int64]$SizeBytes = 0
     )
     $a = @(
-        '--retries', '5',
-        '--low-level-retries', '10',
-        '--contimeout', '60s',
-        '--timeout', $RcloneIdleTimeout
+        @(Get-RcloneR2ExtraArgs),
+        @(
+            '--retries', '5',
+            '--low-level-retries', '10',
+            '--contimeout', '60s',
+            '--timeout', $RcloneIdleTimeout
+        )
     )
     if ($SizeBytes -ge 64MB) {
         $a += @('--multi-thread-streams', '8', '--multi-thread-cutoff', '64M', '--s3-chunk-size', '64M')
     }
-    return $a
+    return ,[string[]](Join-RcloneArgs -Parts $a)
+}
+
+function Repair-RcloneR2RemoteConfig {
+    param(
+        [Parameter(Mandatory)][string]$ConfigPath,
+        [Parameter(Mandatory)][string]$Remote
+    )
+    if (-not (Test-Path -LiteralPath $ConfigPath)) { return }
+    $text = Get-Content -LiteralPath $ConfigPath -Raw
+    $escaped = [regex]::Escape($Remote)
+    if ($text -notmatch "(?m)^\[$escaped\]$") { return }
+    if ($text -notmatch "(?ms)^\[$escaped\]\r?\n(.*?)(?=^\[|\z)") { return }
+    $body = $Matches[1].TrimEnd()
+    if ($body -match '(?m)^no_check_bucket\s*=\s*true') { return }
+    if ($body -match '(?m)^no_check_bucket\s*=') {
+        $body = [regex]::Replace($body, '(?m)^no_check_bucket\s*=.*$', 'no_check_bucket = true')
+    }
+    else {
+        $body = $body + [Environment]::NewLine + 'no_check_bucket = true'
+    }
+    $patched = [regex]::Replace($text, "(?ms)^\[$escaped\]\r?\n.*?(?=^\[|\z)", "[$Remote]`r`n$body`r`n")
+    Set-Content -LiteralPath $ConfigPath -Value $patched -Encoding ASCII
+    Write-Ok "Patched rclone [$Remote]: no_check_bucket = true (Cloudflare R2)"
 }
 
 # --- prompts ---
-function Prompt-YesNo([string]$Title, [string]$Prompt, [bool]$DefaultYes = $true) {
-    if (-not $script:UseGui) {
-        $v = Read-Host "$Prompt (Y/N)"
+function Confirm-YesNo {
+    param(
+        [string]$Title,
+        [string]$Prompt,
+        [bool]$DefaultYes = $true,
+        [switch]$PreferConsole
+    )
+    if ($PreferConsole -or -not $script:UseGui) {
+        Write-Host ''
+        Write-Host $Prompt -ForegroundColor Cyan
+        $defHint = if ($DefaultYes) { 'Y' } else { 'N' }
+        $v = Read-Host "$Title (Y/N, Enter=$defHint)"
         if ([string]::IsNullOrWhiteSpace($v)) { return $DefaultYes }
         return $v.Trim().ToUpperInvariant() -eq 'Y'
     }
+    Write-Host '[!] Confirm in the popup (check taskbar if you do not see it).' -ForegroundColor Yellow
     $r = [System.Windows.Forms.MessageBox]::Show($Prompt, $Title,
         [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
     return $r -eq [System.Windows.Forms.DialogResult]::Yes
+}
+
+function Prompt-YesNo([string]$Title, [string]$Prompt, [bool]$DefaultYes = $true) {
+    return (Confirm-YesNo -Title $Title -Prompt $Prompt -DefaultYes $DefaultYes)
 }
 
 function Prompt-Text([string]$Title, [string]$Prompt, [string]$Default = '') {
@@ -273,6 +342,7 @@ function Ensure-RcloneConfig([string]$Remote, [string]$StorageRegion) {
     $existing = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw } else { '' }
     $hasRemote = $existing -match "(?m)^\[$([regex]::Escape($Remote))\]$"
     if ($hasRemote -and (Prompt-YesNo 'rclone config' "Reuse existing [$Remote] config?" $true)) {
+        Repair-RcloneR2RemoteConfig -ConfigPath $configPath -Remote $Remote
         return $configPath
     }
     $accessKey = Prompt-Text 'NextGPU Sync (R2)' 'R2 access_key_id'
@@ -291,6 +361,7 @@ secret_access_key = $secretKey
 region = $StorageRegion
 endpoint = $endpoint
 acl = private
+no_check_bucket = true
 "@
     if ([string]::IsNullOrWhiteSpace($existing)) {
         Set-Content -LiteralPath $configPath -Value $block -Encoding ASCII
@@ -304,12 +375,28 @@ acl = private
         Set-Content -LiteralPath $configPath -Value ($existing.TrimEnd() + [Environment]::NewLine + [Environment]::NewLine + $block) -Encoding ASCII
     }
     Write-Ok "Updated $configPath"
+    Repair-RcloneR2RemoteConfig -ConfigPath $configPath -Remote $Remote
     return $configPath
 }
 
 # --- remote listing (one call) ---
 function Test-IsArchiveName([string]$Name) {
-    return [string]$Name -match '\.(zip|7z)$'
+    return [string]$Name -imatch '\.(zip|7z)$'
+}
+
+function Get-DefaultUploadBrowseDirectory {
+    foreach ($d in @(
+            'Y:\NextGPU-Sync',
+            'Y:\',
+            'Z:\',
+            (Join-Path $env:USERPROFILE 'Downloads'),
+            $env:USERPROFILE
+        )) {
+        if (-not [string]::IsNullOrWhiteSpace($d) -and (Test-Path -LiteralPath $d)) {
+            return $d
+        }
+    }
+    return $env:USERPROFILE
 }
 
 function Get-ReleaseArchives {
@@ -471,6 +558,121 @@ function Select-ReleaseArchives {
     return ,(ConvertTo-ObjectArray $picked.ToArray())
 }
 
+function Select-LocalArchivesForUpload {
+    param(
+        [array]$Archives,
+        [string]$SourceLabel
+    )
+    $items = ConvertTo-ObjectArray $Archives
+    if ((Get-ObjectCount $items) -eq 0) { return ,@() }
+    if (-not $script:UseGui) {
+        Write-Host "Archives in $SourceLabel :" -ForegroundColor Yellow
+        for ($i = 0; $i -lt (Get-ObjectCount $items); $i++) {
+            $a = $items[$i]
+            Write-Host ("  [{0}] {1}  ({2})" -f ($i + 1), $a.Name, (Format-FileSize $a.SizeBytes))
+        }
+        $raw = Read-Host 'Numbers to upload (e.g. 1,2) or Enter to cancel'
+        if ([string]::IsNullOrWhiteSpace($raw)) { return ,@() }
+        $picked = New-Object System.Collections.Generic.List[object]
+        foreach ($part in $raw.Split(',')) {
+            $n = 0
+            if ([int]::TryParse($part.Trim(), [ref]$n)) {
+                $idx = $n - 1
+                if ($idx -ge 0 -and $idx -lt $items.Count) { [void]$picked.Add($items[$idx]) }
+            }
+        }
+        return ,(ConvertTo-ObjectArray $picked.ToArray())
+    }
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = 'Select archives to upload'
+    $form.Width = 820; $form.Height = 580; $form.StartPosition = 'CenterScreen'
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Left = 12; $lbl.Top = 12; $lbl.Width = 780
+    $lbl.Text = "Check .zip / .7z to upload ($SourceLabel, $($items.Count) found):"
+    $form.Controls.Add($lbl)
+    $list = New-Object System.Windows.Forms.CheckedListBox
+    $list.Left = 12; $list.Top = 40; $list.Width = 780; $list.Height = 450
+    $list.CheckOnClick = $true
+    $rowList = New-Object System.Collections.Generic.List[object]
+    foreach ($a in $items) {
+        $sz = Format-FileSize $a.SizeBytes
+        [void]$list.Items.Add(('[{0}] {1}' -f $sz, $a.Name))
+        [void]$rowList.Add($a)
+    }
+    $form.Controls.Add($list)
+    $btnAll = New-Object System.Windows.Forms.Button
+    $btnAll.Text = 'Select all'; $btnAll.Left = 12; $btnAll.Top = 502; $btnAll.Width = 90
+    $btnAll.Add_Click({ for ($j = 0; $j -lt $list.Items.Count; $j++) { $list.SetItemChecked($j, $true) } })
+    $form.Controls.Add($btnAll)
+    $btnNone = New-Object System.Windows.Forms.Button
+    $btnNone.Text = 'Clear'; $btnNone.Left = 108; $btnNone.Top = 502; $btnNone.Width = 90
+    $btnNone.Add_Click({ for ($j = 0; $j -lt $list.Items.Count; $j++) { $list.SetItemChecked($j, $false) } })
+    $form.Controls.Add($btnNone)
+    $ok = New-Object System.Windows.Forms.Button
+    $ok.Text = 'Upload'; $ok.Left = 615; $ok.Top = 502; $ok.Width = 85; $ok.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $form.Controls.Add($ok)
+    $cancel = New-Object System.Windows.Forms.Button
+    $cancel.Text = 'Cancel'; $cancel.Left = 708; $cancel.Top = 502; $cancel.Width = 85; $cancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $form.Controls.Add($cancel)
+    $form.AcceptButton = $ok; $form.CancelButton = $cancel
+    if ($form.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return ,@() }
+    $picked = New-Object System.Collections.Generic.List[object]
+    for ($i = 0; $i -lt $list.Items.Count; $i++) {
+        if ($list.GetItemChecked($i)) { [void]$picked.Add($rowList[$i]) }
+    }
+    return ,(ConvertTo-ObjectArray $picked.ToArray())
+}
+
+function Pick-LocalArchivesOpenFileDialog {
+    param([string]$InitialDirectory = '')
+    $dlg = New-Object System.Windows.Forms.OpenFileDialog
+    $dlg.Title = 'Select .zip / .7z files to upload to R2'
+    $dlg.Filter = 'ZIP archive (*.zip)|*.zip|7-Zip archive (*.7z)|*.7z|All files (*.*)|*.*'
+    $dlg.FilterIndex = 1
+    $dlg.Multiselect = $true
+    $dlg.CheckFileExists = $true
+    $startDir = $InitialDirectory
+    if ([string]::IsNullOrWhiteSpace($startDir)) {
+        $startDir = Get-DefaultUploadBrowseDirectory
+    }
+    if (Test-Path -LiteralPath $startDir) {
+        $dlg.InitialDirectory = $startDir
+    }
+    if ($dlg.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
+        return ,@()
+    }
+    $picked = New-Object System.Collections.Generic.List[object]
+    foreach ($path in @($dlg.FileNames)) {
+        if ([string]::IsNullOrWhiteSpace($path)) { continue }
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+        $leaf = [System.IO.Path]::GetFileName($path)
+        if (-not (Test-IsArchiveName -Name $leaf)) { continue }
+        $fi = Get-Item -LiteralPath $path
+        [void]$picked.Add([pscustomobject]@{
+                Name      = $leaf
+                FullPath  = $fi.FullName
+                SizeBytes = [int64]$fi.Length
+            })
+    }
+    return ,(ConvertTo-ObjectArray $picked.ToArray())
+}
+
+function Show-UploadPickerChoice {
+    # Returns: Files | Folder | Cancel
+    if (-not $script:UseGui) { return 'Files' }
+    $r = [System.Windows.Forms.MessageBox]::Show(
+        "How do you want to choose archives to upload?`n`nYes = pick .zip / .7z files`nNo = pick a folder (then choose from a list)`nCancel = abort",
+        'NextGPU Upload',
+        [System.Windows.Forms.MessageBoxButtons]::YesNoCancel,
+        [System.Windows.Forms.MessageBoxIcon]::Question)
+    switch ($r) {
+        ([System.Windows.Forms.DialogResult]::Yes) { return 'Files' }
+        ([System.Windows.Forms.DialogResult]::No) { return 'Folder' }
+        default { return 'Cancel' }
+    }
+}
+
 # --- install one archive ---
 function Expand-Archive7z {
     param(
@@ -601,10 +803,281 @@ function Show-LogTail([string]$LogFile) {
     }
 }
 
+# --- upload to R2 ---
+function Get-LocalReleaseArchives {
+    param([Parameter(Mandatory)][string]$Folder)
+    if (-not (Test-Path -LiteralPath $Folder -PathType Container)) {
+        throw "Folder not found: $Folder"
+    }
+    $list = New-Object System.Collections.Generic.List[object]
+    foreach ($f in Get-ChildItem -LiteralPath $Folder -File | Sort-Object Name) {
+        if (-not (Test-IsArchiveName -Name $f.Name)) { continue }
+        [void]$list.Add([pscustomobject]@{
+                Name       = $f.Name
+                FullPath   = $f.FullName
+                SizeBytes  = [int64]$f.Length
+            })
+    }
+    return ,@(ConvertTo-ObjectArray $list.ToArray())
+}
+
+function Resolve-LocalZipInputs {
+    param(
+        [string[]]$ZipPaths,
+        [string]$Folder = '',
+        [switch]$AllInFolder
+    )
+    $resolved = New-Object System.Collections.Generic.List[object]
+
+    foreach ($p in @($ZipPaths)) {
+        if ([string]::IsNullOrWhiteSpace($p)) { continue }
+        $full = [System.IO.Path]::GetFullPath($p.Trim().Trim('"'))
+        if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
+            throw "File not found: $full"
+        }
+        $leaf = [System.IO.Path]::GetFileName($full)
+        if (-not (Test-IsArchiveName -Name $leaf)) {
+            throw "Not a .zip or .7z file: $leaf"
+        }
+        $fi = Get-Item -LiteralPath $full
+        [void]$resolved.Add([pscustomobject]@{
+                Name      = $leaf
+                FullPath  = $fi.FullName
+                SizeBytes = [int64]$fi.Length
+            })
+    }
+    if ($resolved.Count -gt 0) {
+        return ,(ConvertTo-ObjectArray $resolved.ToArray())
+    }
+
+    if ($script:UseGui -and [string]::IsNullOrWhiteSpace($Folder) -and -not $AllInFolder) {
+        $choice = Show-UploadPickerChoice
+        if ($choice -eq 'Cancel') { return ,@() }
+        if ($choice -eq 'Files') {
+            return ,(Pick-LocalArchivesOpenFileDialog -InitialDirectory (Get-DefaultUploadBrowseDirectory))
+        }
+    }
+
+    $scanDir = $Folder
+    if ([string]::IsNullOrWhiteSpace($scanDir)) {
+        if (-not $script:UseGui) {
+            $scanDir = Read-Host 'Folder containing .zip / .7z to upload'
+        }
+        else {
+            $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
+            $dlg.Description = 'Select folder with .zip / .7z files to upload'
+            $dlg.SelectedPath = Get-DefaultUploadBrowseDirectory
+            if ($dlg.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK -or -not $dlg.SelectedPath) {
+                return ,@()
+            }
+            $scanDir = $dlg.SelectedPath
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($scanDir)) { return ,@() }
+
+    $scanDir = [System.IO.Path]::GetFullPath($scanDir.Trim().Trim('"'))
+    $found = ConvertTo-ObjectArray (Get-LocalReleaseArchives -Folder $scanDir)
+    if ((Get-ObjectCount $found) -eq 0) {
+        throw "No .zip or .7z files in: $scanDir (checked file names, case-insensitive)"
+    }
+    if ($AllInFolder) { return ,$found }
+
+    return ,(Select-LocalArchivesForUpload -Archives $found -SourceLabel $scanDir)
+}
+
+function Test-RemoteArchiveExists {
+    param(
+        [Parameter(Mandatory)][string]$Rclone,
+        [Parameter(Mandatory)][string]$RemoteZipPath
+    )
+    $argv = Join-RcloneArgs -Parts @(@('lsf', $RemoteZipPath, '--files-only'), @(Get-RcloneR2ExtraArgs), @('--timeout', '45s'))
+    $out = & $Rclone @argv 2>&1 | Out-String
+    if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($out.Trim())) {
+        return $true
+    }
+    return $false
+}
+
+function Push-ArchiveToR2 {
+    param(
+        [Parameter(Mandatory)][string]$Rclone,
+        [Parameter(Mandatory)][string]$RemoteRoot,
+        [Parameter(Mandatory)][string]$LocalZipPath,
+        [Parameter(Mandatory)][string]$LogFile,
+        [string]$RemoteFileName = '',
+        [switch]$Overwrite
+    )
+    if (-not (Test-Path -LiteralPath $LocalZipPath -PathType Leaf)) {
+        Write-Fail "Local file missing: $LocalZipPath"
+        return 1
+    }
+
+    $leaf = if ($RemoteFileName) { $RemoteFileName.Trim() } else { [System.IO.Path]::GetFileName($LocalZipPath) }
+    if (-not (Test-IsArchiveName -Name $leaf)) {
+        Write-Fail "Remote name must end with .zip or .7z: $leaf"
+        return 1
+    }
+
+    $remoteZip = "$RemoteRoot/$leaf"
+    $localRclone = To-RcloneLocalPath -Path $LocalZipPath
+    $size = (Get-Item -LiteralPath $LocalZipPath).Length
+    $sizeLabel = Format-FileSize $size
+    $preferConsole = ($size -ge 1GB)
+
+    Write-Host "  Local: $localRclone ($sizeLabel)" -ForegroundColor DarkGray
+    Write-Host '  Checking if object already exists on R2...' -ForegroundColor DarkGray
+
+    if (Test-RemoteArchiveExists -Rclone $Rclone -RemoteZipPath $remoteZip) {
+        Write-Warn "Remote already has: $leaf"
+        if (-not $Overwrite) {
+            $ans = Confirm-YesNo -Title 'Overwrite?' `
+                -Prompt "Remote already has $leaf. Replace it on R2?" `
+                -DefaultYes $false -PreferConsole:$preferConsole
+            if (-not $ans) {
+                Write-Warn "Skipped (exists on R2): $leaf"
+                return 2
+            }
+        }
+        else {
+            Write-Warn "Overwriting existing remote object: $leaf"
+        }
+    }
+    else {
+        Write-Host '  Not on R2 yet (new upload).' -ForegroundColor DarkGray
+    }
+
+    if ($size -ge 1GB) {
+        Write-Warn "Large upload ($sizeLabel). This can take hours. rclone progress will appear below."
+    }
+
+    Write-Step "Uploading $leaf ($sizeLabel) -> $remoteZip ..."
+    $copyArgs = Join-RcloneArgs -Parts @(
+        @('copyto', $localRclone, $remoteZip),
+        @(Get-RcloneCopytoArgs -SizeBytes $size)
+    )
+    $exitCode = Invoke-Rclone -Rclone $Rclone -ArgumentList $copyArgs -LogFile $LogFile
+
+    if ($exitCode -eq 0) {
+        Write-Host '  Verifying remote size...' -ForegroundColor DarkGray
+        $remoteSize = Get-ArchiveSizeBytes -Rclone $Rclone -RemoteZipPath $remoteZip -ListedSize 0
+        if ($remoteSize -gt 0 -and [math]::Abs($remoteSize - $size) -gt 4096) {
+            Write-Warn "Upload finished but remote size differs (local $sizeLabel, remote $(Format-FileSize $remoteSize))."
+            $exitCode = 1
+        }
+    }
+    else {
+        $remoteSize = [int64]0
+    }
+
+    if ($exitCode -ne 0) {
+        Write-Fail "Upload failed (exit $exitCode): $leaf"
+        if (Test-Path -LiteralPath $LogFile) {
+            $tail = Get-Content -LiteralPath $LogFile -Tail 5 -ErrorAction SilentlyContinue | Out-String
+            if ($tail -match 'CreateBucket' -and $tail -match 'AccessDenied') {
+                Write-Warn 'R2 rejected CreateBucket. Re-run push (script patches no_check_bucket) or add no_check_bucket = true under [r2games] in %USERPROFILE%\.config\rclone\rclone.conf'
+            }
+        }
+        return [int]$exitCode
+    }
+
+    $shown = if ($remoteSize -gt 0) { Format-FileSize $remoteSize } else { $sizeLabel }
+    Write-Ok ("Uploaded {0} to R2 ({1})" -f $leaf, $shown)
+    return 0
+}
+
+function Invoke-PushToR2Flow {
+    Write-Host '==============================================='
+    Write-Host ' NextGPU R2 upload (push .zip / .7z to origin)'
+    Write-Host '  Script: 2026-06-02f (live rclone progress; R2 no_check_bucket in rclone.conf)'
+    Write-Host '==============================================='
+
+    Ensure-WingetPackage -PackageId 'Rclone.Rclone' -FriendlyName 'rclone'
+    Update-SessionPath
+
+    $rclone = Get-RcloneExe
+    if (-not $rclone) { throw 'rclone not found.' }
+    Write-Ok "rclone: $rclone"
+
+    $null = Ensure-RcloneConfig -Remote $RemoteName -StorageRegion $Region
+    $remoteRoot = "${RemoteName}:$($DefaultRemotePath.Trim().TrimEnd('/'))"
+
+    Write-Step "Checking remote $remoteRoot ..."
+    $pfArgv = Join-RcloneArgs -Parts @(@('lsf', $remoteRoot, '--max-depth', '1'), @(Get-RcloneR2ExtraArgs))
+    $pf = & $rclone @pfArgv 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        throw ("Cannot reach $remoteRoot. Check rclone config (R2 API endpoint, not CDN).`n$pf")
+    }
+
+    $toUpload = ConvertTo-ObjectArray (Resolve-LocalZipInputs -ZipPaths $LocalZip -Folder $LocalFolder -AllInFolder:$PushAllInFolder.IsPresent)
+    if ((Get-ObjectCount $toUpload) -eq 0) { throw 'No local archive selected for upload.' }
+
+    Write-Ok ("{0} file(s) selected for upload." -f (Get-ObjectCount $toUpload))
+    foreach ($a in $toUpload) {
+        Write-Host ("  - {0}  {1}" -f $a.Name, (Format-FileSize $a.SizeBytes)) -ForegroundColor DarkGray
+        Write-Host ("      {0}" -f $a.FullPath) -ForegroundColor DarkGray
+    }
+
+    $maxBytes = [int64]0
+    foreach ($a in $toUpload) {
+        if ([int64]$a.SizeBytes -gt $maxBytes) { $maxBytes = [int64]$a.SizeBytes }
+    }
+    $confirmConsole = ($maxBytes -ge 1GB)
+    if ($confirmConsole) {
+        Write-Warn 'Large file(s) selected — confirmation will use this console (not a popup).'
+    }
+    if (-not (Confirm-YesNo -Title 'Upload' -Prompt "Upload to $remoteRoot ?" -DefaultYes $true -PreferConsole:$confirmConsole)) {
+        exit 0
+    }
+
+    $logDir = Join-Path $env:ProgramData 'nextGPU\logs'
+    if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+    $logFile = Join-Path $logDir ("push-games-apps-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    Write-Host "Log: $logFile" -ForegroundColor Cyan
+
+    $exitCode = 0
+    $index = 0
+    $uploadCount = Get-ObjectCount $toUpload
+    foreach ($a in $toUpload) {
+        $index++
+        Write-Host ''
+        Write-Host "=== [$index/$uploadCount] $($a.Name) ===" -ForegroundColor Cyan
+        Write-Host '  Starting upload step (see messages below)...' -ForegroundColor DarkGray
+        $code = Push-ArchiveToR2 -Rclone $rclone -RemoteRoot $remoteRoot `
+            -LocalZipPath $a.FullPath -LogFile $logFile -Overwrite:$ForceOverwrite.IsPresent
+        if ($code -eq 2) { continue }
+        if ($code -ne 0) {
+            Show-LogTail -LogFile $logFile
+            $exitCode = [int]$code
+            break
+        }
+    }
+
+    Write-Host ''
+    if ($exitCode -eq 0) {
+        Write-Ok 'Upload complete.'
+        Write-Host "Remote: $remoteRoot" -ForegroundColor Green
+        if ($script:UseGui) {
+            [void][System.Windows.Forms.MessageBox]::Show("Upload done.`n$remoteRoot`n`nLog: $logFile", 'NextGPU Upload', 'OK', 'Information')
+        }
+        exit 0
+    }
+
+    Write-Fail "Upload stopped (exit $exitCode)."
+    if ($script:UseGui) {
+        [void][System.Windows.Forms.MessageBox]::Show("Upload failed.`nLog: $logFile", 'NextGPU Upload', 'OK', 'Error')
+    }
+    exit $exitCode
+}
+
 # ========== main ==========
+if ($Push.IsPresent) {
+    Invoke-PushToR2Flow
+    exit $LASTEXITCODE
+}
+
 Write-Host '==============================================='
 Write-Host ' NextGPU official release sync (rclone + 7-Zip)'
-Write-Host '  Script: 2026-06-01d (fix: rclone progress leaking into exit code; zip verify)'
+Write-Host '  Script: 2026-06-02f (download + -Push upload to R2)'
 Write-Host '  Flow: lsjson list -> pick -> copyto -> 7z -> delete zip'
 Write-Host '==============================================='
 
@@ -625,7 +1098,8 @@ $null = Ensure-RcloneConfig -Remote $RemoteName -StorageRegion $Region
 $remoteRoot = "${RemoteName}:$($DefaultRemotePath.Trim().TrimEnd('/'))"
 
 Write-Step "Checking remote $remoteRoot ..."
-$pf = & $rclone @('lsf', $remoteRoot, '--max-depth', '1') 2>&1 | Out-String
+$pfArgv = Join-RcloneArgs -Parts @(@('lsf', $remoteRoot, '--max-depth', '1'), @(Get-RcloneR2ExtraArgs))
+$pf = & $rclone @pfArgv 2>&1 | Out-String
 if ($LASTEXITCODE -ne 0) {
     throw ("Cannot reach $remoteRoot. Check rclone config (R2 API endpoint, not CDN).`n$pf")
 }
