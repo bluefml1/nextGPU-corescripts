@@ -1,0 +1,14 @@
+*.txt
+*.json
+*.zip
+!config/playnite/*.template.json
+
+# Auto-downloaded SQLite CLI (see Playnite-Common.ps1 Ensure-Sqlite3Available)
+tools/sqlite/*
+!tools/sqlite/.gitkeep
+
+# Guard against accidental relative DatabasePath outputs
+library/
+
+# Per-machine install folder from Setup folder picker
+PlayniteInstall.path
