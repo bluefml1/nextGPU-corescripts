@@ -66,6 +66,22 @@ foreach ($item in $required) {
 }
 
 Write-Host ''
+Write-Host 'Optional PlayNiteWatcher (step 05)...'
+$playniteOptional = @(
+    @('PlayNiteWatcher\Setup-PlayniteSteam.bat', 'PlayNite setup launcher'),
+    @('PlayNiteWatcher\Setup-PlayniteSteam.ps1', 'PlayNite setup script'),
+    @('PlayNiteWatcher\Playnite-Common.ps1', 'PlayNite shared helpers')
+)
+foreach ($item in $playniteOptional) {
+    $full = Join-Path $RepoRoot $item[0]
+    if (Test-Path -LiteralPath $full) {
+        Write-Host "[INFO] $($item[1]) present" -ForegroundColor Cyan
+    } else {
+        Write-Host "[INFO] $($item[1]) missing (optional unless using Get Started step 05) -> $full" -ForegroundColor DarkGray
+    }
+}
+
+Write-Host ''
 Write-Host 'Helper load test...'
 $hivePath = Join-Path $RepoRoot 'scripts\desktop\DefaultUserHive.ps1'
 if (Test-Path -LiteralPath $hivePath) {

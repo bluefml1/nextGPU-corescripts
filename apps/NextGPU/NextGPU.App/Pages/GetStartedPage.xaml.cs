@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -79,8 +81,16 @@ public partial class GetStartedPage : Page
                 () => NavigateLogs("sunshine-bind.log")),
             new StepItem(
                 "05",
+                "Implement PlayNite",
+                "Run after RegisterMachine (Sunshine must exist). Requires 7-Zip or WinRAR, Steam/Epic games on disk, and optional Everything + config\\playnite\\desktop-apps.allowlist.json. Installs portable PlayNite, imports libraries, exports to Sunshine, and installs PlayNiteWatcher.",
+                "Run PlayNite Setup",
+                () => RunBatch(@"PlayNiteWatcher\Setup-PlayniteSteam.bat", keepConsoleOpen: true),
+                "Open PlayNite Folder",
+                () => OpenPlayNiteWatcherFolder()),
+            new StepItem(
+                "06",
                 "Verify Host Is Ready",
-                "Verify with this checklist: (1) Sunshine session starts, (2) wallpaper policy is applied, (3) required drivers exist, (4) key services are healthy, (5) logs show no critical errors.",
+                "Verify with this checklist: (1) Sunshine session starts, (2) wallpaper policy is applied, (3) required drivers exist, (4) key services are healthy, (5) Sunshine apps.json includes PlayNite-exported games when step 05 completed, (6) logs show no critical errors.",
                 "Run Wallpaper Verification",
                 () => RunCapture(@"scripts\desktop\Test-WallpaperPolicy.ps1", ""),
                 "Open Logs Page",
@@ -140,7 +150,22 @@ public partial class GetStartedPage : Page
                 "Cannot shrink partition during disk prep",
                 "Disable hibernation/pagefile/restore points, reboot, and retry partition creation from Disk Management page.",
                 "Open Disk Management",
-                () => NavigateTo(new DiskManagementPage()))
+                () => NavigateTo(new DiskManagementPage())),
+            new TroubleItem(
+                "PlayNite desktop import added 0",
+                "Everything IPC failed, drive not indexed, or allowlist missing. Start Everything, copy config\\playnite\\desktop-apps.allowlist.json from template, then re-run setup or desktop import.",
+                "Re-run PlayNite Setup",
+                () => RunBatch(@"PlayNiteWatcher\Setup-PlayniteSteam.bat", keepConsoleOpen: true)),
+            new TroubleItem(
+                "PlayNite Sunshine export empty",
+                "library\\games.db may be empty or stale. Run library update after Steam/Epic games are on disk, then re-export via full setup or Export-SunshineFromPlaynite.ps1.",
+                "Re-scan Libraries",
+                () => RunBatch(@"PlayNiteWatcher\Update-PlayniteLibraries.bat", keepConsoleOpen: true)),
+            new TroubleItem(
+                "Moonlight stream does not auto-close after game exit",
+                "PlayNiteWatcher prep-cmd or eventLogs.ps1 may be missing. Re-install watcher after Sunshine export; ensure C:\\Program Files\\Sunshine\\scripts\\eventLogs.ps1 exists.",
+                "Install PlayNiteWatcher",
+                () => RunPowerShell(@"PlayNiteWatcher\Install-PlayniteWatcher.ps1", "", keepConsoleOpen: true))
         };
     }
 
@@ -251,6 +276,29 @@ public partial class GetStartedPage : Page
     {
         if (Application.Current.MainWindow is MainWindow mw)
             mw.NavigateToLogs(preferred);
+    }
+
+    private void OpenPlayNiteWatcherFolder()
+    {
+        if (string.IsNullOrWhiteSpace(App.Session.RepoRoot))
+        {
+            MessageBox.Show("Repo not configured.", "NextGPU");
+            return;
+        }
+
+        var folder = Path.Combine(App.Session.RepoRoot, "PlayNiteWatcher");
+        if (!Directory.Exists(folder))
+        {
+            MessageBox.Show($"Folder not found:\n{folder}", "NextGPU", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "explorer.exe",
+            Arguments = folder,
+            UseShellExecute = true
+        });
     }
 
     private void RunBatch(string relativePath, bool keepConsoleOpen = false)

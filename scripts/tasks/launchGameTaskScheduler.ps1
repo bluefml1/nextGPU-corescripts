@@ -1,4 +1,4 @@
-$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File `"Z:\launchGame.ps1`""
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File `"C:\Program Files\Sunshine\scripts\launchGame.ps1`""
 
 $cimTriggerClass = Get-CimClass -Namespace "Root/Microsoft/Windows/TaskScheduler" -ClassName "MSFT_TaskLogonTrigger"
 $trigger = New-CimInstance -CimClass $cimTriggerClass -ClientOnly
