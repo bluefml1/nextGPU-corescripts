@@ -47,6 +47,7 @@ $required = @(
     @('scripts\maintenance\uninstall-all.bat', 'Uninstall wrapper'),
     @('scripts\desktop\DefaultUserHive.ps1', 'Default-user hive helper'),
     @('scripts\desktop\Set-ShutdownPolicy.ps1', 'Shutdown policy'),
+    @('scripts\desktop\NextGpuLogonTask.ps1', 'Logon task helper'),
     @('scripts\desktop\Set-DesktopWallpaper-Gpo.ps1', 'Wallpaper policy'),
     @('scripts\desktop\Release-DefaultUserHives.ps1', 'Hive release helper'),
     @('scripts\desktop\Clear-NextGpuUserDesktop.ps1', 'nextGPU desktop cleanup'),

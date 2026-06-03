@@ -32,6 +32,12 @@ if (-not (Test-Path -LiteralPath $defaultUserHivePath)) {
 }
 . $defaultUserHivePath
 
+$logonTaskHelperPath = Join-Path $PSScriptRoot 'NextGpuLogonTask.ps1'
+if (-not (Test-Path -LiteralPath $logonTaskHelperPath)) {
+    throw "Required helper not found: $logonTaskHelperPath"
+}
+. $logonTaskHelperPath
+
 function Write-Log([string]$Message) {
     $line = "[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
     Write-Host $line
@@ -267,22 +273,32 @@ function Set-ShutdownUserRights {
     try { Remove-Item -LiteralPath $dbPath -Force -ErrorAction SilentlyContinue } catch {}
 }
 
+function Resolve-ShutdownLogonScriptPath {
+    param(
+        [string]$ScriptDir,
+        [string]$ScriptRoot
+    )
+    foreach ($candidate in @(
+            (Join-Path $ScriptDir 'scripts\desktop\Apply-ShutdownPolicy-Logon.ps1')
+            (Join-Path $ScriptDir 'desktop\Apply-ShutdownPolicy-Logon.ps1')
+            (Join-Path $ScriptRoot 'Apply-ShutdownPolicy-Logon.ps1')
+        )) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path -LiteralPath $candidate)) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+    return $null
+}
+
 function Register-ShutdownLogonTask {
     param([string]$LogonScriptPath)
 
+    $logonScriptPath = [System.IO.Path]::GetFullPath($LogonScriptPath)
     $taskName = 'nextGPU-ShutdownPolicyLogon'
-    $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-    if ($existing) {
-        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
-    }
+    $psArgs = '-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -AuthorityAccountName "{1}"' -f `
+        $logonScriptPath, $AuthorityAccountName
 
-    $psArgs = "-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$LogonScriptPath`" -AuthorityAccountName `"$AuthorityAccountName`""
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $psArgs
-    $trigger = New-ScheduledTaskTrigger -AtLogOn
-    $principal = New-ScheduledTaskPrincipal -GroupId 'Users' -RunLevel Limited
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+    Register-NextGpuAtLogonTask -TaskName $taskName -Argument $psArgs
     Write-Log "Registered scheduled task: $taskName"
 }
 
@@ -340,17 +356,14 @@ if (-not $defaultResult.Loaded -and $defaultResult.Message) {
     Write-Warning "Default user shutdown keys skipped: $($defaultResult.Message) registry.pol and logon task still apply."
 }
 
-$logonScript = Join-Path $ScriptDir 'scripts\desktop\Apply-ShutdownPolicy-Logon.ps1'
-if (-not (Test-Path -LiteralPath $logonScript)) {
-    $logonScript = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'Apply-ShutdownPolicy-Logon.ps1'
-}
+$logonScript = Resolve-ShutdownLogonScriptPath -ScriptDir $ScriptDir -ScriptRoot $PSScriptRoot
 
 if (-not $SkipScheduledTask) {
-    if (Test-Path -LiteralPath $logonScript) {
+    if ($logonScript) {
         Register-ShutdownLogonTask -LogonScriptPath $logonScript
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $logonScript -AuthorityAccountName $AuthorityAccountName
     } else {
-        Write-Warning "Logon script not found: $logonScript"
+        Write-Warning "Logon script not found under ScriptDir=$ScriptDir or $PSScriptRoot"
     }
 }
 

@@ -19,15 +19,11 @@ if (-not (Test-Path -LiteralPath $ApplyScriptPath)) {
 }
 
 $taskName = 'nextGPU-WallpaperFitLogon'
-$existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-if ($existing) {
-    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
-}
+
+. (Join-Path $PSScriptRoot 'NextGpuLogonTask.ps1')
 
 $psArgs = '-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f $ApplyScriptPath
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $psArgs
 # Immediate + delayed: VDD/display may not be ready at first logon on GPU hosts.
-$triggerNow = New-ScheduledTaskTrigger -AtLogOn
 $triggerDelayed = New-ScheduledTaskTrigger -AtLogOn
 try {
     $triggerDelayed.Delay = 'PT90S'
@@ -35,10 +31,9 @@ try {
     Write-Warning 'Could not set 90s logon delay on wallpaper task; only immediate logon trigger registered.'
     $triggerDelayed = $null
 }
-$triggers = @($triggerNow)
-if ($triggerDelayed) { $triggers += $triggerDelayed }
-$principal = New-ScheduledTaskPrincipal -GroupId 'Users' -RunLevel Limited
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
+$extraTriggers = @()
+if ($triggerDelayed) { $extraTriggers = @($triggerDelayed) }
 
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $triggers -Principal $principal -Settings $settings -Force | Out-Null
+Register-NextGpuAtLogonTask -TaskName $taskName -Argument $psArgs -ExtraTriggers $extraTriggers `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
 Write-Host "[*] Registered scheduled task: $taskName (at logon + 90s delay for display ready)."

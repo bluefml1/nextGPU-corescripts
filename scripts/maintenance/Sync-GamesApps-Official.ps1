@@ -3,7 +3,7 @@
 .SYNOPSIS
     Download or upload official NextGPU .zip/.7z releases on Cloudflare R2 via rclone.
 .DESCRIPTION
-    Download (default): lsjson list -> pick -> copyto -> 7z extract -> delete zip.
+    Download (default): lsjson list -> pick -> copyto -> 7z extract into per-archive folder (e.g. steam\) -> delete zip.
     Upload (-Push): pick local .zip/.7z -> copyto -> R2 bucket root (same path as official releases).
 .PARAMETER Push
     Upload mode: push local archive(s) to the R2 origin instead of downloading.
@@ -15,6 +15,10 @@
     With -LocalFolder, upload every .zip/.7z in that folder without per-file selection.
 .PARAMETER ForceOverwrite
     Overwrite existing objects at the same name on R2 without prompting.
+.PARAMETER DownloadMultiThreadStreams
+    Parallel download streams for archives >= 64 MiB (default 8). Use -NoMultiThreadDownload to disable.
+.PARAMETER NoMultiThreadDownload
+    Force single-stream R2 downloads (slower; use if multi-thread fails on your bucket).
 #>
 [CmdletBinding()]
 param(
@@ -22,6 +26,8 @@ param(
     [string]$Region = 'auto',
     [string]$DefaultRemotePath = 'next-gpu-storage-app',
     [string]$RcloneIdleTimeout = '24h',
+    [int]$DownloadMultiThreadStreams = 8,
+    [switch]$NoMultiThreadDownload,
     [switch]$InstallAllZips,
     [switch]$KeepZip,
     [switch]$AllowLegacyFolderSync,
@@ -104,36 +110,207 @@ function Join-RcloneArgs {
     return ,[string[]]$list.ToArray()
 }
 
-# --- rclone (call operator = correct quoting on Windows) ---
+# --- rclone progress (log tail + optional local file size; do not use --progress with --log-file) ---
+$script:RcloneStatsInterval = '1s'
+
+function Get-RcloneLogLineColor {
+    param([string]$Line)
+    if ($Line -match 'ERROR\s*:|Failed to') { return 'Yellow' }
+    if ($Line -match 'WARN\s*:') { return 'Yellow' }
+    return 'DarkGray'
+}
+
+function Write-RcloneProgressLines {
+    param(
+        [string]$LogPath,
+        [ref]$LastReadPosition
+    )
+    if ([string]::IsNullOrWhiteSpace($LogPath) -or -not (Test-Path -LiteralPath $LogPath)) { return }
+    try {
+        $fs = [System.IO.File]::Open($LogPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        try {
+            if ($fs.Length -le $LastReadPosition.Value) { return }
+            $fs.Seek($LastReadPosition.Value, [System.IO.SeekOrigin]::Begin) | Out-Null
+            $readLen = [int]($fs.Length - $LastReadPosition.Value)
+            $buf = New-Object byte[] $readLen
+            [void]$fs.Read($buf, 0, $readLen)
+            $LastReadPosition.Value = $fs.Length
+            $text = [System.Text.Encoding]::UTF8.GetString($buf)
+            foreach ($line in @($text -split "`r?`n")) {
+                $t = $line.Trim()
+                if (-not $t) { continue }
+                Write-Host "  [rclone] $t" -ForegroundColor (Get-RcloneLogLineColor -Line $t)
+            }
+        }
+        finally {
+            $fs.Dispose()
+        }
+    }
+    catch {
+        # Log may be locked briefly; skip this tick.
+    }
+}
+
+function Get-LocalDownloadProgressBytes {
+    param(
+        [string]$ExpectedPath,
+        [int64]$ExpectedBytes = 0
+    )
+    $best = [int64]0
+    $label = ''
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedPath) -and (Test-Path -LiteralPath $ExpectedPath -PathType Leaf)) {
+        $best = (Get-Item -LiteralPath $ExpectedPath).Length
+        $label = [System.IO.Path]::GetFileName($ExpectedPath)
+    }
+    $dir = Split-Path -Parent $ExpectedPath
+    $leaf = [System.IO.Path]::GetFileName($ExpectedPath)
+    if ($dir -and $leaf -and (Test-Path -LiteralPath $dir)) {
+        $partials = @(Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like ($leaf + '.*.partial') })
+        foreach ($p in $partials) {
+            if ($p.Length -gt $best) {
+                $best = [int64]$p.Length
+                $label = $p.Name
+            }
+        }
+    }
+    return [pscustomobject]@{ Bytes = $best; DisplayName = $label }
+}
+
+function Write-LocalFileProgressLine {
+    param(
+        [string]$Path,
+        [int64]$ExpectedBytes = 0,
+        [string]$Label = 'file'
+    )
+    if ([string]::IsNullOrWhiteSpace($Path)) { return }
+    $prog = Get-LocalDownloadProgressBytes -ExpectedPath $Path -ExpectedBytes $ExpectedBytes
+    if ($prog.Bytes -gt 0) {
+        if ($ExpectedBytes -gt 0) {
+            $pct = [math]::Min(100, [math]::Round(100.0 * $prog.Bytes / $ExpectedBytes, 1))
+            Write-Host ('  [{0}] {1} / {2} ({3}%) on disk' -f $Label, (Format-FileSize $prog.Bytes), (Format-FileSize $ExpectedBytes), $pct) -ForegroundColor Cyan
+        }
+        else {
+            Write-Host ('  [{0}] {1} on disk' -f $Label, (Format-FileSize $prog.Bytes)) -ForegroundColor Cyan
+        }
+        if ($prog.DisplayName -like '*.partial') {
+            $finalName = [System.IO.Path]::GetFileName($Path)
+            Write-Host ('  (rclone partial: {0}; will become {1} when done)' -f $prog.DisplayName, $finalName) -ForegroundColor DarkGray
+        }
+        return
+    }
+
+    # On-disk size only; rclone log tail prints all transfer/stats lines every second.
+}
+
+function Repair-RclonePartialDownloadFile {
+    param(
+        [Parameter(Mandatory)][string]$ExpectedPath,
+        [int64]$ExpectedBytes = 0
+    )
+    if (Test-Path -LiteralPath $ExpectedPath -PathType Leaf) {
+        return $true
+    }
+    $dir = Split-Path -Parent $ExpectedPath
+    $leaf = [System.IO.Path]::GetFileName($ExpectedPath)
+    if (-not $dir -or -not (Test-Path -LiteralPath $dir)) { return $false }
+
+    $partials = @(Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like ($leaf + '.*.partial') })
+    if ($partials.Count -eq 0) { return $false }
+
+    if (Get-Process -Name rclone -ErrorAction SilentlyContinue) {
+        Write-Warn 'rclone still running - partial file not renamed yet. Wait or check log.'
+        return $false
+    }
+
+    $best = $partials | Sort-Object -Property Length -Descending | Select-Object -First 1
+    if ($ExpectedBytes -gt 0) {
+        $delta = [math]::Abs($best.Length - $ExpectedBytes)
+        if ($delta -gt 4096 -and $best.Length -lt ($ExpectedBytes - 4096)) {
+            Write-Warn ("Partial {0} is {1}, expected ~{2}. Download may be incomplete." -f $best.Name, (Format-FileSize $best.Length), (Format-FileSize $ExpectedBytes))
+            return $false
+        }
+    }
+
+    if (Test-Path -LiteralPath $ExpectedPath) {
+        Remove-Item -LiteralPath $ExpectedPath -Force -ErrorAction SilentlyContinue
+    }
+    Rename-Item -LiteralPath $best.FullName -NewName $leaf -Force
+    Write-Ok "Finalized: $($best.Name) -> $leaf ($(Format-FileSize (Get-Item -LiteralPath $ExpectedPath).Length))"
+    return $true
+}
+
 function Invoke-Rclone {
     param(
         [Parameter(Mandatory)][string]$Rclone,
         [Parameter(Mandatory)][string[]]$ArgumentList,
         [string]$LogFile = '',
+        [string]$LocalMonitorPath = '',
+        [int64]$ExpectedBytes = 0,
         [switch]$Quiet
     )
     $argv = [string[]]@($ArgumentList)
+    $logPath = ''
     if ($LogFile) {
-        $argv = $argv + [string[]]@('--log-file', ([System.IO.Path]::GetFullPath($LogFile)), '--log-level', 'NOTICE')
-    }
-    if (-not $Quiet) {
-        $argv = $argv + [string[]]@('--stats', '5s', '--stats-one-line', '--progress')
-    }
-    if (-not $Quiet) {
-        Write-Host ("  > rclone {0}" -f ($argv -join ' ')) -ForegroundColor DarkGray
-        if ($LogFile) {
-            Write-Host "  Live progress below (updates every 5s). Log: $LogFile" -ForegroundColor DarkGray
+        $logPath = [System.IO.Path]::GetFullPath($LogFile)
+        $logDir = Split-Path -Parent $logPath
+        if ($logDir -and -not (Test-Path -LiteralPath $logDir)) {
+            New-Item -ItemType Directory -Path $logDir -Force | Out-Null
         }
-        else {
-            Write-Host '  Live progress below (updates every 5s).' -ForegroundColor DarkGray
-        }
-        # Do not capture stdout/stderr: 2>&1 buffers until exit, so multi-hour uploads look frozen.
-        & $Rclone @argv
+        # INFO + stats-log-level INFO: --progress would suppress stats in the log file.
+        $argv = $argv + [string[]]@(
+            '--log-file', $logPath,
+            '--log-level', 'INFO',
+            '--stats-log-level', 'INFO',
+            '--stats', $script:RcloneStatsInterval,
+            '--stats-one-line'
+        )
+    }
+    elseif (-not $Quiet) {
+        $argv = $argv + [string[]]@('--stats', $script:RcloneStatsInterval, '--stats-one-line', '--progress')
+    }
+
+    if ($Quiet) {
+        $null = & $Rclone @argv 2>&1 | Out-Null
+        $exitCode = $LASTEXITCODE
+        if ($null -eq $exitCode) { $exitCode = 1 }
+        return [int]$exitCode
+    }
+
+    Write-Host ("  > rclone {0}" -f ($argv -join ' ')) -ForegroundColor DarkGray
+    if ($logPath) {
+        Write-Host ("  Stats every {0}; full rclone log echoed below. Log: {1}" -f $script:RcloneStatsInterval, $logPath) -ForegroundColor DarkGray
     }
     else {
-        $null = & $Rclone @argv 2>&1 | Out-Null
+        Write-Host ("  Live progress every {0}." -f $script:RcloneStatsInterval) -ForegroundColor DarkGray
     }
-    $exitCode = $LASTEXITCODE
+
+    $monitorPath = ''
+    if (-not [string]::IsNullOrWhiteSpace($LocalMonitorPath)) {
+        $monitorPath = [System.IO.Path]::GetFullPath($LocalMonitorPath)
+    }
+
+    $logPos = 0L
+    $proc = Start-Process -FilePath $Rclone -ArgumentList $argv -NoNewWindow -PassThru
+    if (-not $proc) {
+        throw "Failed to start rclone: $Rclone"
+    }
+
+    while (-not $proc.HasExited) {
+        Write-RcloneProgressLines -LogPath $logPath -LastReadPosition ([ref]$logPos)
+        if ($monitorPath) {
+            Write-LocalFileProgressLine -Path $monitorPath -ExpectedBytes $ExpectedBytes -Label 'download'
+        }
+        Start-Sleep -Seconds 1
+    }
+
+    Write-RcloneProgressLines -LogPath $logPath -LastReadPosition ([ref]$logPos)
+    if ($monitorPath) {
+        Write-LocalFileProgressLine -Path $monitorPath -ExpectedBytes $ExpectedBytes -Label 'download'
+    }
+
+    $exitCode = $proc.ExitCode
     if ($null -eq $exitCode) { $exitCode = 1 }
     return [int]$exitCode
 }
@@ -158,7 +335,7 @@ function Get-RcloneJsonLines {
         [Parameter(Mandatory)][string]$Rclone,
         [Parameter(Mandatory)][object[]]$Args
     )
-    $argv = Join-RcloneArgs -Parts @($Args, @(Get-RcloneR2ExtraArgs), @('--timeout', '2m', '--contimeout', '30s'))
+    $argv = Join-RcloneArgs -Parts @($Args, @(Get-RcloneR2ExtraArgs -Purpose 'Listing'), @('--timeout', '2m', '--contimeout', '30s'))
     $text = & $Rclone @argv 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) {
         throw ("rclone lsjson failed (exit $LASTEXITCODE):`n$text")
@@ -187,16 +364,28 @@ function Get-RcloneJsonLines {
 }
 
 function Get-RcloneR2ExtraArgs {
-    # R2: use no_check_bucket = true in rclone.conf (Repair-RcloneR2RemoteConfig). CLI flag omitted for older rclone.
-    return @()
+    param(
+        [ValidateSet('Listing', 'Download', 'Upload')]
+        [string]$Purpose = 'Listing'
+    )
+    # no_check_bucket is set in rclone.conf (Repair-RcloneR2RemoteConfig).
+    # Do not use --s3-no-head / --s3-no-head-object on downloads: rclone may see 0 B and skip transfer.
+    # Uploads: skip post-PUT HEAD (R2 can return misleading errors on large multi-part uploads).
+    switch ($Purpose) {
+        'Upload' { return @('--s3-no-head') }
+        default { return @() }
+    }
 }
 
 function Get-RcloneCopytoArgs {
     param(
-        [int64]$SizeBytes = 0
+        [int64]$SizeBytes = 0,
+        [switch]$LocalDestination,
+        [switch]$SingleThread
     )
+    $r2Purpose = if ($LocalDestination) { 'Download' } else { 'Upload' }
     $a = @(
-        @(Get-RcloneR2ExtraArgs),
+        @(Get-RcloneR2ExtraArgs -Purpose $r2Purpose),
         @(
             '--retries', '5',
             '--low-level-retries', '10',
@@ -204,10 +393,46 @@ function Get-RcloneCopytoArgs {
             '--timeout', $RcloneIdleTimeout
         )
     )
-    if ($SizeBytes -ge 64MB) {
-        $a += @('--multi-thread-streams', '8', '--multi-thread-cutoff', '64M', '--s3-chunk-size', '64M')
+    if ($LocalDestination) {
+        # Avoid Adobe.zip.<hash>.partial stuck when rename/checksum hangs after 100%.
+        $a += @('--inplace', '--ignore-times')
+        if ($SizeBytes -ge 1GB) {
+            $a += @('--ignore-checksum')
+        }
+    }
+    $mtStreams = [Math]::Max(1, [Math]::Min(32, $DownloadMultiThreadStreams))
+    $useMultiThread = ($SizeBytes -ge 64MB) -and -not $SingleThread -and -not $NoMultiThreadDownload
+    if ($useMultiThread) {
+        $a += @(
+            '--multi-thread-streams', [string]$mtStreams,
+            '--multi-thread-cutoff', '64M',
+            '--s3-chunk-size', '64M'
+        )
+    }
+    elseif ($SizeBytes -ge 64MB) {
+        $a += @('--s3-chunk-size', '64M')
+        if ($SingleThread -or $NoMultiThreadDownload) {
+            $a += @('--multi-thread-streams', '0')
+        }
     }
     return ,[string[]](Join-RcloneArgs -Parts $a)
+}
+
+function Test-RcloneLogShowsMultiThreadObjectNotFound {
+    param([Parameter(Mandatory)][string]$LogFile)
+    if (-not (Test-Path -LiteralPath $LogFile)) { return $false }
+    $tail = Get-Content -LiteralPath $LogFile -Tail 80 -ErrorAction SilentlyContinue
+    if (-not $tail) { return $false }
+    $pattern = 'failed to find object after copy|multi-thread copy:.*object not found'
+    return [bool]($tail | Where-Object { $_ -match $pattern } | Select-Object -First 1)
+}
+
+function Test-RcloneLogShowsNothingToTransfer {
+    param([Parameter(Mandatory)][string]$LogFile)
+    if (-not (Test-Path -LiteralPath $LogFile)) { return $false }
+    $tail = Get-Content -LiteralPath $LogFile -Tail 80 -ErrorAction SilentlyContinue
+    if (-not $tail) { return $false }
+    return [bool]($tail | Where-Object { $_ -match 'There was nothing to transfer' } | Select-Object -First 1)
 }
 
 function Repair-RcloneR2RemoteConfig {
@@ -245,7 +470,7 @@ function Confirm-YesNo {
         Write-Host ''
         Write-Host $Prompt -ForegroundColor Cyan
         $defHint = if ($DefaultYes) { 'Y' } else { 'N' }
-        $v = Read-Host "$Title (Y/N, Enter=$defHint)"
+        $v = Read-Host ('{0} (Y/N, Enter={1})' -f $Title, $defHint)
         if ([string]::IsNullOrWhiteSpace($v)) { return $DefaultYes }
         return $v.Trim().ToUpperInvariant() -eq 'Y'
     }
@@ -400,7 +625,6 @@ function Test-IsArchiveName([string]$Name) {
 
 function Get-DefaultUploadBrowseDirectory {
     foreach ($d in @(
-            'Y:\NextGPU-Sync',
             'Y:\',
             'Z:\',
             (Join-Path $env:USERPROFILE 'Downloads'),
@@ -433,8 +657,15 @@ function Get-ReleaseArchives {
     if ($list.Count -gt 0) { return ,@(ConvertTo-ObjectArray $list.ToArray()) }
 
     Write-Warn 'lsjson empty; trying lsf...'
-    $names = & $Rclone @('lsf', $RemotePath, '--max-depth', '1', '--files-only') 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "Cannot list $RemotePath`n$names" }
+    $lsfArgv = Join-RcloneArgs -Parts @(
+        @('lsf', $RemotePath, '--max-depth', '1', '--files-only'),
+        @(Get-RcloneR2ExtraArgs -Purpose 'Listing'),
+        @('--timeout', '60s')
+    )
+    $names = & $Rclone @lsfArgv 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw ("Cannot reach or list $RemotePath. Check rclone config (R2 API endpoint, not CDN).`n$names")
+    }
     foreach ($line in @($names -split "`r?`n")) {
         $n = $line.Trim().TrimEnd('/')
         if ($n -and (Test-IsArchiveName -Name $n)) {
@@ -451,21 +682,36 @@ function Get-ArchiveSizeBytes {
         [int64]$ListedSize = 0
     )
     if ($ListedSize -gt 0) { return $ListedSize }
-    $out = & $Rclone @('lsl', $RemoteZipPath, '--timeout', '1m') 2>&1 | Out-String
+
+    # Prefer size (one object) over lsl; never lsl the whole bucket folder (slow with many keys).
+    $sizeArgv = Join-RcloneArgs -Parts @(
+        @('size', $RemoteZipPath, '--json'),
+        @(Get-RcloneR2ExtraArgs -Purpose 'Listing'),
+        @('--timeout', '30s')
+    )
+    $sizeOut = & $Rclone @sizeArgv 2>&1 | Out-String
+    if ($LASTEXITCODE -eq 0) {
+        $trim = $sizeOut.Trim()
+        if ($trim) {
+            try {
+                $j = ConvertFrom-Json -InputObject $trim
+                if ($null -ne $j.bytes) { return [int64]$j.bytes }
+            }
+            catch {
+                if ($trim -match '"bytes"\s*:\s*(\d+)') { return [int64]$Matches[1] }
+            }
+        }
+    }
+
+    $lslArgv = Join-RcloneArgs -Parts @(
+        @('lsl', $RemoteZipPath),
+        @(Get-RcloneR2ExtraArgs -Purpose 'Listing'),
+        @('--timeout', '30s')
+    )
+    $out = & $Rclone @lslArgv 2>&1 | Out-String
     if ($LASTEXITCODE -eq 0) {
         foreach ($line in @($out -split "`r?`n")) {
             if ($line -match '^\s*(-?\d+)\s') { return [int64]$Matches[1] }
-        }
-    }
-    $parent = $RemoteZipPath -replace '/[^/]+$', ''
-    $base = ($RemoteZipPath -split '/')[-1]
-    if ($parent -and $base) {
-        $out2 = & $Rclone @('lsl', $parent, '--timeout', '1m') 2>&1 | Out-String
-        if ($LASTEXITCODE -eq 0) {
-            $esc = [regex]::Escape($base)
-            foreach ($line in @($out2 -split "`r?`n")) {
-                if ($line -match $esc -and $line -match '^\s*(-?\d+)\s') { return [int64]$Matches[1] }
-            }
         }
     }
     return [int64]0
@@ -494,17 +740,21 @@ function Select-TargetDrive {
 }
 
 function Resolve-TargetFolder([string]$TargetBase) {
-    $default = Join-Path $TargetBase 'NextGPU-Sync'
-    if (-not (Test-Path -LiteralPath $default)) { New-Item -ItemType Directory -Path $default -Force | Out-Null }
-    if (Prompt-YesNo 'Folder' "Use default folder?`n`n$default" $true) { return $default }
+    $default = [System.IO.Path]::GetFullPath($TargetBase.Trim().TrimEnd('\'))
+    if (-not (Test-Path -LiteralPath $default)) {
+        New-Item -ItemType Directory -Path $default -Force | Out-Null
+    }
+    if (Prompt-YesNo 'Folder' "Install to selected drive?`n`n$default" $true) { return $default }
     if (-not $script:UseGui) {
-        $v = Read-Host "Folder path (default: $default)"
+        $v = Read-Host "Folder path (Enter = $default)"
         if ([string]::IsNullOrWhiteSpace($v)) { return $default }
-        return $v
+        return [System.IO.Path]::GetFullPath($v.Trim().Trim('"'))
     }
     $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
     $dlg.SelectedPath = $default
-    if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK -and $dlg.SelectedPath) { return $dlg.SelectedPath }
+    if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK -and $dlg.SelectedPath) {
+        return [System.IO.Path]::GetFullPath($dlg.SelectedPath)
+    }
     return $default
 }
 
@@ -537,7 +787,7 @@ function Select-ReleaseArchives {
     $form.Width = 760; $form.Height = 560; $form.StartPosition = 'CenterScreen'
     $lbl = New-Object System.Windows.Forms.Label
     $lbl.Left = 12; $lbl.Top = 12; $lbl.Width = 720
-    $lbl.Text = "Select .zip / .7z from R2 ($($items.Count) available):"
+    $lbl.Text = ('Select .zip / .7z from R2 ({0} available):' -f $items.Count)
     $form.Controls.Add($lbl)
     $list = New-Object System.Windows.Forms.CheckedListBox
     $list.Left = 12; $list.Top = 40; $list.Width = 720; $list.Height = 450
@@ -603,7 +853,7 @@ function Select-LocalArchivesForUpload {
     $form.Width = 820; $form.Height = 580; $form.StartPosition = 'CenterScreen'
     $lbl = New-Object System.Windows.Forms.Label
     $lbl.Left = 12; $lbl.Top = 12; $lbl.Width = 780
-    $lbl.Text = "Check .zip / .7z to upload ($SourceLabel, $($items.Count) found):"
+    $lbl.Text = ('Check .zip / .7z to upload ({0}, {1} found):' -f $SourceLabel, $items.Count)
     $form.Controls.Add($lbl)
     $list = New-Object System.Windows.Forms.CheckedListBox
     $list.Left = 12; $list.Top = 40; $list.Width = 780; $list.Height = 450
@@ -688,6 +938,15 @@ function Show-UploadPickerChoice {
 }
 
 # --- install one archive ---
+function Get-ArchiveExtractFolderName {
+    param([Parameter(Mandatory)][string]$ZipName)
+    $base = [System.IO.Path]::GetFileNameWithoutExtension($ZipName.Trim())
+    if ([string]::IsNullOrWhiteSpace($base)) {
+        throw "Cannot determine extract folder name from: $ZipName"
+    }
+    return $base
+}
+
 function Expand-Archive7z {
     param(
         [Parameter(Mandatory)][string]$SevenZip,
@@ -718,22 +977,86 @@ function Install-ReleaseArchive {
     }
     $localZip = [System.IO.Path]::GetFullPath((Join-Path $LocalDir $ZipName))
     $localRclone = To-RcloneLocalPath -Path $localZip
-    $size = Get-ArchiveSizeBytes -Rclone $Rclone -RemoteZipPath $RemoteZip -ListedSize $ListedSize
-    if ($size -gt 0) {
-        Write-Ok ("Size: {0}" -f (Format-FileSize $size))
+    if (Test-Path -LiteralPath $localZip -PathType Leaf) {
+        $existingLen = (Get-Item -LiteralPath $localZip).Length
+        if ($existingLen -ge 1KB) {
+            Write-Warn ("Local file already exists ({0}): {1}" -f (Format-FileSize $existingLen), $localZip)
+        }
+        else {
+            Remove-Item -LiteralPath $localZip -Force -ErrorAction SilentlyContinue
+        }
     }
 
+    if ($ListedSize -gt 0) {
+        $size = $ListedSize
+    }
+    else {
+        Write-Step "Checking remote $ZipName ..."
+        if (-not (Test-RemoteArchiveExists -Rclone $Rclone -RemoteZipPath $RemoteZip)) {
+            Write-Fail "Remote object not found: $RemoteZip"
+            Write-Host '  Confirm the archive name in R2 matches the picker (case-sensitive key).' -ForegroundColor Yellow
+            return 1
+        }
+        $size = Get-ArchiveSizeBytes -Rclone $Rclone -RemoteZipPath $RemoteZip -ListedSize 0
+    }
+    if ($size -le 0) {
+        Write-Fail "Remote size is 0 or unknown for: $RemoteZip"
+        Write-Host '  Re-upload the archive to R2, or check the bucket path in rclone config.' -ForegroundColor Yellow
+        return 1
+    }
+    Write-Ok ("Remote size: {0}" -f (Format-FileSize $size))
+
+    if (Test-LocalZipReady -Path $localZip -ExpectedBytes $size) {
+        Write-Ok "Local archive already complete; skipping download."
+    }
+    else {
+        if (Test-Path -LiteralPath $localZip -PathType Leaf) {
+            Remove-Item -LiteralPath $localZip -Force -ErrorAction SilentlyContinue
+        }
+        Get-ChildItem -LiteralPath $LocalDir -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like ($ZipName + '.*.partial') } |
+            ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
+
     Write-Step "Downloading $ZipName ..."
+    if ($size -ge 64MB -and -not $NoMultiThreadDownload) {
+        Write-Host ("  Multi-thread download ({0} streams, 64M chunks); single-thread retry if R2 errors." -f $DownloadMultiThreadStreams) -ForegroundColor DarkGray
+    }
+    elseif ($NoMultiThreadDownload) {
+        Write-Host '  Single-stream download (-NoMultiThreadDownload).' -ForegroundColor DarkGray
+    }
+    else {
+        Write-Host '  Single-stream download (archive under 64 MiB).' -ForegroundColor DarkGray
+    }
+    Write-Host '  First bytes on disk can take 1-2 min while rclone connects to R2.' -ForegroundColor DarkGray
     $copyArgs = Join-RcloneArgs -Parts @(
         @('copyto', $RemoteZip, $localRclone),
-        @(Get-RcloneCopytoArgs -SizeBytes $size)
+        @(Get-RcloneCopytoArgs -SizeBytes $size -LocalDestination)
     )
-    $exitCode = Invoke-Rclone -Rclone $Rclone -ArgumentList $copyArgs -LogFile $LogFile
+    $exitCode = Invoke-Rclone -Rclone $Rclone -ArgumentList $copyArgs -LogFile $LogFile `
+        -LocalMonitorPath $localZip -ExpectedBytes $size
+    $null = Repair-RclonePartialDownloadFile -ExpectedPath $localZip -ExpectedBytes $size
     if (-not (Test-LocalZipReady -Path $localZip -ExpectedBytes $size)) {
         if ($exitCode -eq 0) { $exitCode = 1 }
     }
     else {
         $exitCode = 0
+    }
+    if ($exitCode -ne 0 -and (Test-RcloneLogShowsMultiThreadObjectNotFound -LogFile $LogFile)) {
+        Write-Warn 'R2 multi-thread verify failed; retrying download single-thread...'
+        if (Test-Path -LiteralPath $localZip) {
+            Remove-Item -LiteralPath $localZip -Force -ErrorAction SilentlyContinue
+        }
+        Get-ChildItem -LiteralPath $LocalDir -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like ($ZipName + '.*.partial') } |
+            ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
+        $retryArgs = Join-RcloneArgs -Parts @(
+            @('copyto', $RemoteZip, $localRclone),
+            @(Get-RcloneCopytoArgs -SizeBytes $size -LocalDestination -SingleThread)
+        )
+        $exitCode = Invoke-Rclone -Rclone $Rclone -ArgumentList $retryArgs -LogFile $LogFile `
+            -LocalMonitorPath $localZip -ExpectedBytes $size
+        $null = Repair-RclonePartialDownloadFile -ExpectedPath $localZip -ExpectedBytes $size
+        if (Test-LocalZipReady -Path $localZip -ExpectedBytes $size) { $exitCode = 0 }
     }
     if ($exitCode -ne 0) {
         Write-Warn "copyto failed (exit $exitCode); trying rclone copy into destination folder..."
@@ -743,17 +1066,25 @@ function Install-ReleaseArchive {
                 Remove-Item -LiteralPath $localZip -Force -ErrorAction SilentlyContinue
             }
         }
+        Get-ChildItem -LiteralPath $LocalDir -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like ($ZipName + '.*.partial') } |
+            ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
         $localDirR = (To-RcloneLocalPath -Path $LocalDir).TrimEnd('/') + '/'
         $copyArgs2 = Join-RcloneArgs -Parts @(
             @('copy', $RemoteZip, $localDirR),
-            @(Get-RcloneCopytoArgs -SizeBytes $size)
+            @(Get-RcloneCopytoArgs -SizeBytes $size -LocalDestination -SingleThread)
         )
-        $exitCode = Invoke-Rclone -Rclone $Rclone -ArgumentList $copyArgs2 -LogFile $LogFile
+        $exitCode = Invoke-Rclone -Rclone $Rclone -ArgumentList $copyArgs2 -LogFile $LogFile `
+            -LocalMonitorPath $localZip -ExpectedBytes $size
+        $null = Repair-RclonePartialDownloadFile -ExpectedPath $localZip -ExpectedBytes $size
         if (Test-LocalZipReady -Path $localZip -ExpectedBytes $size) { $exitCode = 0 }
     }
     if ($exitCode -ne 0) {
         if (Test-Path -LiteralPath $localZip) { Remove-Item -LiteralPath $localZip -Force -ErrorAction SilentlyContinue }
         Write-Fail "rclone download failed (exit $exitCode). See log: $LogFile"
+        if (Test-RcloneLogShowsNothingToTransfer -LogFile $LogFile) {
+            Write-Host '  rclone logged "nothing to transfer" (remote missing, 0-byte object, or stale local file).' -ForegroundColor Yellow
+        }
         return [int]$exitCode
     }
     if (-not (Test-Path -LiteralPath $localZip)) {
@@ -761,16 +1092,23 @@ function Install-ReleaseArchive {
         return 1
     }
     Write-Ok ("Downloaded {0}" -f (Format-FileSize (Get-Item -LiteralPath $localZip).Length))
+    }
 
-    Write-Step "Extracting $ZipName ..."
+    $extractFolderName = Get-ArchiveExtractFolderName -ZipName $ZipName
+    $extractDir = [System.IO.Path]::GetFullPath((Join-Path $LocalDir $extractFolderName))
+    if (-not (Test-Path -LiteralPath $extractDir)) {
+        New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
+    }
+
+    Write-Step "Extracting $ZipName -> $extractFolderName\ ..."
     try {
-        Expand-Archive7z -SevenZip $SevenZip -ArchivePath $localZip -DestinationPath $LocalDir
+        Expand-Archive7z -SevenZip $SevenZip -ArchivePath $localZip -DestinationPath $extractDir
     }
     catch {
         Write-Fail $_.Exception.Message
         return 1
     }
-    Write-Ok "Extracted to $LocalDir"
+    Write-Ok "Extracted to $extractDir"
 
     if (-not $KeepArchive) {
         $freed = (Get-Item -LiteralPath $localZip).Length
@@ -811,8 +1149,14 @@ function Invoke-DiskPrepIfRequested {
 
 function Show-LogTail([string]$LogFile) {
     if (-not (Test-Path -LiteralPath $LogFile)) { return }
-    Write-Host '  Log (last 12 lines):' -ForegroundColor DarkRed
-    Get-Content -LiteralPath $LogFile -Tail 12 -ErrorAction SilentlyContinue | ForEach-Object {
+    $errs = @(Get-Content -LiteralPath $LogFile -ErrorAction SilentlyContinue |
+        Where-Object { $_ -match 'ERROR|Failed to|not found' } | Select-Object -Last 6)
+    if ($errs.Count -gt 0) {
+        Write-Host '  Log errors:' -ForegroundColor DarkRed
+        $errs | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkRed }
+    }
+    Write-Host '  Log (last 20 lines):' -ForegroundColor DarkRed
+    Get-Content -LiteralPath $LogFile -Tail 20 -ErrorAction SilentlyContinue | ForEach-Object {
         Write-Host "    $_" -ForegroundColor DarkRed
     }
 }
@@ -904,7 +1248,7 @@ function Test-RemoteArchiveExists {
         [Parameter(Mandatory)][string]$Rclone,
         [Parameter(Mandatory)][string]$RemoteZipPath
     )
-    $argv = Join-RcloneArgs -Parts @(@('lsf', $RemoteZipPath, '--files-only'), @(Get-RcloneR2ExtraArgs), @('--timeout', '45s'))
+    $argv = Join-RcloneArgs -Parts @(@('lsf', $RemoteZipPath, '--files-only'), @(Get-RcloneR2ExtraArgs -Purpose 'Listing'), @('--timeout', '15s'))
     $out = & $Rclone @argv 2>&1 | Out-String
     if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($out.Trim())) {
         return $true
@@ -973,7 +1317,7 @@ function Push-ArchiveToR2 {
 
     if ($exitCode -eq 0) {
         Write-Host '  Verifying remote size...' -ForegroundColor DarkGray
-        $remoteSize = Get-ArchiveSizeBytes -Rclone $Rclone -RemoteZipPath $remoteZip -ListedSize 0
+        $remoteSize = Get-ArchiveSizeBytes -Rclone $Rclone -RemoteZipPath $remoteZip -ListedSize $size
         if ($remoteSize -gt 0 -and [math]::Abs($remoteSize - $size) -gt 4096) {
             Write-Warn "Upload finished but remote size differs (local $sizeLabel, remote $(Format-FileSize $remoteSize))."
             $exitCode = 1
@@ -1002,7 +1346,7 @@ function Push-ArchiveToR2 {
 function Invoke-PushToR2Flow {
     Write-Host '==============================================='
     Write-Host ' NextGPU R2 upload (push .zip / .7z to origin)'
-    Write-Host '  Script: 2026-06-02f (live rclone progress; R2 no_check_bucket in rclone.conf)'
+    Write-Host '  Script: 2026-06-03l (multi-thread R2 download + single-thread fallback)'
     Write-Host '==============================================='
 
     Ensure-WingetPackage -PackageId 'Rclone.Rclone' -FriendlyName 'rclone'
@@ -1014,13 +1358,6 @@ function Invoke-PushToR2Flow {
 
     $null = Ensure-RcloneConfig -Remote $RemoteName -StorageRegion $Region
     $remoteRoot = "${RemoteName}:$($DefaultRemotePath.Trim().TrimEnd('/'))"
-
-    Write-Step "Checking remote $remoteRoot ..."
-    $pfArgv = Join-RcloneArgs -Parts @(@('lsf', $remoteRoot, '--max-depth', '1'), @(Get-RcloneR2ExtraArgs))
-    $pf = & $rclone @pfArgv 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) {
-        throw ("Cannot reach $remoteRoot. Check rclone config (R2 API endpoint, not CDN).`n$pf")
-    }
 
     $toUpload = ConvertTo-ObjectArray (Resolve-LocalZipInputs -ZipPaths $LocalZip -Folder $LocalFolder -AllInFolder:$PushAllInFolder.IsPresent)
     if ((Get-ObjectCount $toUpload) -eq 0) { throw 'No local archive selected for upload.' }
@@ -1037,7 +1374,7 @@ function Invoke-PushToR2Flow {
     }
     $confirmConsole = ($maxBytes -ge 1GB)
     if ($confirmConsole) {
-        Write-Warn 'Large file(s) selected — confirmation will use this console (not a popup).'
+        Write-Warn 'Large file(s) selected - confirmation will use this console (not a popup).'
     }
     if (-not (Confirm-YesNo -Title 'Upload' -Prompt "Upload to $remoteRoot ?" -DefaultYes $true -PreferConsole:$confirmConsole)) {
         exit 0
@@ -1091,8 +1428,8 @@ if ($Push.IsPresent) {
 
 Write-Host '==============================================='
 Write-Host ' NextGPU official release sync (rclone + 7-Zip)'
-Write-Host '  Script: 2026-06-02f (download + -Push upload to R2)'
-Write-Host '  Flow: lsjson list -> pick -> copyto -> 7z -> delete zip'
+Write-Host '  Script: 2026-06-03l (multi-thread R2 download + single-thread fallback)'
+Write-Host '  Flow: lsjson list -> pick -> copyto -> 7z into <name> folder -> delete zip'
 Write-Host '==============================================='
 
 Invoke-DiskPrepIfRequested
@@ -1110,13 +1447,6 @@ Write-Ok "7-Zip: $sevenZip"
 
 $null = Ensure-RcloneConfig -Remote $RemoteName -StorageRegion $Region
 $remoteRoot = "${RemoteName}:$($DefaultRemotePath.Trim().TrimEnd('/'))"
-
-Write-Step "Checking remote $remoteRoot ..."
-$pfArgv = Join-RcloneArgs -Parts @(@('lsf', $remoteRoot, '--max-depth', '1'), @(Get-RcloneR2ExtraArgs))
-$pf = & $rclone @pfArgv 2>&1 | Out-String
-if ($LASTEXITCODE -ne 0) {
-    throw ("Cannot reach $remoteRoot. Check rclone config (R2 API endpoint, not CDN).`n$pf")
-}
 
 Write-Step "Listing archives at $remoteRoot ..."
 $archives = ConvertTo-ObjectArray (Get-ReleaseArchives -Rclone $rclone -RemotePath $remoteRoot)

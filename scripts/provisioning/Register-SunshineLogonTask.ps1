@@ -19,17 +19,14 @@ if (-not (Test-Path -LiteralPath $StartScriptPath)) {
 }
 
 $taskName = 'nextGPU-SunshineLogon'
-$existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-if ($existing) {
-    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+$helper = Join-Path (Split-Path -Parent $PSScriptRoot) 'desktop\NextGpuLogonTask.ps1'
+if (-not (Test-Path -LiteralPath $helper)) {
+    $helper = Join-Path $PSScriptRoot '..\desktop\NextGpuLogonTask.ps1'
 }
+. $helper
 
 # -Argument must be one string (array breaks on Windows PowerShell 5.1).
 $psArgs = '-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -Quiet' -f $StartScriptPath
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $psArgs
-$trigger = New-ScheduledTaskTrigger -AtLogOn
-$principal = New-ScheduledTaskPrincipal -GroupId 'Users' -RunLevel Highest
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 1)
-
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+Register-NextGpuAtLogonTask -TaskName $taskName -Argument $psArgs -RunLevel Highest `
+    -ExecutionTimeLimit (New-TimeSpan -Hours 1)
 Write-Host "[*] Registered scheduled task: $taskName (Sunshine starts at user logon, not in session 0)."

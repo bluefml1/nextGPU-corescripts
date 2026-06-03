@@ -157,7 +157,7 @@ function Get-ShrinkStats {
     $sizeMin = [int64]$supported.SizeMin
     $sizeMax = [int64]$supported.SizeMax
     $current = [int64]$Partition.Size
-    $maxShrinkBytes = [math]::Max(0, $current - $sizeMin)
+    $maxShrinkBytes = [Math]::Max([int64]0, $current - $sizeMin)
     $maxShrinkGb = [int][math]::Floor($maxShrinkBytes / 1GB)
     [pscustomobject]@{
         CurrentSizeGb   = [math]::Round($current / 1GB, 2)
