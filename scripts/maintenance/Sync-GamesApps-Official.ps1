@@ -164,10 +164,24 @@ function Get-RcloneJsonLines {
         throw ("rclone lsjson failed (exit $LASTEXITCODE):`n$text")
     }
     $rows = New-Object System.Collections.Generic.List[object]
-    foreach ($line in @($text -split "`r?`n")) {
-        $t = $line.Trim()
-        if (-not $t -or $t[0] -ne '{') { continue }
-        try { [void]$rows.Add(($t | ConvertFrom-Json)) } catch { }
+
+    # Prefer full JSON parsing (lsjson usually returns a JSON array).
+    $trimmed = $text.Trim()
+    if ($trimmed) {
+        try {
+            $parsed = ConvertFrom-Json -InputObject $trimmed
+            foreach ($item in @(ConvertTo-ObjectArray $parsed)) {
+                if ($null -ne $item) { [void]$rows.Add($item) }
+            }
+        }
+        catch {
+            # Fallback for mixed output: parse JSON object lines and ignore commas between array items.
+            foreach ($line in @($text -split "`r?`n")) {
+                $t = $line.Trim().TrimEnd(',')
+                if (-not $t -or -not $t.StartsWith('{') -or -not $t.EndsWith('}')) { continue }
+                try { [void]$rows.Add((ConvertFrom-Json -InputObject $t)) } catch { }
+            }
+        }
     }
     return ,@(ConvertTo-ObjectArray $rows.ToArray())
 }
