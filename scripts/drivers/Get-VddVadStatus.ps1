@@ -4,22 +4,10 @@ param()
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot 'VddVadCommon.ps1')
+
 function Get-DeviceStatus([string[]]$Patterns, [string]$FriendlyRegex = "") {
-    $items = @()
-    try {
-        $items = @(Get-PnpDevice -ErrorAction Stop | Where-Object {
-            $match = $false
-            foreach ($p in $Patterns) {
-                if ($_.InstanceId -like $p) { $match = $true; break }
-            }
-            if (-not $match -and $FriendlyRegex -and $_.FriendlyName) {
-                $match = $_.FriendlyName -match $FriendlyRegex
-            }
-            $match
-        })
-    } catch {
-        $items = @()
-    }
+    $items = @(Get-PnpDevicesFiltered -InstancePatterns $Patterns -FriendlyNameRegex $FriendlyRegex)
 
     if ($items.Count -eq 0) {
         return [pscustomobject]@{
@@ -34,7 +22,7 @@ function Get-DeviceStatus([string[]]$Patterns, [string]$FriendlyRegex = "") {
     $rows = @()
     foreach ($d in $items) {
         $problem = if ($null -ne $d.Problem) { [string]$d.Problem } else { "" }
-        $isReady = $d.Status -eq "OK" -and ($problem -eq "" -or $problem -eq "CM_PROB_NONE")
+        $isReady = Test-PnpRowReady $d
         if ($isReady) { $ready = $true }
         $rows += [pscustomobject]@{
             InstanceId = $d.InstanceId
@@ -53,24 +41,37 @@ function Get-DeviceStatus([string[]]$Patterns, [string]$FriendlyRegex = "") {
 }
 
 $vdd = Get-DeviceStatus -Patterns @("DISPLAY\MTT1337*", "ROOT\MttVDD*") -FriendlyRegex "VDD|Virtual Display|MttVDD"
-$vad = Get-DeviceStatus -Patterns @("ROOT\VirtualAudioDriver*", "ROOT\MEDIA*") -FriendlyRegex "Virtual Audio|VAD|VB-Audio|CABLE"
+$vadHealth = Get-VadHealth
 
 Write-Host "===== VDD/VAD STATUS =====" -ForegroundColor Cyan
-Write-Host ("VDD: {0}" -f $vdd.Summary) -ForegroundColor (if ($vdd.Ready) { "Green" } else { "Yellow" })
-Write-Host ("VAD: {0}" -f $vad.Summary) -ForegroundColor (if ($vad.Ready) { "Green" } else { "Yellow" })
+Write-Host ("VDD: {0}" -f $vdd.Summary) -ForegroundColor $(if ($vdd.Ready) { "Green" } else { "Yellow" })
+Write-Host ("VAD: {0}" -f $vadHealth.Summary) -ForegroundColor $(if ($vadHealth.Ready) { "Green" } else { "Yellow" })
+if ($vadHealth.Detail) {
+    Write-Host ("  {0}" -f $vadHealth.Detail) -ForegroundColor DarkGray
+}
 Write-Host ""
 
 if ($vdd.Items.Count -gt 0) {
     Write-Host "VDD devices:" -ForegroundColor Cyan
     $vdd.Items | Format-Table FriendlyName, Status, Problem, InstanceId -AutoSize | Out-String | Write-Host
 }
-if ($vad.Items.Count -gt 0) {
-    Write-Host "VAD devices:" -ForegroundColor Cyan
-    $vad.Items | Format-Table FriendlyName, Status, Problem, InstanceId -AutoSize | Out-String | Write-Host
+if ($vadHealth.Primary.Count -gt 0) {
+    Write-Host "VAD (primary Virtual Audio Driver):" -ForegroundColor Cyan
+    $vadHealth.Primary | ForEach-Object {
+        [pscustomobject]@{ FriendlyName = $_.FriendlyName; Status = $_.Status; Problem = $_.Problem; InstanceId = $_.InstanceId }
+    } | Format-Table -AutoSize | Out-String | Write-Host
+}
+if ($vadHealth.Fallback.Count -gt 0) {
+    Write-Host "VAD (fallback / VB-CABLE):" -ForegroundColor Cyan
+    $vadHealth.Fallback | ForEach-Object {
+        [pscustomobject]@{ FriendlyName = $_.FriendlyName; Status = $_.Status; Problem = $_.Problem; InstanceId = $_.InstanceId }
+    } | Format-Table -AutoSize | Out-String | Write-Host
 }
 
-if (-not $vad.Ready) {
-    Write-Host "[RECOMMEND] VAD is not ready. Run fallback installer:" -ForegroundColor Yellow
+if ($vadHealth.NeedsFallback) {
+    Write-Host "[RECOMMEND] VAD is not usable. Run fallback installer:" -ForegroundColor Yellow
     Write-Host "  scripts\drivers\Install-VAD-Fallback.ps1" -ForegroundColor Yellow
+    if ($vadHealth.Primary.Count -gt 0) {
+        Write-Host "  (Primary VAD may show Code 52 / CM_PROB_UNSIGNED_DRIVER — VB-CABLE is the signed workaround.)" -ForegroundColor Yellow
+    }
 }
-
