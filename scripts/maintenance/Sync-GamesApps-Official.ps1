@@ -3,7 +3,7 @@
 .SYNOPSIS
     Download or upload official NextGPU .zip/.7z releases on Cloudflare R2 via rclone.
 .DESCRIPTION
-    Download (default): lsjson list -> pick -> copyto -> 7z extract into per-archive folder (e.g. steam\) -> delete zip.
+    Download (default): lsjson list -> pick -> copyto -> 7z extract into per-archive folder (e.g. Adobe\) -> flatten duplicate root (Adobe\Adobe -> Adobe\) -> delete zip -> append reusable manifest .txt (Steam appmanifest scan).
     Upload (-Push): pick local .zip/.7z -> copyto -> R2 bucket root (same path as official releases).
 .PARAMETER Push
     Upload mode: push local archive(s) to the R2 origin instead of downloading.
@@ -45,6 +45,15 @@ if (-not $NoGui.IsPresent) {
     Add-Type -AssemblyName Microsoft.VisualBasic
 }
 $script:UseGui = -not $NoGui.IsPresent
+
+$script:GamesAppsManifestPath = Join-Path $PSScriptRoot 'GamesApps-Manifest.ps1'
+if (-not (Test-Path -LiteralPath $script:GamesAppsManifestPath)) {
+    throw @"
+Required file missing: $script:GamesAppsManifestPath
+Copy GamesApps-Manifest.ps1 from nextGPU-corescripts\scripts\maintenance\ into the same folder as Sync-GamesApps-Official.ps1.
+"@
+}
+. $script:GamesAppsManifestPath
 
 # --- output helpers ---
 function Write-Step([string]$Message) { Write-Host ''; Write-Host "[*] $Message" -ForegroundColor Cyan }
@@ -108,6 +117,26 @@ function Join-RcloneArgs {
         Add-FlattenedRcloneArgs -Value $part -List $list
     }
     return ,[string[]]$list.ToArray()
+}
+
+function Format-ProcessArgumentString {
+    <#
+        Build one command-line string for Start-Process. PS 5.1 splits string[] ArgumentList
+        at spaces inside paths (e.g. C:\Program Files\...).
+    #>
+    param([Parameter(Mandatory)][string[]]$ArgumentTokens)
+    $parts = New-Object System.Collections.Generic.List[string]
+    foreach ($token in @($ArgumentTokens)) {
+        if ($null -eq $token) { continue }
+        $t = [string]$token
+        if ($t -match '[\s"]') {
+            [void]$parts.Add('"' + ($t -replace '"', '\"') + '"')
+        }
+        else {
+            [void]$parts.Add($t)
+        }
+    }
+    return ($parts.ToArray() -join ' ')
 }
 
 # --- rclone progress (log tail + optional local file size; do not use --progress with --log-file) ---
@@ -278,7 +307,7 @@ function Invoke-Rclone {
         return [int]$exitCode
     }
 
-    Write-Host ("  > rclone {0}" -f ($argv -join ' ')) -ForegroundColor DarkGray
+    Write-Host ("  > rclone {0}" -f (Format-ProcessArgumentString -ArgumentTokens $argv)) -ForegroundColor DarkGray
     if ($logPath) {
         Write-Host ("  Stats every {0}; full rclone log echoed below. Log: {1}" -f $script:RcloneStatsInterval, $logPath) -ForegroundColor DarkGray
     }
@@ -292,7 +321,8 @@ function Invoke-Rclone {
     }
 
     $logPos = 0L
-    $proc = Start-Process -FilePath $Rclone -ArgumentList $argv -NoNewWindow -PassThru
+    $argLine = Format-ProcessArgumentString -ArgumentTokens $argv
+    $proc = Start-Process -FilePath $Rclone -ArgumentList $argLine -NoNewWindow -PassThru
     if (-not $proc) {
         throw "Failed to start rclone: $Rclone"
     }
@@ -511,7 +541,7 @@ function Prompt-Password([string]$Title, [string]$Prompt) {
 }
 
 # --- tools ---
-function Test-RcloneInstalled { return $null -ne (Get-Command rclone -ErrorAction SilentlyContinue) }
+function Test-RcloneInstalled { return $null -ne (Get-RcloneExe) }
 function Test-SevenZipInstalled {
     return $null -ne (Get-SevenZipExe)
 }
@@ -526,6 +556,12 @@ function Get-RcloneExe {
         )) {
         if (Test-Path -LiteralPath $p) { return $p }
     }
+    $wingetPackages = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
+    if (Test-Path -LiteralPath $wingetPackages) {
+        $found = Get-ChildItem -LiteralPath $wingetPackages -Filter 'rclone.exe' -Recurse -Depth 5 -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($found) { return $found.FullName }
+    }
     return $null
 }
 
@@ -539,22 +575,34 @@ function Get-SevenZipExe {
     return $null
 }
 
-function Ensure-WingetPackage([string]$PackageId, [string]$FriendlyName) {
-    $ok = switch ($PackageId) {
-        'Rclone.Rclone' { Test-RcloneInstalled }
-        '7zip.7zip' { Test-SevenZipInstalled }
-        default { $false }
+function Test-WingetPackageReady([string]$PackageId) {
+    Update-SessionPath
+    switch ($PackageId) {
+        'Rclone.Rclone' { return $null -ne (Get-RcloneExe) }
+        '7zip.7zip' { return $null -ne (Get-SevenZipExe) }
+        default { return $false }
     }
-    if ($ok) { Write-Ok "$FriendlyName already installed."; return }
+}
+
+function Ensure-WingetPackage([string]$PackageId, [string]$FriendlyName) {
+    if (Test-WingetPackageReady -PackageId $PackageId) {
+        Write-Ok "$FriendlyName already installed."
+        return
+    }
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         throw 'winget is required. Install App Installer from the Microsoft Store.'
     }
     Write-Warn "Installing $FriendlyName..."
     & winget install --id $PackageId --exact --accept-package-agreements --accept-source-agreements --silent --disable-interactivity --source winget
-    if ($LASTEXITCODE -ne 0 -and -not (& { switch ($PackageId) { 'Rclone.Rclone' { Test-RcloneInstalled } '7zip.7zip' { Test-SevenZipInstalled } default { $false } } })) {
-        throw "winget install failed for $PackageId (exit $LASTEXITCODE)"
+    $wingetExit = $LASTEXITCODE
+    if (Test-WingetPackageReady -PackageId $PackageId) {
+        if ($wingetExit -ne 0) {
+            Write-Warn "winget exited $wingetExit but $FriendlyName is available; continuing."
+        }
+        Write-Ok "$FriendlyName installed."
+        return
     }
-    Write-Ok "$FriendlyName installed."
+    throw "winget install failed for $PackageId (exit $wingetExit)"
 }
 
 function Update-SessionPath {
@@ -624,16 +672,8 @@ function Test-IsArchiveName([string]$Name) {
 }
 
 function Get-DefaultUploadBrowseDirectory {
-    foreach ($d in @(
-            'Y:\',
-            'Z:\',
-            (Join-Path $env:USERPROFILE 'Downloads'),
-            $env:USERPROFILE
-        )) {
-        if (-not [string]::IsNullOrWhiteSpace($d) -and (Test-Path -LiteralPath $d)) {
-            return $d
-        }
-    }
+    $roots = @(Get-PreferredFilesystemBrowseRoots)
+    if ($roots.Count -gt 0) { return $roots[0] }
     return $env:USERPROFILE
 }
 
@@ -721,6 +761,13 @@ function Get-ArchiveSizeBytes {
 function Select-TargetDrive {
     $drives = @(Get-PSDrive -PSProvider FileSystem | Where-Object { -not $_.DisplayRoot } | Sort-Object Name)
     if ($drives.Count -eq 0) { throw 'No local drive found.' }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:NEXTGPU_SYNC_DRIVE)) {
+        $preferred = $env:NEXTGPU_SYNC_DRIVE.Trim().TrimEnd(':').ToUpperInvariant()
+        $match = $drives | Where-Object { $_.Name.ToUpperInvariant() -eq $preferred } | Select-Object -First 1
+        if ($match) { return $match }
+    }
+
     if (-not $script:UseGui) {
         for ($i = 0; $i -lt $drives.Count; $i++) {
             Write-Host ("[{0}] {1}:\  {2} GB free" -f ($i + 1), $drives[$i].Name, (Format-GB $drives[$i].Free))
@@ -732,7 +779,8 @@ function Select-TargetDrive {
         return $drives[$idx]
     }
     $lines = ($drives | ForEach-Object { '{0}:\  {1} GB free' -f $_.Name, (Format-GB $_.Free) }) -join "`n"
-    $pick = Prompt-Text 'Drive' ("$lines`n`nDrive letter (e.g. Y)") ''
+    $defaultDrive = if ($env:NEXTGPU_SYNC_DRIVE) { $env:NEXTGPU_SYNC_DRIVE.Trim().TrimEnd(':') } else { '' }
+    $pick = Prompt-Text 'Drive' ("$lines`n`nDrive letter") $defaultDrive
     $name = $pick.Trim().TrimEnd(':').ToUpperInvariant()
     $sel = $drives | Where-Object { $_.Name.ToUpperInvariant() -eq $name } | Select-Object -First 1
     if (-not $sel) { throw "Invalid drive: $pick" }
@@ -961,6 +1009,50 @@ function Expand-Archive7z {
     if ($LASTEXITCODE -ge 2) { throw "7-Zip failed (exit $LASTEXITCODE)" }
 }
 
+function Repair-DuplicateRootExtractFolder {
+    <#
+        Archives like Adobe.zip often contain a top-level Adobe\ folder. We extract into
+        LocalDir\Adobe\, which yields LocalDir\Adobe\Adobe\... — flatten one or more
+        duplicate name levels (Adobe\Adobe\Adobe) when the only child matches the zip base name.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ExtractDir,
+        [Parameter(Mandatory)][string]$ExpectedFolderName
+    )
+
+    if (-not (Test-Path -LiteralPath $ExtractDir -PathType Container)) {
+        return
+    }
+
+    $maxPasses = 8
+    for ($pass = 0; $pass -lt $maxPasses; $pass++) {
+        $children = @(Get-ChildItem -LiteralPath $ExtractDir -Force -ErrorAction SilentlyContinue)
+        if ($children.Count -ne 1) {
+            break
+        }
+
+        $only = $children[0]
+        if (-not $only.PSIsContainer) {
+            break
+        }
+        if ($only.Name -ine $ExpectedFolderName) {
+            break
+        }
+
+        $nested = $only.FullName
+        Write-Step "Flattening duplicate root folder: $($only.Name)\ -> $ExtractDir"
+        foreach ($item in @(Get-ChildItem -LiteralPath $nested -Force)) {
+            $dest = Join-Path $ExtractDir $item.Name
+            if (Test-Path -LiteralPath $dest) {
+                Write-Warn "Cannot flatten (already exists): $dest"
+                return
+            }
+            Move-Item -LiteralPath $item.FullName -Destination $ExtractDir -Force
+        }
+        Remove-Item -LiteralPath $nested -Recurse -Force -ErrorAction Stop
+    }
+}
+
 function Install-ReleaseArchive {
     param(
         [Parameter(Mandatory)][string]$Rclone,
@@ -1103,6 +1195,7 @@ function Install-ReleaseArchive {
     Write-Step "Extracting $ZipName -> $extractFolderName\ ..."
     try {
         Expand-Archive7z -SevenZip $SevenZip -ArchivePath $localZip -DestinationPath $extractDir
+        Repair-DuplicateRootExtractFolder -ExtractDir $extractDir -ExpectedFolderName $extractFolderName
     }
     catch {
         Write-Fail $_.Exception.Message
@@ -1462,7 +1555,25 @@ if ((Get-ObjectCount $archives) -eq 0) {
     $logFile = Join-Path $logDir ("sync-games-apps-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
     $code = Install-LegacyFolder -Rclone $rclone -RemotePath $remoteRoot -LocalDir $targetFolder -LogFile $logFile
     if ($code -ne 0) { Show-LogTail -LogFile $logFile; exit $code }
+    $legacyManifest = Get-DownloadManifestFilePath
+    $legacySteam = Find-SteamAppManifests -ExtractPath $targetFolder
+    if ($legacySteam.IsSteamGame) { Write-SteamDetectToSyncLog -LogFile $logFile -ArchiveName '(legacy folder)' -ExtractPath $targetFolder -SteamInfo $legacySteam }
+    $null = Update-DownloadManifest -ManifestPath $legacyManifest -RcloneLogFile $logFile `
+        -Status 'Complete (legacy folder copy)' -Entries @(
+        [pscustomobject]@{
+            Name                 = '(entire remote folder)'
+            RemotePath           = $remoteRoot
+            ExtractPath          = $targetFolder
+            SizeBytes            = [int64]0
+            KeepZip              = $false
+            IsSteamGame          = $legacySteam.IsSteamGame
+            SteamManifestPaths   = $legacySteam.ManifestPaths
+            SteamManifestNames   = $legacySteam.ManifestNames
+            Type                 = (Resolve-DownloadEntryType -ArchiveName '(entire remote folder)' -HasSteamManifest:$legacySteam.IsSteamGame)
+        }
+    )
     Write-Ok "Legacy copy done -> $targetFolder"
+    if ($legacyManifest) { Write-Ok "Download manifest: $legacyManifest" }
     exit 0
 }
 
@@ -1478,9 +1589,16 @@ else {
 $picked = ConvertTo-ObjectArray $picked
 $pickCount = Get-ObjectCount $picked
 
-$drive = Select-TargetDrive
-Write-Ok ("Drive {0}: {1} GB free" -f $drive.Name, (Format-GB $drive.Free))
-$targetFolder = Resolve-TargetFolder -TargetBase "$($drive.Name):\"
+$configuredSyncTarget = Get-ConfiguredSyncTargetPath
+if ($configuredSyncTarget) {
+    Write-Ok ("Install target from NEXTGPU_SYNC_TARGET: $configuredSyncTarget")
+    $targetFolder = $configuredSyncTarget
+}
+else {
+    $drive = Select-TargetDrive
+    Write-Ok ("Drive {0}: {1} GB free" -f $drive.Name, (Format-GB $drive.Free))
+    $targetFolder = Resolve-TargetFolder -TargetBase "$($drive.Name):\"
+}
 
 $totalBytes = [int64]0
 $largest = [int64]0
@@ -1521,6 +1639,18 @@ Write-Host "Log: $logFile" -ForegroundColor Cyan
 
 $exitCode = 0
 $index = 0
+$failedArchive = ''
+$downloaded = New-Object System.Collections.Generic.List[object]
+$manifestPath = Get-DownloadManifestFilePath
+$written = $null
+$knownExtracts = @(Get-DownloadManifestExtractPaths -ManifestPath $manifestPath)
+if ((Get-ObjectCount $knownExtracts) -gt 0) {
+    Write-Ok ("Reusing manifest ({0} prior extract(s) on record): {1}" -f (Get-ObjectCount $knownExtracts), $manifestPath)
+}
+else {
+    Write-Ok ("Download manifest: {0}" -f $manifestPath)
+}
+
 foreach ($a in $picked) {
     $index++
     $name = [string]$a.Name
@@ -1532,8 +1662,54 @@ foreach ($a in $picked) {
     if ($stepExit -ne 0) {
         Show-LogTail -LogFile $logFile
         $exitCode = [int]$stepExit
+        $failedArchive = $name
         break
     }
+    $extractRoot = Join-Path $targetFolder ([System.IO.Path]::GetFileNameWithoutExtension($name))
+    Write-Host '  Scanning extract folder for Steam appmanifest...' -ForegroundColor DarkGray
+    $steamInfo = Find-SteamAppManifests -ExtractPath $extractRoot
+    $entryType = Resolve-DownloadEntryType -ArchiveName $name -ExtractPath $extractRoot -HasSteamManifest:$steamInfo.IsSteamGame
+    if ($entryType -eq 'Steam app') {
+        if (-not (Test-IsSteamClientPath -Path $extractRoot)) {
+            $nestedClient = Find-SteamClientPathUnderDirectory -Root $extractRoot
+            if ($nestedClient) {
+                $extractRoot = $nestedClient
+                Write-Ok ("Steam client detected (nested): $extractRoot")
+            }
+            else {
+                Write-Ok 'Steam app (Steam client archive; verify steam.exe after extract).'
+            }
+        }
+        else {
+            Write-Ok 'Steam app (Steam client detected).'
+        }
+    }
+    elseif ($steamInfo.IsSteamGame) {
+        Write-Ok ("Steam game (appmanifest found): {0}" -f (($steamInfo.ManifestNames | Select-Object -First 3) -join ', '))
+        Write-SteamDetectToSyncLog -LogFile $logFile -ArchiveName $name -ExtractPath $extractRoot -SteamInfo $steamInfo
+    }
+    else {
+        Write-Host '  No appmanifest*.txt/.acf found (generic app).' -ForegroundColor DarkGray
+    }
+    [void]$downloaded.Add([pscustomobject]@{
+        Name               = $name
+        RemotePath         = "$remoteRoot/$name"
+        ExtractPath        = $extractRoot
+        SizeBytes          = $listed
+        KeepZip            = $KeepZip.IsPresent
+        IsSteamGame        = $steamInfo.IsSteamGame
+        SteamManifestPaths = $steamInfo.ManifestPaths
+        SteamManifestNames = $steamInfo.ManifestNames
+        Type               = $entryType
+    })
+}
+
+$manifestStatus = if ($exitCode -eq 0) { 'Complete' } else { 'Incomplete' }
+if ((Get-ObjectCount $downloaded) -gt 0) {
+    $written = Update-DownloadManifest -ManifestPath $manifestPath -RcloneLogFile $logFile `
+        -Entries @(ConvertTo-ObjectArray $downloaded.ToArray()) `
+        -Status $manifestStatus -FailedArchive $failedArchive
+    if ($written) { Write-Ok "Manifest updated (appended session): $written" }
 }
 
 Write-Host ''
@@ -1541,13 +1717,17 @@ if ($exitCode -eq 0) {
     Write-Ok 'All releases installed.'
     Write-Host "Output: $targetFolder" -ForegroundColor Green
     if ($script:UseGui) {
-        [void][System.Windows.Forms.MessageBox]::Show("Done.`n$targetFolder`n`nLog: $logFile", 'NextGPU Sync', 'OK', 'Information')
+        $guiMsg = "Done.`n$targetFolder`n`nLog: $logFile"
+        if ($written) { $guiMsg += "`n`nManifest: $written" }
+        [void][System.Windows.Forms.MessageBox]::Show($guiMsg, 'NextGPU Sync', 'OK', 'Information')
     }
     exit 0
 }
 
 Write-Fail "Stopped with error (exit $exitCode)."
 if ($script:UseGui) {
-    [void][System.Windows.Forms.MessageBox]::Show("Failed.`nLog: $logFile", 'NextGPU Sync', 'OK', 'Error')
+    $guiMsg = "Failed.`nLog: $logFile"
+    if ($written) { $guiMsg += "`n`nManifest (completed before failure): $written" }
+    [void][System.Windows.Forms.MessageBox]::Show($guiMsg, 'NextGPU Sync', 'OK', 'Error')
 }
 exit $exitCode
