@@ -1,0 +1,47 @@
+<Page x:Class="NextGPU.App.Pages.LoginPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      Background="{StaticResource BgBrush}">
+    <Grid>
+        <!-- Ambient glow -->
+        <Ellipse Width="420" Height="420" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-80,0,0" Opacity="0.2">
+            <Ellipse.Fill>
+                <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="0.5" RadiusY="0.5">
+                    <GradientStop Color="#2563EB" Offset="0"/>
+                    <GradientStop Color="Transparent" Offset="1"/>
+                </RadialGradientBrush>
+            </Ellipse.Fill>
+        </Ellipse>
+
+        <Border MaxWidth="440" VerticalAlignment="Center" HorizontalAlignment="Center"
+                CornerRadius="20" Padding="2" Background="{StaticResource BorderBrush}">
+            <Border CornerRadius="18" Padding="36,32" Background="{StaticResource CardAltBrush}">
+                <StackPanel>
+                    <StackPanel HorizontalAlignment="Center" Margin="0,0,0,28">
+                        <Border Width="52" Height="52" CornerRadius="16" HorizontalAlignment="Center" Margin="0,0,0,14">
+                            <Border.Background>
+                                <StaticResource ResourceKey="AccentGradientBrush"/>
+                            </Border.Background>
+                            <TextBlock Text="NG" FontWeight="Bold" FontSize="18" Foreground="White"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock Text="NextGPU" Style="{StaticResource PageTitleText}" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Sign in to manage this host" Style="{StaticResource PageSubtitleText}"
+                                   HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                    </StackPanel>
+
+                    <TextBlock Text="USERNAME" Style="{StaticResource LabelCaptionText}"/>
+                    <TextBox x:Name="UsernameBox" Margin="0,0,0,16"/>
+
+                    <TextBlock Text="PASSWORD" Style="{StaticResource LabelCaptionText}"/>
+                    <PasswordBox x:Name="PasswordBox" Margin="0,0,0,8"/>
+
+                    <TextBlock x:Name="ErrorText" Foreground="{StaticResource ErrBrush}" TextWrapping="Wrap"
+                               Visibility="Collapsed" Margin="0,8,0,0" FontSize="12"/>
+                    <Button Content="Sign in" Style="{StaticResource PrimaryButton}" Click="SignIn_Click"
+                            Margin="0,20,0,0" HorizontalAlignment="Stretch"/>
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
+</Page>

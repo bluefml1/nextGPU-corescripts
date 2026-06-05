@@ -1,0 +1,12 @@
+<Page x:Class="NextGPU.App.Pages.VddVadPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16,24,20">
+        <Border Style="{StaticResource CardBorder}" MaxWidth="720" HorizontalAlignment="Left">
+            <StackPanel>
+                <TextBlock Text="Driver Actions" Style="{StaticResource SectionTitleText}"/>
+                <StackPanel x:Name="DriverPanel"/>
+            </StackPanel>
+        </Border>
+    </ScrollViewer>
+</Page>

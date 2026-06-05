@@ -1,0 +1,57 @@
+<Page x:Class="NextGPU.App.Pages.ActionsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16,24,20">
+        <UniformGrid Columns="3" HorizontalAlignment="Stretch">
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,12,14">
+                <StackPanel>
+                    <TextBlock Text="Install Monitoring" Style="{StaticResource SectionTitleText}"/>
+                    <StackPanel x:Name="InstallMonitorPanel"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,12,14">
+                <StackPanel>
+                    <TextBlock Text="Streaming" Style="{StaticResource SectionTitleText}"/>
+                    <StackPanel x:Name="StreamingPanel"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="Tunnel" Style="{StaticResource SectionTitleText}"/>
+                    <StackPanel x:Name="TunnelPanel"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,12,14">
+                <StackPanel>
+                    <TextBlock Text="Maintenance" Style="{StaticResource SectionTitleText}"/>
+                    <StackPanel x:Name="MaintenancePanel"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,12,14">
+                <StackPanel>
+                    <TextBlock Text="Provisioning" Style="{StaticResource SectionTitleText}"/>
+                    <StackPanel x:Name="ProvisioningPanel"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="Inventory" Style="{StaticResource SectionTitleText}"/>
+                    <StackPanel x:Name="InventoryPanel"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,12,14">
+                <StackPanel>
+                    <TextBlock Text="Security &amp; Desktop" Style="{StaticResource SectionTitleText}"/>
+                    <StackPanel x:Name="DriversPanel"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,12,14"
+                    BorderBrush="{StaticResource ErrBrush}" Background="{StaticResource CardAltBrush}">
+                <StackPanel>
+                    <TextBlock Text="Danger Zone" Style="{StaticResource SectionTitleText}" Foreground="{StaticResource ErrBrush}"/>
+                    <StackPanel x:Name="DangerPanel"/>
+                </StackPanel>
+            </Border>
+        </UniformGrid>
+    </ScrollViewer>
+</Page>
