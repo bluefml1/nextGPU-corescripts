@@ -81,6 +81,14 @@ public partial class GetStartedPage : Page
                 () => NavigateLogs("sunshine-bind.log")),
             new StepItem(
                 "05",
+                "Per-User S3 Storage (U:)",
+                "After RegisterMachine. One-click setup installs rclone/WinFsp and registers logon auto-mount (U: ~22s after nextGPU sign-in). Open User Storage page for Sync after script updates or nextGPU recreate.",
+                "One-Click S3 Setup",
+                () => RunBatch(@"scripts\runtime\User-Storage.bat", keepConsoleOpen: true, arguments: "Setup"),
+                "Open User Storage Page",
+                () => NavigateTo(new UserStoragePage())),
+            new StepItem(
+                "06",
                 "Implement PlayNite",
                 "Run after RegisterMachine (Sunshine must exist). Requires 7-Zip or WinRAR, Steam/Epic games on disk, and optional Everything + config\\playnite\\desktop-apps.allowlist.json. Installs portable PlayNite, imports libraries, exports to Sunshine, and installs PlayNiteWatcher.",
                 "Run PlayNite Setup",
@@ -88,9 +96,9 @@ public partial class GetStartedPage : Page
                 "Open PlayNite Folder",
                 () => OpenPlayNiteWatcherFolder()),
             new StepItem(
-                "06",
+                "07",
                 "Verify Host Is Ready",
-                "Verify with this checklist: (1) Sunshine session starts, (2) wallpaper policy is applied, (3) required drivers exist, (4) key services are healthy, (5) Sunshine apps.json includes PlayNite-exported games when step 05 completed, (6) logs show no critical errors.",
+                "Verify with this checklist: (1) Sunshine session starts, (2) wallpaper policy is applied, (3) required drivers exist, (4) key services are healthy, (5) U: tenant storage when step 05 completed (log on as nextGPU), (6) Sunshine apps.json includes PlayNite-exported games when step 06 completed, (7) logs show no critical errors.",
                 "Run Wallpaper Verification",
                 () => RunCapture(@"scripts\desktop\Test-WallpaperPolicy.ps1", ""),
                 "Open Logs Page",
@@ -165,7 +173,17 @@ public partial class GetStartedPage : Page
                 "Moonlight stream does not auto-close after game exit",
                 "PlayNiteWatcher prep-cmd or eventLogs.ps1 may be missing. Re-install watcher after Sunshine export; ensure C:\\Program Files\\Sunshine\\scripts\\eventLogs.ps1 exists.",
                 "Install PlayNiteWatcher",
-                () => RunPowerShell(@"PlayNiteWatcher\Install-PlayniteWatcher.ps1", "", keepConsoleOpen: true))
+                () => RunPowerShell(@"PlayNiteWatcher\Install-PlayniteWatcher.ps1", "", keepConsoleOpen: true)),
+            new TroubleItem(
+                "U: tenant storage missing (Admin RDP + Moonlight)",
+                "Open User Storage page: Diagnose & fix (ACL + WinFsp + checkDomain), then Mount U: for Moonlight. If WinFsp missing, run Setup User Storage again (installs without reboot).",
+                "User Storage Tools",
+                () => NavigateTo(new UserStoragePage())),
+            new TroubleItem(
+                "checkDomain API failed in troubleshoot",
+                "API needs GET+JSON body (fixed in latest UserStorageCommon.ps1). Test with curl or Diagnose button on User Storage page.",
+                "Diagnose & fix",
+                () => NavigateTo(new UserStoragePage()))
         };
     }
 
@@ -293,6 +311,33 @@ public partial class GetStartedPage : Page
             return;
         }
 
+        OpenFolderInExplorer(folder);
+    }
+
+    private static void OpenUserStorageLogsFolder()
+    {
+        var folder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "nextGPU", "logs");
+        if (!Directory.Exists(folder))
+        {
+            try
+            {
+                Directory.CreateDirectory(folder);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Could not open storage logs folder:\n{folder}\n{ex.Message}",
+                    "NextGPU", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+        }
+
+        OpenFolderInExplorer(folder);
+    }
+
+    private static void OpenFolderInExplorer(string folder)
+    {
         Process.Start(new ProcessStartInfo
         {
             FileName = "explorer.exe",
@@ -301,14 +346,14 @@ public partial class GetStartedPage : Page
         });
     }
 
-    private void RunBatch(string relativePath, bool keepConsoleOpen = false)
+    private void RunBatch(string relativePath, bool keepConsoleOpen = false, string? arguments = null)
     {
         if (App.Session.Scripts is null)
         {
             MessageBox.Show("Repo not configured.", "NextGPU");
             return;
         }
-        var r = App.Session.Scripts.RunBatchRelative(relativePath, elevated: true, keepConsoleOpen: keepConsoleOpen);
+        var r = App.Session.Scripts.RunBatchRelative(relativePath, elevated: true, arguments: arguments, keepConsoleOpen: keepConsoleOpen);
         ShowResult(r);
     }
 

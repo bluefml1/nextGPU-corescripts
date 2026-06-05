@@ -873,6 +873,23 @@ if exist "%NEXTGPU_DESKTOP_REG%" (
 if exist "%NEXTGPU_DESKTOP_CLR%" (
     powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%NEXTGPU_DESKTOP_CLR%"
 )
+if exist "%ProgramData%\nextGPU\rclone\rclone.conf" (
+    set "US_SYNC_PS1=%ProgramData%\nextGPU\scripts\runtime\Sync-NextGpuUserStorageForLocalUser.ps1"
+    if not exist "%US_SYNC_PS1%" set "US_SYNC_PS1=%RUNTIME_DIR%\Sync-NextGpuUserStorageForLocalUser.ps1"
+    if exist "%US_SYNC_PS1%" (
+        echo [*] User storage: re-bind tasks and ACLs for new nextGPU account...
+        powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%US_SYNC_PS1%"
+        if !errorlevel! neq 0 (
+            echo [!] WARNING: Sync-NextGpuUserStorageForLocalUser.ps1 failed ^(exit !errorlevel!^).
+        )
+    ) else if exist "%RUNTIME_DIR%\Ensure-NextGpuUserStorageBindings.ps1" (
+        echo [*] User storage: ensure bindings for current nextGPU account...
+        powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%RUNTIME_DIR%\Ensure-NextGpuUserStorageBindings.ps1"
+        if !errorlevel! neq 0 (
+            echo [!] WARNING: Ensure-NextGpuUserStorageBindings.ps1 failed ^(exit !errorlevel!^).
+        )
+    )
+)
 echo.
 
 :: ===================================================================

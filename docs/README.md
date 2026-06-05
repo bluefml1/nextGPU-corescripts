@@ -307,9 +307,22 @@ Requires **curl** (or PowerShell fallback), **PowerShell 5.1+**, and outbound HT
 
 ---
 
+## Per-user S3 storage (opt-in)
+
+After setup, an administrator can enable tenant personal storage for the **nextGPU** rental account:
+
+1. Install credentials: machine env `NEXTGPU_USER_S3_ACCESS_KEY` / `NEXTGPU_USER_S3_SECRET_KEY`, or `%ProgramData%\nextGPU\secrets\user-s3.env` (see `scripts/runtime/user-s3.env.example`).
+2. Run `scripts/runtime/Setup-UserStorage.bat` **once** (installs WinFsp/rclone if needed, writes `%ProgramData%\nextGPU\rclone\rclone.conf`, registers logon/logoff tasks). Recreating the `nextGPU` user does not require setup again — `nextGPU-UserStorageEnsureBindings` re-binds at boot and nextGPU logon.
+3. On **nextGPU** logon, `Mount-UserStorage.ps1` reads `domain.txt`, calls `checkDomain`, and mounts `nextgpu-user:{userID}/` as **`U:`** with a `{lastName}'s Storage` label. On logoff, `Unmount-UserStorage.ps1` stops rclone and clears state.
+
+This is separate from R2 games sync (`Sync-GamesApps-Official.ps1`). Uninstall removes `nextGPU-UserStorage*` tasks and ProgramData rclone/secrets paths.
+
+---
+
 ## Security notes
 
 - Setup prompts for **secrets in the console** (Cloudflare token, API key). Do not commit real tokens; rotate if logs are shared.
+- **User S3 keys** for `nextgpu-user` rclone must not be committed; use env or `%ProgramData%\nextGPU\secrets\` only.
 - Default Sunshine and Moonlight test credentials are embedded for automated pairing — change for production hardening if needed.
 - Tunnel token is stored in the **machine** environment variable `CLOUDFLARE_TUNNEL_TOKEN`.
 - After setup, the former admin account is renamed to **`NextGPU-Authority`**; a separate **`nextGPU`** user is created for non-admin sessions.

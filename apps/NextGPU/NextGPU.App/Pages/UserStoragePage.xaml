@@ -1,0 +1,83 @@
+<Page x:Class="NextGPU.App.Pages.UserStoragePage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      Title="User Storage">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16,24,20">
+        <StackPanel MaxWidth="920" HorizontalAlignment="Left">
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,14"
+                    Background="{StaticResource CardAltBrush}">
+                <StackPanel>
+                    <TextBlock Text="Tenant drive U: (Admin RDP + Moonlight)" Style="{StaticResource SectionTitleText}"/>
+                    <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,6,0,0">
+                        You manage the host as NextGPU-Authority. Renters use Moonlight as nextGPU.
+                        After one-time setup, U: auto-mounts ~22s after nextGPU sign-in (BUILTIN\Users scheduled task).
+                        Logs: %ProgramData%\nextGPU\logs\
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,14"
+                    BorderBrush="{StaticResource LinkAccentBrush}" BorderThickness="1.5">
+                <StackPanel>
+                    <TextBlock Text="One-click S3 mount setup" Style="{StaticResource SectionTitleText}"/>
+                    <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,4,0,12">
+                        Installs rclone + WinFsp, writes AWS config, publishes scripts to ProgramData,
+                        registers logon auto-mount (nextGPU-UserStorageMount). Run once per machine, then Sync after script updates.
+                    </TextBlock>
+                    <StackPanel x:Name="OneClickPanel"/>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="Setup steps" Style="{StaticResource SectionTitleText}"/>
+                    <TextBlock TextWrapping="Wrap" LineHeight="22" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,4,0,12">
+                        <Run Text="1. "/><Run FontWeight="SemiBold" Text="One-Click Setup"/><Run Text=" (Admin, this page) — credentials, WinFsp, tasks, domain.txt copy."/>
+                        <LineBreak/>
+                        <Run Text="2. "/><Run FontWeight="SemiBold" Text="Create nextGPU"/><Run Text=" local user (your provisioning flow) — must be in Users group."/>
+                        <LineBreak/>
+                        <Run Text="3. "/><Run FontWeight="SemiBold" Text="Renter signs in"/><Run Text=" as nextGPU (Moonlight) — U: mounts automatically; no manual Mount."/>
+                        <LineBreak/>
+                        <Run Text="4. "/><Run FontWeight="SemiBold" Text="After recreate or deploy"/><Run Text=" — run Publish / Sync, then renter signs in again."/>
+                    </TextBlock>
+                    <StackPanel x:Name="VerifyPanel"/>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="Deploy &amp; repair (Admin)" Style="{StaticResource SectionTitleText}"/>
+                    <TextBlock Text="Re-publish scripts, BUILTIN\Users ACLs, and scheduled tasks after code updates or nextGPU recreate."
+                               Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" Margin="0,4,0,10"/>
+                    <StackPanel x:Name="DeployPanel"/>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="Diagnose &amp; fix" Style="{StaticResource SectionTitleText}"/>
+                    <TextBlock Text="ACL, WinFsp, checkDomain API, task status."
+                               Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" Margin="0,4,0,10"/>
+                    <StackPanel x:Name="DiagnosePanel"/>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,14"
+                    BorderBrush="{StaticResource LinkAccentBrush}">
+                <StackPanel>
+                    <TextBlock Text="Manual mount (optional)" Style="{StaticResource SectionTitleText}"/>
+                    <TextBlock Text="Normally unnecessary — auto-mount runs at logon. Use if testing from Admin RDP while Moonlight session is active."
+                               Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" Margin="0,4,0,10"/>
+                    <StackPanel x:Name="MountPanel"/>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="Logs &amp; advanced" Style="{StaticResource SectionTitleText}"/>
+                    <StackPanel x:Name="LogsPanel"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

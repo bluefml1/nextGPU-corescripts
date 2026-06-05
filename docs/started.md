@@ -100,6 +100,25 @@ All other workflows are run from their `scripts/` subfolders.
 - `scripts/runtime/auto-repair.bat`: Loops every 60 seconds, checks `cloudflared`, Sunshine, `moonlight-web`, and local HTTP `127.0.0.1:8080`. It can reinstall Sunshine/Moonlight and re-pair them.
 - `scripts/runtime/auto-update.bat`: Long-running update loop for Sunshine/Moonlight versions. It is not installed by the main setup script in the current repo.
 - `scripts/runtime/checking-update.bat`: Run-once/logging update checker. It currently skips the backend availability gate and writes to `logs/checking-update.log`.
+- **Per-user S3 storage (opt-in):** `scripts/runtime/Setup-UserStorage.bat` installs rclone `[nextgpu-user]` under `%ProgramData%\nextGPU\rclone\`, registers `nextGPU-UserStorageMount` / `nextGPU-UserStorageUnmount` for the **nextGPU** user, and mounts `user_<id>/` from bucket `next-gpu-storage` as **`U:`** at logon (Explorer label `{name}'s Storage` from checkDomain `displayName` / `name` / `firstName` / `lastName`). Not wired into `RegisterMachine_Beta.bat` by default.
+
+### Per-user S3 storage (optional)
+
+Run **once** as Administrator after provisioning (and after `domain.txt` exists). Repo can stay in place (e.g. under Administrator profile): setup copies mount scripts to `%ProgramData%\nextGPU\scripts\runtime\` for scheduled tasks and grants **nextGPU** read on `domain.txt` + `scripts\runtime` under the repo root. If you **delete and recreate** the local `nextGPU` user (same name), you do **not** re-run setup: **`nextGPU-UserStorageEnsureBindings`** runs as SYSTEM at logon (+0s) and re-registers tasks/ACLs for the new SID; **`nextGPU-UserStorageMount`** runs at logon (+22s). If mount starts before ensure finishes, `Mount-UserStorage.ps1` waits on the ensure task (up to ~60s, progress in `user-storage-mount.log`). Manual fix: `Sync-NextGpuUserStorageForLocalUser.bat` as Administrator. `RegisterMachine_Beta.bat` runs **Sync** when it creates `nextGPU`.
+
+```bat
+scripts\runtime\User-Storage.bat Setup
+```
+
+Setup installs rclone/WinFsp, AWS config, publishes scripts, registers **ensure (logon +0s)** + **mount (logon +22s)** tasks, and grants **nextGPU** access. After **recreate nextGPU**, run **`User-Storage.bat Sync`** only (not Setup). One script for everything: `User-Storage.bat` (Test, Mount, Sync, Troubleshoot, Logs).
+
+**Credentials (never commit to git):** set machine env vars `NEXTGPU_USER_S3_ACCESS_KEY` and `NEXTGPU_USER_S3_SECRET_KEY`, or copy `scripts/runtime/user-s3.env.example` to `%ProgramData%\nextGPU\secrets\user-s3.env` and fill in values. Rotate keys if they were exposed.
+
+**Verify:** log in as **nextGPU** → `U:` appears with label like `Viet's Storage` (from checkDomain name fields) → disconnect Moonlight unmounts `U:` → next connect remounts. Logs: `%ProgramData%\nextGPU\logs\user-storage-mount.log` (includes label before/after mount).
+
+**Admin RDP + Moonlight (single session, no second RDP as nextGPU):** mount always runs via Task Scheduler task `nextGPU-UserStorageMount` as **nextGPU** (`Mount-UserStorage.ps1 -FromScheduledTask`). Logon (~20s delay), session unlock, Sunshine (`Start-UserStorage-InSession.ps1` → `schtasks /Run`), and Admin (`Invoke-UserStorageMountFromAdmin.ps1` or `Mount-UserStorage-Now.bat`) all trigger the same task. From Admin after Moonlight connect: `scripts\runtime\Mount-UserStorage-Now.bat`. Logs: `%ProgramData%\nextGPU\logs\` and mirrored under repo `logs\`.
+
+**Cost note:** mount uses 30s poll/dir-cache refresh; avoid antivirus or search indexing on `U:\`.
 
 ### Games, Desktop, And Maintenance
 
