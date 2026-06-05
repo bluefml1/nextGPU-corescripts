@@ -122,6 +122,14 @@ public partial class ActionsPage : Page
         AddPowerShellButton(ProvisioningPanel, "Apply Sunshine dd_* defaults (Set-SunshineOutputName)",
             @"scripts\provisioning\Set-SunshineOutputName.ps1", "",
             "Writes dd_configuration_option + dd_config_revert_on_disconnect (no output_name).");
+
+        ActionPageTools.AddNavigateButton(ProvisioningPanel, "User Storage (U:) tools",
+            "Setup, diagnose, and mount tenant drive for Moonlight.",
+            () =>
+            {
+                if (Application.Current.MainWindow is MainWindow mw)
+                    mw.NavigateTo(new UserStoragePage());
+            });
     }
 
     private void AddInventoryButtons()

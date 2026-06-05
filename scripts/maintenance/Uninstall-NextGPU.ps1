@@ -194,7 +194,12 @@ function Remove-ScheduledTaskSafe {
 }
 
 function Remove-AllNextGpuScheduledTasks {
-    $known = @('EndSession', 'auto game launch', 'nextGPU-ShutdownPolicyLogon', 'nextGPU-SunshineLogon', 'nextGPU-DesktopCleanupLogon', 'nextGPU-WallpaperFitLogon')
+    $known = @(
+        'EndSession', 'auto game launch',
+        'nextGPU-ShutdownPolicyLogon', 'nextGPU-SunshineLogon',
+        'nextGPU-DesktopCleanupLogon', 'nextGPU-WallpaperFitLogon',
+        'nextGPU-UserStorageMount', 'nextGPU-UserStorageUnmount', 'nextGPU-UserStorageEnsureBindings'
+    )
     foreach ($name in $known) {
         Remove-ScheduledTaskSafe -TaskName $name
     }
@@ -930,6 +935,19 @@ foreach ($serviceName in @('auto-repair', 'gpu-heartbeat', 'gpu-sunshine', 'moon
 Stop-ProcessSafe -Names @('sunshine', 'Sunshine', 'web-server', 'cloudflared', 'curl', 'nssm')
 Start-Sleep -Seconds 2
 
+Write-Log 'Unmounting per-user S3 storage (if mounted)...'
+$unmountScript = Resolve-NextGpuRepoPath @('scripts', 'runtime', 'Unmount-UserStorage.ps1')
+if (Test-Path -LiteralPath $unmountScript) {
+    try {
+        $null = & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $unmountScript -Quiet 2>&1
+        Write-Log "Ran Unmount-UserStorage.ps1 from $unmountScript" -Level OK
+    } catch {
+        Write-Log "Unmount-UserStorage.ps1 failed: $($_.Exception.Message)" -Level WARN
+    }
+} else {
+    Write-Log "Unmount-UserStorage.ps1 not found at $unmountScript" -Level SKIP
+}
+
 Write-Log 'Removing scheduled tasks...'
 Remove-AllNextGpuScheduledTasks
 
@@ -957,6 +975,17 @@ Remove-WallpaperPolicy
 
 Write-Log 'Removing CLOUDFLARE_TUNNEL_TOKEN...'
 Remove-MachineEnvironmentValue -Name 'CLOUDFLARE_TUNNEL_TOKEN'
+
+Write-Log 'Removing per-user S3 storage config and secrets...'
+Remove-MachineEnvironmentValue -Name 'NEXTGPU_USER_S3_ACCESS_KEY'
+Remove-MachineEnvironmentValue -Name 'NEXTGPU_USER_S3_SECRET_KEY'
+foreach ($pdPath in @(
+        (Join-Path $env:ProgramData 'nextGPU\rclone'),
+        (Join-Path $env:ProgramData 'nextGPU\secrets\user-s3.env'),
+        (Join-Path $env:ProgramData 'nextGPU\user-storage.json')
+    )) {
+    Remove-PathSafe -Path $pdPath
+}
 
 if ($SkipGeneratedFiles) {
     Write-Log 'Generated file removal skipped by -SkipGeneratedFiles.' -Level SKIP

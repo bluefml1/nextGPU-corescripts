@@ -70,7 +70,9 @@ Override in app **Settings** if needed.
 - **Dashboard** — `domain.txt`, HTTP probes (Moonlight :8080, Sunshine :47990), VDD/VAD status, service start/stop/restart
 - **Sunshine** — service restart + **interactive** restart (fixes broken web UI with raw `{{ $t(...) }}` text)
 - **Logs** — tail `logs\`, filter, **open logs folder** in Explorer, **jump to** latest `setup_log_*.txt` / `sunshine-bind.log`, open in editor
-- **Actions** — broad script catalog: install monitoring shortcuts, provisioning (Sunshine logon, desktop cleanup, API restart, display IDs), maintenance (`copy`/`extract`/garena, layout test, auto-repair loop), inventory (WMI, machine inventory), drivers/wallpaper/shutdown lock, full setup with **console stays open** (`/k` / `-NoExit`) for readable install output
+- **User Storage (U:)** — dedicated page: setup, diagnose (ACL/WinFsp/API), mount for Admin RDP + Moonlight
+- **Get Started** — step **05** links to User Storage page
+- **Actions** — broad script catalog: install monitoring shortcuts, provisioning (Sunshine logon, desktop cleanup, per-user S3 storage, API restart, display IDs), maintenance (`copy`/`extract`/garena, layout test, auto-repair loop), inventory (WMI, machine inventory), drivers/wallpaper/shutdown lock, full setup with **console stays open** (`/k` / `-NoExit`) for readable install output
 - **Settings** — repo path, refresh interval 15/30/60 s
 
 Audit log: `logs/nextgpu-controller.log`

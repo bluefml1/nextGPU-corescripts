@@ -59,6 +59,15 @@ $required = @(
     @('scripts\provisioning\Invoke-SunshineApiRestart.ps1', 'Sunshine API restart helper'),
     @('scripts\runtime\auto-repair.bat', 'Auto-repair'),
     @('scripts\runtime\heartbeat-only.bat', 'Heartbeat'),
+    @('scripts\runtime\UserStorageCommon.ps1', 'User S3 storage common'),
+    @('scripts\runtime\Mount-UserStorage.ps1', 'User S3 mount'),
+    @('scripts\runtime\Unmount-UserStorage.ps1', 'User S3 unmount'),
+    @('scripts\runtime\Install-UserStorageRcloneConfig.ps1', 'User S3 rclone config'),
+    @('scripts\runtime\Register-UserStorageTasks.ps1', 'User S3 scheduled tasks'),
+    @('scripts\runtime\Setup-UserStorage.bat', 'User S3 setup wrapper'),
+    @('scripts\runtime\Start-UserStorage-InSession.ps1', 'User S3 Sunshine session hook'),
+    @('scripts\runtime\Invoke-UserStorageMountFromAdmin.ps1', 'User S3 admin mount trigger'),
+    @('scripts\runtime\Troubleshoot-UserStorage.ps1', 'User S3 troubleshoot'),
     @('assets\nextgputobu.jpeg', 'Wallpaper asset')
 )
 

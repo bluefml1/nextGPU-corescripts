@@ -1,0 +1,4 @@
+cd C:\Users\Administrator\Downloads
+query user
+schtasks /Query /TN nextGPU-UserStorageMount /FO LIST /V | findstr /i "Last Run Result Status"
+type %ProgramData%\nextGPU\logs\user-storage-mount.log

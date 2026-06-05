@@ -22,6 +22,13 @@ public partial class UserExperiencePage : Page
         ActionPageTools.AddPowerShellButton(DesktopPanel, "Register Desktop Cleanup Task", @"scripts\desktop\Register-NextGpuDesktopCleanupTask.ps1");
         ActionPageTools.AddOpenLogsButton(DesktopPanel, "Open Wallpaper Display Log", "wallpaper-after-display.log");
 
+        ActionPageTools.AddNavigateButton(DataPanel, "User Storage (U:) — setup & mount",
+            "Open the dedicated User Storage page (Admin RDP + Moonlight workflow).",
+            () =>
+            {
+                if (Application.Current.MainWindow is MainWindow mw)
+                    mw.NavigateTo(new UserStoragePage());
+            });
         ActionPageTools.AddBatchButton(DataPanel, "Sync Game/Apps Officially", @"scripts\maintenance\sync-games-apps-official.bat", keepConsoleOpen: true);
         ActionPageTools.AddBatchButton(DataPanel, "Push Zip to R2 Origin", @"scripts\maintenance\push-games-apps-to-r2.bat", keepConsoleOpen: true);
         ActionPageTools.AddBatchButton(DataPanel, "Update Games API", @"scripts\maintenance\updateGames.bat");

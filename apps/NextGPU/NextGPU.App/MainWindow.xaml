@@ -53,6 +53,7 @@
                             <Button x:Name="NavVddVadBtn" Style="{StaticResource NavButton}" Content="VDD-VAD" Click="NavVddVad_Click"/>
 
                             <TextBlock Text="HOST" Style="{StaticResource NavSectionLabel}"/>
+                            <Button x:Name="NavUserStorageBtn" Style="{StaticResource NavButton}" Content="User Storage (U:)" Click="NavUserStorage_Click"/>
                             <Button x:Name="NavUserExperienceBtn" Style="{StaticResource NavButton}" Content="User Experience" Click="NavUserExperience_Click"/>
                             <Button x:Name="NavDiskMgmtBtn" Style="{StaticResource NavButton}" Content="Disk Management" Click="NavDiskMgmt_Click"/>
                             <Button x:Name="NavLogsBtn" Style="{StaticResource NavButton}" Content="Logs" Click="NavLogs_Click"/>
@@ -63,7 +64,7 @@
                     <StackPanel Grid.Row="2" Margin="6,12,0,0">
                         <Border Padding="12" CornerRadius="12" Background="{StaticResource CardBrush}"
                                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Margin="0,0,0,10">
-                            <TextBlock Text="Start with Get Started for the full provisioning flow."
+                            <TextBlock Text="Get Started = full setup. User Storage (U:) = Moonlight tenant drive while on Admin RDP."
                                        Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap"
                                        FontSize="11" LineHeight="16"/>
                         </Border>

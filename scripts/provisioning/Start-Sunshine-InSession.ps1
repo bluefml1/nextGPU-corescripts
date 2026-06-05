@@ -31,9 +31,18 @@ function Start-WallpaperRefreshForStreamingDisplay {
     Write-Status '[*] Wallpaper refresh scheduled for VDD/Moonlight (30s/90s/150s).'
 }
 
+function Start-UserStorageForStreamingSession {
+    $helper = Join-Path $PSScriptRoot '..\runtime\Start-UserStorage-InSession.ps1'
+    if (-not (Test-Path -LiteralPath $helper)) { return }
+    $psArgs = '-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -Quiet' -f $helper
+    Start-Process -FilePath 'powershell.exe' -ArgumentList $psArgs -WindowStyle Hidden | Out-Null
+    Write-Status '[*] User storage: triggering Task Scheduler (nextGPU-UserStorageMount).'
+}
+
 if (Get-Process -Name sunshine -ErrorAction SilentlyContinue) {
-    Write-Status '[*] Sunshine already running.'
+    Write-Status '[*] Sunshine already running - refreshing wallpaper and user storage (U:).'
     Start-WallpaperRefreshForStreamingDisplay
+    Start-UserStorageForStreamingSession
     exit 0
 }
 
@@ -54,6 +63,7 @@ Start-Sleep -Seconds 2
 if (Get-Process -Name sunshine -ErrorAction SilentlyContinue) {
     Write-Status '[*] Sunshine started in user session.'
     Start-WallpaperRefreshForStreamingDisplay
+    Start-UserStorageForStreamingSession
     exit 0
 }
 

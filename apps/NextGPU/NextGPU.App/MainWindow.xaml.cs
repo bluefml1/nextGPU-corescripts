@@ -11,6 +11,7 @@ public partial class MainWindow : Window
     {
         ["Get Started"] = "Step-by-step provisioning and troubleshooting",
         ["Dashboard"] = "Machine health, services, and quick links",
+        ["User Storage (U:)"] = "One-click S3 setup — auto-mount U: on nextGPU sign-in",
         ["User Experience"] = "Wallpaper, desktop cleanup, and game sync",
         ["Sunshine"] = "Streaming host, display binding, and diagnostics",
         ["Moonlight"] = "Moonlight Web and tunnel controls",
@@ -29,6 +30,7 @@ public partial class MainWindow : Window
         [
             NavGetStartedBtn,
             NavDashboardBtn,
+            NavUserStorageBtn,
             NavUserExperienceBtn,
             NavSunshineBtn,
             NavMoonlightBtn,
@@ -67,6 +69,9 @@ public partial class MainWindow : Window
 
     private void NavDashboard_Click(object sender, RoutedEventArgs e) =>
         NavigateToPage(new DashboardPage(), NavDashboardBtn, "Dashboard");
+
+    private void NavUserStorage_Click(object sender, RoutedEventArgs e) =>
+        NavigateToPage(new UserStoragePage(), NavUserStorageBtn, "User Storage (U:)");
 
     private void NavUserExperience_Click(object sender, RoutedEventArgs e) =>
         NavigateToPage(new UserExperiencePage(), NavUserExperienceBtn, "User Experience");
