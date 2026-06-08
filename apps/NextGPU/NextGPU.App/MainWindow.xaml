@@ -49,6 +49,7 @@
 
                             <TextBlock Text="STREAMING" Style="{StaticResource NavSectionLabel}"/>
                             <Button x:Name="NavSunshineBtn" Style="{StaticResource NavButton}" Content="Sunshine" Click="NavSunshine_Click"/>
+                            <Button x:Name="NavPlayniteBtn" Style="{StaticResource NavButton}" Content="PlayNite" Click="NavPlaynite_Click"/>
                             <Button x:Name="NavMoonlightBtn" Style="{StaticResource NavButton}" Content="Moonlight" Click="NavMoonlight_Click"/>
                             <Button x:Name="NavVddVadBtn" Style="{StaticResource NavButton}" Content="VDD-VAD" Click="NavVddVad_Click"/>
 

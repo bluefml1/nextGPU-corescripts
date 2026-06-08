@@ -1,3 +1,22 @@
 [2026-06-01 01:00:39] NextGPU Controller session started
 [2026-06-01 01:08:38] NextGPU Controller session started
 [2026-06-01 01:09:32] PowerShell capture exit=0
+[2026-06-06 02:02:59] NextGPU Controller session started
+[2026-06-06 02:11:24] NextGPU Controller session started
+[2026-06-06 02:36:03] NextGPU Controller session started
+[2026-06-06 02:37:46] PowerShell capture exit=0
+[2026-06-06 02:47:12] NextGPU Controller session started
+[2026-06-06 02:49:58] Run PowerShell: PlayNiteWatcher\Import-PlayniteDesktopApps.ps1  keepConsole=True
+[2026-06-06 02:50:00] Started: powershell.exe
+[2026-06-06 02:50:42] Run PowerShell: PlayNiteWatcher\Import-PlayniteDesktopApps.ps1  keepConsole=True
+[2026-06-06 02:50:43] Started: powershell.exe
+[2026-06-06 02:50:50] Run PowerShell: PlayNiteWatcher\Import-PlayniteDesktopApps.ps1 -SkipEverythingInstall keepConsole=True
+[2026-06-06 02:50:51] Started: powershell.exe
+[2026-06-06 03:04:30] NextGPU Controller session started
+[2026-06-06 03:11:46] NextGPU Controller session started
+[2026-06-06 03:12:13] Run batch: scripts\maintenance\updateGames.bat elevated=True args= keepConsole=True
+[2026-06-06 03:12:15] Started: C:\Users\tuanv\Downloads\AUtomate 100%\RegisterMachineEZC\nextGPU-corescripts\scripts\maintenance\updateGames.bat
+[2026-06-06 03:13:04] PowerShell capture exit=0
+[2026-06-06 03:13:21] PowerShell capture exit=0
+[2026-06-06 03:17:18] PowerShell capture exit=0
+[2026-06-06 11:53:58] NextGPU Controller session started

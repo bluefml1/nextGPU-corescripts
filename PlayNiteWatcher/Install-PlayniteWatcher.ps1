@@ -257,6 +257,8 @@ function Invoke-PlayniteWatcherInstall {
                     $exportParams.SunshineConfigDir = $SunshineConfigDir
                 }
                 Invoke-SunshineExportFromPlaynite @exportParams
+                Write-InstallLog "Export and PlayNiteWatcher install completed via export pipeline."
+                return
             }
         }
     }

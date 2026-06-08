@@ -4,7 +4,14 @@ setlocal enabledelayedexpansion
 :: =====================================================================
 :: update-games.bat — wrapper for Update-Games.ps1
 :: Double-click to run, or call from another script
+::   /UseDomainTxt  — read COMPUTER_NAME and PUBLIC_IP from domain.txt (no prompts)
 :: =====================================================================
+
+set "USE_DOMAIN_TXT="
+if /i "%~1"=="/UseDomainTxt" (
+    set "USE_DOMAIN_TXT=1"
+    shift
+)
 
 :: Auto-elevate to Admin
 fltmc >nul 2>&1
@@ -33,10 +40,28 @@ if not exist "%PS_SCRIPT%" (
 set "COMPUTER_NAME="
 set "PUBLIC_IP="
 if exist "%SCRIPT_DIR%\domain.txt" (
-    for /f "tokens=1,2 delims==" %%a in (%SCRIPT_DIR%\domain.txt) do (
+    for /f "usebackq tokens=1,2 delims==" %%a in ("%SCRIPT_DIR%\domain.txt") do (
         if "%%a"=="COMPUTER_NAME" set "COMPUTER_NAME=%%b"
         if "%%a"=="PUBLIC_IP"     set "PUBLIC_IP=%%b"
     )
+)
+
+if defined USE_DOMAIN_TXT (
+    if not defined COMPUTER_NAME (
+        echo ERROR: COMPUTER_NAME missing from "%SCRIPT_DIR%\domain.txt"
+        pause
+        exit /b 1
+    )
+    if not defined PUBLIC_IP (
+        echo ERROR: PUBLIC_IP missing from "%SCRIPT_DIR%\domain.txt"
+        pause
+        exit /b 1
+    )
+    echo [INFO] Using domain.txt:
+    echo   computer_name = %COMPUTER_NAME%
+    echo   publicIP      = %PUBLIC_IP%
+    echo.
+    goto :run_script
 )
 
 if defined COMPUTER_NAME if defined PUBLIC_IP (
@@ -57,6 +82,7 @@ echo.
 echo Running Update-Games.ps1...
 echo.
 
+set "NEXTGPU_REPO_ROOT=%SCRIPT_DIR%"
 powershell -ExecutionPolicy Bypass -NoProfile -File "%PS_SCRIPT%" -ComputerName "%COMPUTER_NAME%" -PublicIP "%PUBLIC_IP%"
 
 echo.
