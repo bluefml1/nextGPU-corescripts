@@ -14,6 +14,7 @@ public partial class MainWindow : Window
         ["User Storage (U:)"] = "One-click S3 setup — auto-mount U: on nextGPU sign-in",
         ["User Experience"] = "Wallpaper, desktop cleanup, and game sync",
         ["Sunshine"] = "Streaming host, display binding, and diagnostics",
+        ["PlayNite"] = "Playnite setup, allowlist, Sunshine export, and verify",
         ["Moonlight"] = "Moonlight Web and tunnel controls",
         ["VDD-VAD"] = "Virtual display and audio drivers",
         ["Disk Management"] = "CHKDSK repair and partition prep",
@@ -33,6 +34,7 @@ public partial class MainWindow : Window
             NavUserStorageBtn,
             NavUserExperienceBtn,
             NavSunshineBtn,
+            NavPlayniteBtn,
             NavMoonlightBtn,
             NavVddVadBtn,
             NavDiskMgmtBtn,
@@ -78,6 +80,9 @@ public partial class MainWindow : Window
 
     private void NavSunshine_Click(object sender, RoutedEventArgs e) =>
         NavigateToPage(new SunshinePage(), NavSunshineBtn, "Sunshine");
+
+    private void NavPlaynite_Click(object sender, RoutedEventArgs e) =>
+        NavigateToPage(new PlaynitePage(), NavPlayniteBtn, "PlayNite");
 
     private void NavMoonlight_Click(object sender, RoutedEventArgs e) =>
         NavigateToPage(new MoonlightPage(), NavMoonlightBtn, "Moonlight");

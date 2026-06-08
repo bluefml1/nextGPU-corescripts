@@ -1143,6 +1143,105 @@ function Resolve-DesktopAppAllowlistPath {
     return $path
 }
 
+function Get-AllowlistTypeDefinitions {
+    return @(
+        [PSCustomObject]@{ Type = 'Adobe';      DisplayName = 'Adobe Applications';      Base = 10000000; MinId = 10000001; MaxId = 10000100; MaxSlots = 100 }
+        [PSCustomObject]@{ Type = 'Autodesk';   DisplayName = 'Autodesk Applications';   Base = 10000100; MinId = 10000101; MaxId = 10000200; MaxSlots = 100 }
+        [PSCustomObject]@{ Type = 'ThirdParty'; DisplayName = 'Third-Party Applications'; Base = 10000200; MinId = 10000201; MaxId = 10000300; MaxSlots = 100 }
+        [PSCustomObject]@{ Type = 'Games';      DisplayName = 'Games';                   Base = 10000300; MinId = 10000301; MaxId = 10000999; MaxSlots = 699 }
+    )
+}
+
+function Get-AllowlistTypeDefinition {
+    param([string]$Type)
+    if ([string]::IsNullOrWhiteSpace($Type)) { return $null }
+    $key = $Type.Trim()
+    return Get-AllowlistTypeDefinitions | Where-Object { $_.Type -ieq $key } | Select-Object -First 1
+}
+
+function Get-AllowlistTypeFromNameId {
+    param([string]$NameId)
+    if ([string]::IsNullOrWhiteSpace($NameId)) { return $null }
+    if ($NameId -notmatch '^\d+$') { return $null }
+    $numeric = [long]$NameId
+    foreach ($def in Get-AllowlistTypeDefinitions) {
+        if ($numeric -ge $def.MinId -and $numeric -le $def.MaxId) {
+            return $def.Type
+        }
+    }
+    return $null
+}
+
+function Test-NameIdInAllowlistTypeRange {
+    param(
+        [string]$NameId,
+        [string]$Type = ""
+    )
+    if ([string]::IsNullOrWhiteSpace($NameId) -or $NameId -notmatch '^\d+$') {
+        return $false
+    }
+    $numeric = [long]$NameId
+    if (-not [string]::IsNullOrWhiteSpace($Type)) {
+        $def = Get-AllowlistTypeDefinition -Type $Type
+        if ($null -eq $def) { return $false }
+        return ($numeric -ge $def.MinId -and $numeric -le $def.MaxId)
+    }
+    return ($null -ne (Get-AllowlistTypeFromNameId -NameId $NameId))
+}
+
+function Resolve-AllowlistNameId {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Type,
+        [Parameter(Mandatory = $true)]
+        [string]$SlotInput
+    )
+
+    $def = Get-AllowlistTypeDefinition -Type $Type
+    if ($null -eq $def) {
+        throw "Unknown allowlist type: $Type"
+    }
+
+    $digits = ($SlotInput -replace '\D', '').Trim()
+    if ([string]::IsNullOrWhiteSpace($digits)) {
+        throw "Name ID input must contain digits."
+    }
+
+    $numeric = [long]$digits
+    if ($digits.Length -ge 8 -and $numeric -ge $def.MinId -and $numeric -le $def.MaxId) {
+        return $numeric.ToString()
+    }
+
+    $slot = [int]($numeric % 1000)
+    $suffixBase = 10000000
+    if ($def.Type -ieq 'Games') {
+        if ($slot -lt 1 -or $slot -gt $def.MaxSlots) {
+            throw "Slot $slot is outside Games short-ID range 1-$($def.MaxSlots) or 301-999 (nameId $($def.MinId)-$($def.MaxId))."
+        }
+    }
+    else {
+        $minSlot = [int]($def.MinId - $suffixBase)
+        $maxSlot = [int]($def.MaxId - $suffixBase)
+        if ($slot -lt $minSlot -or $slot -gt $maxSlot) {
+            throw "Slot $slot is outside $($def.Type) short-ID range $minSlot-$maxSlot (nameId $($def.MinId)-$($def.MaxId))."
+        }
+    }
+
+    $suffixCandidate = $suffixBase + $slot
+    if ($suffixCandidate -ge $def.MinId -and $suffixCandidate -le $def.MaxId) {
+        return $suffixCandidate.ToString()
+    }
+
+    if ($def.Type -ieq 'Games') {
+        $offsetCandidate = $def.Base + $slot
+        if ($offsetCandidate -ge $def.MinId -and $offsetCandidate -le $def.MaxId) {
+            return $offsetCandidate.ToString()
+        }
+    }
+
+    throw "Resolved nameId for slot $slot is outside $($def.Type) range $($def.MinId)-$($def.MaxId). Use the type's short-ID range (Adobe 1-100, Autodesk 101-200, ThirdParty 201-300, Games 301-999)."
+}
+
 function Get-DesktopAppAllowlist {
     param(
         [string]$RepoRoot,
@@ -1170,9 +1269,20 @@ function Get-DesktopAppAllowlist {
         $exe = if ($entry.exe) { $entry.exe.ToString().Trim() } else { "" }
         $nameId = if ($entry.nameId) { $entry.nameId.ToString().Trim() } else { "" }
         $title = if ($entry.title) { $entry.title.ToString().Trim() } else { "" }
+        $type = if ($entry.type) { $entry.type.ToString().Trim() } else { "" }
 
         if ([string]::IsNullOrWhiteSpace($exe) -or [string]::IsNullOrWhiteSpace($nameId)) {
             throw "Each allowlist app requires exe and nameId: $path"
+        }
+
+        if ([string]::IsNullOrWhiteSpace($type)) {
+            $type = Get-AllowlistTypeFromNameId -NameId $nameId
+            if ([string]::IsNullOrWhiteSpace($type)) {
+                throw "nameId $nameId is outside known type ranges and entry has no type field: $path"
+            }
+        }
+        elseif (-not (Test-NameIdInAllowlistTypeRange -NameId $nameId -Type $type)) {
+            throw "nameId $nameId is outside type $type range: $path"
         }
 
         $exeKey = $exe.ToLowerInvariant()
@@ -1194,6 +1304,7 @@ function Get-DesktopAppAllowlist {
                 Exe    = $exe
                 NameId = $nameId
                 Title  = $title
+                Type   = $type
             })
     }
 
@@ -1286,6 +1397,228 @@ function Resolve-PlayNiteWatcherRepoRoot {
     }
 
     return $Candidate.TrimEnd('\')
+}
+
+$script:GamesAppsManifestImported = $false
+
+function Get-NextGpuCoreRepoRootFromWatcher {
+    param([string]$WatcherRoot = "")
+    $watcher = Resolve-PlayNiteWatcherRepoRoot -Candidate $WatcherRoot
+    try {
+        return (Resolve-Path -LiteralPath (Join-Path $watcher '..') -ErrorAction Stop).Path
+    }
+    catch {
+        return $null
+    }
+}
+
+function Import-NextGpuGamesAppsManifest {
+    param([string]$WatcherRoot = "")
+    if ($script:GamesAppsManifestImported) { return $true }
+
+    $coreRepo = Get-NextGpuCoreRepoRootFromWatcher -WatcherRoot $WatcherRoot
+    if (-not $coreRepo) { return $false }
+
+    $manifestScript = Join-Path $coreRepo 'scripts\maintenance\GamesApps-Manifest.ps1'
+    if (-not (Test-Path -LiteralPath $manifestScript)) { return $false }
+
+    if ([string]::IsNullOrWhiteSpace($env:NEXTGPU_REPO_ROOT)) {
+        $env:NEXTGPU_REPO_ROOT = $coreRepo
+    }
+
+    . $manifestScript
+    $script:GamesAppsManifestImported = $true
+    return $true
+}
+
+function Test-PlayniteSteamClientPath {
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return $false }
+    $steamExe = Join-Path $Path 'steam.exe'
+    if (-not (Test-Path -LiteralPath $steamExe -PathType Leaf)) { return $false }
+    $hasUi = (Test-Path -LiteralPath (Join-Path $Path 'package')) -or (Test-Path -LiteralPath (Join-Path $Path 'steamui'))
+    $hasApps = Test-Path -LiteralPath (Join-Path $Path 'steamapps') -PathType Container
+    return ($hasUi -or $hasApps)
+}
+
+function Get-PlayniteSteamPathFromRegistry {
+    $keyPaths = @(
+        'HKLM:\SOFTWARE\WOW6432Node\Valve\Steam',
+        'HKLM:\SOFTWARE\Valve\Steam'
+    )
+    foreach ($keyPath in $keyPaths) {
+        try {
+            $installPath = (Get-ItemProperty -LiteralPath $keyPath -Name InstallPath -ErrorAction Stop).InstallPath
+            if ($installPath -and (Test-PlayniteSteamClientPath -Path $installPath.TrimEnd('\', '/'))) {
+                return $installPath.TrimEnd('\', '/')
+            }
+        }
+        catch { }
+    }
+    return $null
+}
+
+function Resolve-PlayniteSteamFromR2Manifest {
+    param(
+        [string]$WatcherRoot = "",
+        [scriptblock]$LogAction = $null
+    )
+
+    $write = if ($LogAction) { $LogAction } else { { param($Message, $Level) } }
+    if (-not (Import-NextGpuGamesAppsManifest -WatcherRoot $WatcherRoot)) {
+        & $write 'R2 manifest helpers not available (GamesApps-Manifest.ps1 missing).' 'WARN'
+        return $null
+    }
+
+    $entries = @(Read-DownloadManifestEntries)
+    if ($entries.Count -eq 0) {
+        & $write 'No R2 sync manifest entries (sync-games-apps-downloaded.txt).' 'WARN'
+        return $null
+    }
+
+    $steamClients = @($entries | Where-Object { Test-ManifestEntryIsSteamClient $_ })
+    foreach ($entry in $steamClients) {
+        $extract = Get-ManifestEntryExtractPath -Entry $entry
+        if ([string]::IsNullOrWhiteSpace($extract)) { continue }
+        if (-not (Test-Path -LiteralPath $extract -PathType Container)) {
+            & $write "R2 Steam app extract missing on disk: $extract" 'WARN'
+            continue
+        }
+        $full = [System.IO.Path]::GetFullPath($extract)
+        if (Test-PlayniteSteamClientPath -Path $full) {
+            return [PSCustomObject]@{ Path = $full; Source = 'R2Manifest' }
+        }
+        if (Get-Command Find-SteamClientPathUnderDirectory -ErrorAction SilentlyContinue) {
+            $nested = Find-SteamClientPathUnderDirectory -Root $full
+            if ($nested) {
+                return [PSCustomObject]@{ Path = $nested; Source = 'R2ManifestNested' }
+            }
+        }
+        if (Test-Path -LiteralPath (Join-Path $full 'steam.exe') -PathType Leaf) {
+            return [PSCustomObject]@{ Path = $full; Source = 'R2Manifest' }
+        }
+    }
+
+    if (Get-Command Get-SteamInstallCandidatesFromManifest -ErrorAction SilentlyContinue) {
+        foreach ($candidate in @(Get-SteamInstallCandidatesFromManifest -Entries $entries)) {
+            if (Test-PlayniteSteamClientPath -Path $candidate) {
+                return [PSCustomObject]@{ Path = $candidate; Source = 'R2Candidate' }
+            }
+        }
+    }
+
+    return $null
+}
+
+function Resolve-PlayniteSteamInstallPath {
+    <#
+        Prefer Steam already on the machine (registry / common folders), then R2-downloaded Steam from sync manifest.
+    #>
+    param(
+        [string]$OverridePath = "",
+        [string]$WatcherRoot = "",
+        [scriptblock]$LogAction = $null
+    )
+
+    $write = if ($LogAction) { $LogAction } else { { param($Message, $Level) } }
+
+    if (-not [string]::IsNullOrWhiteSpace($OverridePath)) {
+        $override = $OverridePath.Trim().TrimEnd('\')
+        if (Test-PlayniteSteamClientPath -Path $override) {
+            & $write "Steam from -SteamInstallPath: $override" 'INFO'
+            return [PSCustomObject]@{ Path = $override; Source = 'Override' }
+        }
+        & $write "Override Steam path invalid: $override" 'WARN'
+    }
+
+    $fromReg = Get-PlayniteSteamPathFromRegistry
+    if ($fromReg) {
+        & $write "Steam on machine (registry): $fromReg" 'INFO'
+        return [PSCustomObject]@{ Path = $fromReg; Source = 'Registry' }
+    }
+
+    $commonPaths = @(
+        'C:\Program Files (x86)\Steam',
+        'C:\Program Files\Steam',
+        'D:\Steam', 'D:\Games\Steam',
+        'E:\Steam', 'E:\Games\Steam',
+        'F:\Steam', 'F:\Games\Steam'
+    )
+    foreach ($base in $commonPaths) {
+        try {
+            if (-not (Test-Path -LiteralPath $base)) { continue }
+            $resolved = ([System.IO.Path]::GetFullPath($base)).TrimEnd('\')
+            if (Test-PlayniteSteamClientPath -Path $resolved) {
+                & $write "Steam on machine (common path): $resolved" 'INFO'
+                return [PSCustomObject]@{ Path = $resolved; Source = 'CommonPath' }
+            }
+        }
+        catch { }
+    }
+
+    & $write 'Steam not found on machine; checking R2 sync manifest...' 'INFO'
+    return Resolve-PlayniteSteamFromR2Manifest -WatcherRoot $WatcherRoot -LogAction $LogAction
+}
+
+function Register-PlayniteSteamInstallPath {
+    param(
+        [Parameter(Mandatory)][string]$SteamPath,
+        [scriptblock]$LogAction = $null
+    )
+
+    $write = if ($LogAction) { $LogAction } else { { param($Message, $Level) } }
+    $steamPath = $SteamPath.Trim().TrimEnd('\')
+    if (-not (Test-PlayniteSteamClientPath -Path $steamPath)) {
+        throw "Not a valid Steam client folder: $steamPath"
+    }
+
+    $keyPath = 'HKLM:\SOFTWARE\WOW6432Node\Valve\Steam'
+    if (-not (Test-Path -LiteralPath $keyPath)) {
+        New-Item -Path $keyPath -Force | Out-Null
+    }
+
+    $current = $null
+    try {
+        $current = (Get-ItemProperty -LiteralPath $keyPath -Name InstallPath -ErrorAction Stop).InstallPath
+    }
+    catch { }
+
+    if ($current -and ($current.TrimEnd('\') -ieq $steamPath)) {
+        return $false
+    }
+
+    Set-ItemProperty -LiteralPath $keyPath -Name InstallPath -Value $steamPath
+    & $write "Registered Steam InstallPath in registry: $steamPath" 'INFO'
+    return $true
+}
+
+function Ensure-PlayniteSteamForLibraryScan {
+    param(
+        [string]$WatcherRoot = "",
+        [string]$OverridePath = "",
+        [scriptblock]$LogAction = $null
+    )
+
+    $resolved = Resolve-PlayniteSteamInstallPath -OverridePath $OverridePath -WatcherRoot $WatcherRoot -LogAction $LogAction
+    if (-not $resolved -or [string]::IsNullOrWhiteSpace($resolved.Path)) {
+        if ($LogAction) {
+            & $LogAction 'Steam not found (machine or R2 manifest). Steam library import will be skipped.' 'WARN'
+        }
+        return $null
+    }
+
+    if ($resolved.Source -notin @('Registry', 'Override')) {
+        try {
+            Register-PlayniteSteamInstallPath -SteamPath $resolved.Path -LogAction $LogAction
+        }
+        catch {
+            if ($LogAction) {
+                & $LogAction ("Could not register Steam in registry (run as Admin?): $($_.Exception.Message)") 'WARN'
+            }
+        }
+    }
+
+    return $resolved
 }
 
 function Normalize-EverythingSearchPath {

@@ -36,4 +36,14 @@ public static class RepoCatalog
 
     public const string SunshineExe = @"C:\Program Files\Sunshine\sunshine.exe";
     public const string SunshineServiceName = "gpu-sunshine";
+
+    public const string PlayNiteWatcherRelativeDir = "PlayNiteWatcher";
+    public const string PlayniteInstallPathFile = "PlayniteInstall.path";
+    public const string PlayniteAllowlistRelativePath = @"PlayNiteWatcher\config\playnite\desktop-apps.allowlist.json";
+
+    public const string PlayniteSetupLog = "Setup-PlayniteSteam.log";
+    public const string PlayniteExportLog = "Export-SunshineFromPlaynite.log";
+    public const string PlayniteWatcherInstallLog = "Install-PlayniteWatcher.log";
+    public const string PlayniteLibraryUpdateLog = "Update-PlayniteLibraries.log";
+    public const string PlayniteWatcherRuntimeLog = "log.txt";
 }

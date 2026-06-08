@@ -2,6 +2,7 @@
 <#
 .SYNOPSIS
     Headless export of Playnite Steam/Epic library to Sunshine apps.json (no Playnite UI).
+    By default also installs PlayNiteWatcher after export. Use -SkipWatcherInstall to export only.
 .EXAMPLE
     .\Export-SunshineFromPlaynite.ps1
     .\Export-SunshineFromPlaynite.ps1 -PlayniteInstallDir "D:\Games\Playnite"
@@ -13,7 +14,8 @@ param(
     [string]$SunshineConfigDir = "",
     [string]$SunshineAppsPath = "",
     [string]$AllowlistPath = "",
-    [switch]$SkipDesktopApps
+    [switch]$SkipDesktopApps,
+    [switch]$SkipWatcherInstall
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,7 +39,8 @@ function Invoke-SunshineExportFromPlaynite {
         [string]$SunshineConfigDir = "",
         [string]$SunshineAppsPath = "",
         [string]$AllowlistPath = "",
-        [switch]$SkipDesktopApps
+        [switch]$SkipDesktopApps,
+        [switch]$SkipWatcherInstall
     )
 
     if (Test-Path -LiteralPath $script:ExportLogFile) {
@@ -104,6 +107,30 @@ function Invoke-SunshineExportFromPlaynite {
     Write-ExportLog "Wrote: $($exportResult.ResolvedJsonPath)"
     Write-ExportLog "Wrote: $($exportResult.ResolvedTxtPath)"
     Write-ExportLog "=== Export finished ==="
+
+    if (-not $SkipWatcherInstall) {
+        Write-ExportLog "=== Installing PlayNiteWatcher (post-export) ==="
+        $installScript = Join-Path $script:ExportModuleRoot "Install-PlayniteWatcher.ps1"
+        if (-not (Test-Path -LiteralPath $installScript)) {
+            Write-ExportLog "Install script not found: $installScript" "WARN"
+            return
+        }
+        if (-not (Get-Command Invoke-PlayniteWatcherInstall -ErrorAction SilentlyContinue)) {
+            . $installScript
+        }
+        $installParams = @{ SkipExport = $true }
+        if (-not [string]::IsNullOrWhiteSpace($PlayniteInstallDir)) {
+            $installParams.PlayniteInstallDir = $PlayniteInstallDir
+        }
+        if (-not [string]::IsNullOrWhiteSpace($SunshineConfigDir)) {
+            $installParams.SunshineConfigDir = $SunshineConfigDir
+        }
+        if (-not [string]::IsNullOrWhiteSpace($AllowlistPath)) {
+            $installParams.AllowlistPath = $AllowlistPath
+        }
+        Invoke-PlayniteWatcherInstall @installParams
+        Write-ExportLog "=== PlayNiteWatcher install finished ==="
+    }
 }
 
 if ($MyInvocation.InvocationName -ne '.') {

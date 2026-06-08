@@ -177,7 +177,7 @@ function Invoke-PlayniteDesktopAppImport {
 
     Stop-PlayniteApplication -PlayniteExe $playniteExe
     Write-ImportLog "=== Import finished ==="
-    Write-ImportLog "Next: .\Export-SunshineFromPlaynite.ps1 then .\Install-PlayniteWatcher.ps1"
+    Write-ImportLog "Next: .\Export-SunshineFromPlaynite.ps1 (exports and installs PlayNiteWatcher)"
 }
 
 if ($PSCommandPath -eq $MyInvocation.PSCommandPath) {

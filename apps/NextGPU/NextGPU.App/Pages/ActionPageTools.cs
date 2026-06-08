@@ -22,10 +22,15 @@ internal static class ActionPageTools
         return btn;
     }
 
-    private static void AddToPanel(Panel panel, Button btn)
+    private static void AddToPanel(Panel panel, Button btn, string? helpText = null)
     {
         if (panel is StackPanel stack)
-            UiLayoutHelper.AddStretchedAction(stack, btn);
+        {
+            if (!string.IsNullOrWhiteSpace(helpText))
+                UiLayoutHelper.AddStretchedActionWithHelp(stack, btn, helpText);
+            else
+                UiLayoutHelper.AddStretchedAction(stack, btn);
+        }
         else
             panel.Children.Add(btn);
     }
@@ -36,7 +41,8 @@ internal static class ActionPageTools
         string relativePath,
         string args = "",
         bool keepConsoleOpen = false,
-        string? tooltip = null)
+        string? tooltip = null,
+        string? helpText = null)
     {
         var btn = new Button
         {
@@ -55,17 +61,17 @@ internal static class ActionPageTools
             var r = App.Session.Scripts.RunPowerShellRelative(relativePath, args, elevated: true, keepConsoleOpen: keepConsoleOpen);
             ShowResult(r);
         };
-        AddToPanel(panel, btn);
+        AddToPanel(panel, btn, helpText);
     }
 
-    public static void AddOpenExplorerButton(Panel panel, string label, string folderPath, string? tooltip = null)
+    public static void AddOpenExplorerButton(Panel panel, string label, string folderPath, string? tooltip = null, string? helpText = null)
     {
-        AddOpenExplorerButton(panel, label, () => folderPath, tooltip);
+        AddOpenExplorerButton(panel, label, () => folderPath, tooltip, helpText);
     }
 
-    public static void AddOpenExplorerButton(Panel panel, string label, Func<string> folderPathFactory, string? tooltip = null)
+    public static void AddOpenExplorerButton(Panel panel, string label, Func<string> folderPathFactory, string? tooltip = null, string? helpText = null)
     {
-        AddToPanel(panel, MakeButton(label, tooltip ?? "Open folder in Explorer", (_, _) =>
+        var btn = MakeButton(label, tooltip ?? "Open folder in Explorer", (_, _) =>
         {
             var folder = folderPathFactory();
             if (string.IsNullOrWhiteSpace(folder))
@@ -90,7 +96,8 @@ internal static class ActionPageTools
                 Arguments = folder,
                 UseShellExecute = true
             });
-        }));
+        });
+        AddToPanel(panel, btn, helpText);
     }
 
     public static void AddPrimaryBatchButton(
@@ -100,7 +107,8 @@ internal static class ActionPageTools
         string? arguments = null,
         bool keepConsoleOpen = false,
         string? confirm = null,
-        string? tooltip = null)
+        string? tooltip = null,
+        string? helpText = null)
     {
         var btn = new Button
         {
@@ -110,7 +118,7 @@ internal static class ActionPageTools
             Style = (Style)Application.Current.FindResource("PrimaryButton")
         };
         btn.Click += (_, _) => RunBatch(panel, relativePath, arguments, keepConsoleOpen, confirm);
-        AddToPanel(panel, btn);
+        AddToPanel(panel, btn, helpText);
     }
 
     public static void AddBatchButton(
@@ -120,10 +128,12 @@ internal static class ActionPageTools
         string? arguments = null,
         bool keepConsoleOpen = false,
         string? confirm = null,
-        string? tooltip = null)
+        string? tooltip = null,
+        string? helpText = null)
     {
-        AddToPanel(panel, MakeButton(label, tooltip ?? $"Runs {relativePath} elevated.", (_, _) =>
-            RunBatch(panel, relativePath, arguments, keepConsoleOpen, confirm)));
+        var btn = MakeButton(label, tooltip ?? $"Runs {relativePath} elevated.", (_, _) =>
+            RunBatch(panel, relativePath, arguments, keepConsoleOpen, confirm));
+        AddToPanel(panel, btn, helpText);
     }
 
     private static void RunBatch(Panel panel, string relativePath, string? arguments, bool keepConsoleOpen, string? confirm)
@@ -138,9 +148,9 @@ internal static class ActionPageTools
         ShowResult(r);
     }
 
-    public static void AddPowerShellButton(Panel panel, string label, string relativePath, string args = "", bool keepConsoleOpen = false, string? tooltip = null)
+    public static void AddPowerShellButton(Panel panel, string label, string relativePath, string args = "", bool keepConsoleOpen = false, string? tooltip = null, string? helpText = null)
     {
-        AddToPanel(panel, MakeButton(label, tooltip ?? $"Runs {relativePath}", (_, _) =>
+        var btn = MakeButton(label, tooltip ?? $"Runs {relativePath}", (_, _) =>
         {
             if (App.Session.Scripts is null)
             {
@@ -149,7 +159,8 @@ internal static class ActionPageTools
             }
             var r = App.Session.Scripts.RunPowerShellRelative(relativePath, args, elevated: true, keepConsoleOpen: keepConsoleOpen);
             ShowResult(r);
-        }));
+        });
+        AddToPanel(panel, btn, helpText);
     }
 
     public static void AddCaptureButton(Panel panel, string label, string relativePath, string args = "")

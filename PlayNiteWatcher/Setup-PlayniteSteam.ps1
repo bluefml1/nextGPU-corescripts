@@ -8,6 +8,7 @@
     Install path is saved to PlayniteInstall.path in this repo folder.
     Library and settings live in the install folder - all Windows users share the same Playnite when using that path.
     Default run: portable install, Steam/Epic disk-scan config, and --updatelibraries only.
+    Steam discovery: machine registry/paths first, then R2 sync manifest (sync-games-apps-downloaded.txt).
     Sunshine/Moonlight export and PlayNiteWatcher are separate; use -WithSunshine to include them in setup.
 .PARAMETER WithSunshine
     Also run headless Sunshine export and PlayNiteWatcher install (and copy SunshineAppExport when -FullSetup).
@@ -646,49 +647,6 @@ function Set-PlayniteAppDataFromInstallDir {
     Write-SetupLog "Playnite data directory (portable): $script:PlayniteAppData"
 }
 
-function Get-SteamInstallPathFromRegistry {
-    $paths = @(
-        "HKLM:\SOFTWARE\WOW6432Node\Valve\Steam",
-        "HKLM:\SOFTWARE\Valve\Steam"
-    )
-    foreach ($keyPath in $paths) {
-        try {
-            $installPath = (Get-ItemProperty -LiteralPath $keyPath -Name InstallPath -ErrorAction Stop).InstallPath
-            if ($installPath -and (Test-Path (Join-Path $installPath "steam.exe"))) {
-                return $installPath.TrimEnd('\')
-            }
-        }
-        catch { }
-    }
-    return $null
-}
-
-function Resolve-SteamInstallPath {
-    param([string]$OverridePath)
-    if (-not [string]::IsNullOrWhiteSpace($OverridePath) -and (Test-Path (Join-Path $OverridePath "steam.exe"))) {
-        return $OverridePath.TrimEnd('\')
-    }
-    $fromReg = Get-SteamInstallPathFromRegistry
-    if ($fromReg) { return $fromReg }
-
-    $candidates = @(
-        "C:\Program Files (x86)\Steam",
-        "C:\Program Files\Steam",
-        "D:\Steam", "D:\Games\Steam",
-        "E:\Steam", "E:\Games\Steam"
-    )
-    foreach ($base in $candidates) {
-        try {
-            $resolved = (Resolve-Path $base -ErrorAction Stop).Path
-            if (Test-Path (Join-Path $resolved "steam.exe")) {
-                return $resolved.TrimEnd('\')
-            }
-        }
-        catch { }
-    }
-    return $null
-}
-
 function Merge-JsonSettingsFile {
     param(
         [string]$TargetPath,
@@ -886,10 +844,20 @@ function Start-PlayniteDesktop {
 function Start-PlayniteLibraryUpdate {
     param(
         [string]$PlayniteExe,
-        [int]$WaitMinutes
+        [int]$WaitMinutes,
+        [string]$SteamInstallPathParam = ""
     )
 
     Write-SetupLog "Start-PlayniteLibraryUpdate: waiting up to $WaitMinutes minute(s) for Steam/Epic import in playnite.log"
+
+    $steamLog = { param($Message, $Level) Write-SetupLog $Message $Level }
+    $steamResolved = Ensure-PlayniteSteamForLibraryScan `
+        -WatcherRoot $script:PlayNiteWatcherRepoRoot `
+        -OverridePath $SteamInstallPathParam `
+        -LogAction $steamLog
+    if ($steamResolved) {
+        Write-SetupLog "Steam ready for library scan ($($steamResolved.Source)): $($steamResolved.Path)"
+    }
 
     Stop-PlayniteProcess -PlayniteExe $PlayniteExe
 
@@ -961,6 +929,7 @@ function Invoke-HeadlessSunshinePipeline {
         if (-not [string]::IsNullOrWhiteSpace($AllowlistPathParam)) {
             $exportParams.AllowlistPath = $AllowlistPathParam
         }
+        $exportParams.SkipWatcherInstall = $true
         Invoke-SunshineExportFromPlaynite @exportParams
     }
     else {
@@ -1139,7 +1108,7 @@ try {
             Write-SetupLog "Skipped (-SkipLibraryUpdate)."
         }
         else {
-            Start-PlayniteLibraryUpdate -PlayniteExe $playniteExe -WaitMinutes $MaxWaitMinutes
+            Start-PlayniteLibraryUpdate -PlayniteExe $playniteExe -WaitMinutes $MaxWaitMinutes -SteamInstallPathParam $SteamInstallPath
         }
         Stop-PlayniteProcess -PlayniteExe $playniteExe
 
@@ -1209,12 +1178,15 @@ try {
 
         Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Detect Steam"
         $step++
-        $steamPath = Resolve-SteamInstallPath -OverridePath $SteamInstallPath
-        if ($steamPath) {
-            Write-SetupLog "Steam install path: $steamPath"
+        $steamResolved = Ensure-PlayniteSteamForLibraryScan `
+            -WatcherRoot $script:PlayNiteWatcherRepoRoot `
+            -OverridePath $SteamInstallPath `
+            -LogAction { param($Message, $Level) Write-SetupLog $Message $Level }
+        if ($steamResolved) {
+            Write-SetupLog "Steam install path ($($steamResolved.Source)): $($steamResolved.Path)"
         }
         else {
-            Write-SetupLog "Steam not detected. Installed-game import may be limited." "WARN"
+            Write-SetupLog "Steam not detected on machine or in R2 manifest. Installed-game import may be limited." "WARN"
         }
 
         Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Install Playnite portable"
@@ -1254,7 +1226,7 @@ try {
             Write-SetupLog "Skipped (-SkipLibraryUpdate)."
         }
         else {
-            Start-PlayniteLibraryUpdate -PlayniteExe $playniteExe -WaitMinutes $MaxWaitMinutes
+            Start-PlayniteLibraryUpdate -PlayniteExe $playniteExe -WaitMinutes $MaxWaitMinutes -SteamInstallPathParam $SteamInstallPath
         }
         Stop-PlayniteProcess -PlayniteExe $playniteExe
 

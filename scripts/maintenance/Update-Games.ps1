@@ -26,7 +26,9 @@ $RepoRoot = if ($env:NEXTGPU_REPO_ROOT) {
 $DomainFile = Join-Path $RepoRoot "domain.txt"
 if (Test-Path $DomainFile) {
     foreach ($line in Get-Content $DomainFile) {
-        if ($line -match "^DOMAIN=(.+)") { $DOMAIN = $matches[1].Trim() }
+        if ($line -match "^DOMAIN=(.+)")        { $DOMAIN = $matches[1].Trim() }
+        if (-not $ComputerName -and $line -match "^COMPUTER_NAME=(.+)") { $ComputerName = $matches[1].Trim() }
+        if (-not $PublicIP -and $line -match "^PUBLIC_IP=(.+)")         { $PublicIP = $matches[1].Trim() }
     }
 }
 

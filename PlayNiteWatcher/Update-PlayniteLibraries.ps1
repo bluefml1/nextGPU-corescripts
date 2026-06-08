@@ -49,6 +49,12 @@ try {
     $extLogAction = { param($Message, $Level) Write-MigrationLog $Message $Level }
     Install-PlayniteBuiltinLibraryExtensions -InstallDir $installDir -RepoRoot $PSScriptRoot -LogAction $extLogAction
 
+    $steamLog = { param($Message, $Level) Write-MigrationLog $Message $Level }
+    $steamResolved = Ensure-PlayniteSteamForLibraryScan -WatcherRoot $PSScriptRoot -LogAction $steamLog
+    if ($steamResolved) {
+        Write-MigrationLog "Steam ready for library scan ($($steamResolved.Source)): $($steamResolved.Path)"
+    }
+
     Stop-PlayniteApplication -PlayniteExe $playniteExe
 
     $playniteLog = Join-Path $script:PlayniteAppData "playnite.log"
