@@ -8,6 +8,7 @@ public sealed class AppSession : IDisposable
     public string? RepoRoot { get; private set; }
     public AuditLogger? Audit { get; private set; }
     public WindowsServiceManager? Services { get; private set; }
+    public ScheduledTaskManager? ScheduledTasks { get; private set; }
     public HealthMonitor? Health { get; private set; }
     public LogTailService? LogTail { get; private set; }
     public ScriptRunner? Scripts { get; private set; }
@@ -38,6 +39,7 @@ public sealed class AppSession : IDisposable
         {
             Audit = null;
             Services = new WindowsServiceManager();
+            ScheduledTasks = new ScheduledTaskManager();
             Health = new HealthMonitor(Services);
             LogTail = null;
             Scripts = null;
@@ -46,6 +48,7 @@ public sealed class AppSession : IDisposable
 
         Audit = new AuditLogger(RepoRoot);
         Services = new WindowsServiceManager(Audit);
+        ScheduledTasks = new ScheduledTaskManager(Audit);
         Health = new HealthMonitor(Services);
         LogTail = new LogTailService(RepoRoot);
         Scripts = new ScriptRunner(RepoRoot, Audit);

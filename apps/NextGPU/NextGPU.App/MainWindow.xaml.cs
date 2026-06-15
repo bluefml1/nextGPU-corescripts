@@ -11,6 +11,7 @@ public partial class MainWindow : Window
     {
         ["Get Started"] = "Step-by-step provisioning and troubleshooting",
         ["Dashboard"] = "Machine health, services, and quick links",
+        ["Task Scheduler"] = "Heartbeat, auto-repair, auto-update, NVIDIA logon, and registration",
         ["User Storage (U:)"] = "One-click S3 setup — auto-mount U: on nextGPU sign-in",
         ["User Experience"] = "Wallpaper, desktop cleanup, and game sync",
         ["Sunshine"] = "Streaming host, display binding, and diagnostics",
@@ -31,6 +32,7 @@ public partial class MainWindow : Window
         [
             NavGetStartedBtn,
             NavDashboardBtn,
+            NavTaskSchedulerBtn,
             NavUserStorageBtn,
             NavUserExperienceBtn,
             NavSunshineBtn,
@@ -71,6 +73,9 @@ public partial class MainWindow : Window
 
     private void NavDashboard_Click(object sender, RoutedEventArgs e) =>
         NavigateToPage(new DashboardPage(), NavDashboardBtn, "Dashboard");
+
+    private void NavTaskScheduler_Click(object sender, RoutedEventArgs e) =>
+        NavigateToPage(new TaskSchedulerPage(), NavTaskSchedulerBtn, "Task Scheduler");
 
     private void NavUserStorage_Click(object sender, RoutedEventArgs e) =>
         NavigateToPage(new UserStoragePage(), NavUserStorageBtn, "User Storage (U:)");

@@ -19,15 +19,10 @@ set "SUNSHINE_SERVICE=gpu-sunshine"
 set "LOG_DIR=%SCRIPT_DIR%\logs"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
 
-if /i "%~1"=="once" set "RUN_ONCE=1"
-
 :wait_for_network
 ping -n 1 8.8.8.8 >nul
 if errorlevel 1 (timeout /t 5 /nobreak >nul & goto wait_for_network)
 
-set "CHECK_INTERVAL=60"
-
-:loop
 echo.
 
 :: ==============================
@@ -41,9 +36,8 @@ if exist "%DOMAIN_FILE%" (
     for /f "tokens=2 delims==" %%A in ('findstr "COMPUTER_NAME=" "%DOMAIN_FILE%"') do set "COMPUTER_NAME=%%A"
 )
 if /i "!DOMAIN_STATUS!"=="updating" (
-    echo [*] Machine is currently updating - skipping repair. Retrying in %CHECK_INTERVAL%s.
-    timeout /t %CHECK_INTERVAL% /nobreak >nul
-    goto loop
+    echo [*] Machine is currently updating - skipping repair.
+    exit /b 0
 )
 
 echo [*] Running health check...
@@ -137,10 +131,8 @@ if "!HTTP_STATUS!"=="200" (
 :: ALL OK - SKIP
 :: ==============================
 if "!REPAIR_NEEDED!"=="0" (
-    echo [*] All checks passed. Next check in %CHECK_INTERVAL%s.
-    if defined RUN_ONCE (echo [*] Single run complete. & exit /b 0)
-    timeout /t %CHECK_INTERVAL% /nobreak >nul
-    goto loop
+    echo [*] All checks passed.
+    exit /b 0
 )
 
 echo.
@@ -387,18 +379,14 @@ if exist "%TEMP%\moonlight_login.json" del "%TEMP%\moonlight_login.json" >nul 2>
 if exist "%TEMP%\moonlight_pin_response.json" del "%TEMP%\moonlight_pin_response.json" >nul 2>&1
 if exist "%TEMP%\moonlight_pair_complete.json" del "%TEMP%\moonlight_pair_complete.json" >nul 2>&1
 if exist "%COOKIES%" del "%COOKIES%" >nul 2>&1
-echo [*] Repair complete. Waiting 300s before next check...
-if defined RUN_ONCE (echo [*] Single run complete. & exit /b 0)
-timeout /t 300 /nobreak >nul
-goto loop
+echo [*] Repair complete.
+exit /b 0
 
 :repair_failed
-echo [!] Repair failed. Waiting 300s before retry...
+echo [!] Repair failed.
 taskkill /f /im curl.exe >nul 2>&1
 if exist "%TEMP%\moonlight_login.json" del "%TEMP%\moonlight_login.json" >nul 2>&1
 if exist "%TEMP%\moonlight_pin_response.json" del "%TEMP%\moonlight_pin_response.json" >nul 2>&1
 if exist "%TEMP%\moonlight_pair_complete.json" del "%TEMP%\moonlight_pair_complete.json" >nul 2>&1
 if exist "%COOKIES%" del "%COOKIES%" >nul 2>&1
-if defined RUN_ONCE (exit /b 1)
-timeout /t 300 /nobreak >nul
-goto loop
+exit /b 1

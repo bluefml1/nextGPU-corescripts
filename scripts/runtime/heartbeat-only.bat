@@ -1,5 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
+:: Single heartbeat cycle (for Task Scheduler). Does not loop.
 :: ==============================
 :: RESOLVE SCRIPT DIRECTORY
 :: ==============================
@@ -16,9 +17,7 @@ if defined NEXTGPU_REPO_ROOT (
 :: ==============================
 set "API_UPDATE_URL=https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus"
 set "DEFAULT_STATUS=online"
-set "INTERVAL_SECONDS=300"
 
-:loop
 :: Timestamp
 for /f "tokens=1-4 delims=/ " %%a in ('date /t') do (set "MM=%%a" & set "DD=%%b" & set "YYYY=%%c")
 for /f "tokens=1-2 delims=:." %%a in ('time /t') do (set "HH=%%a" & set "MIN=%%b")
@@ -32,9 +31,8 @@ set "TIMESTAMP=[%DATE% %HH%:%MIN%:00.00]"
 :: ==============================
 set "DOMAIN_FILE=%SCRIPT_DIR%\domain.txt"
 if not exist "%DOMAIN_FILE%" (
-    echo [ERROR] domain.txt not found at: %DOMAIN_FILE%. Retrying in 60s...
-    timeout /t 60 /nobreak >nul
-    goto loop
+    echo [ERROR] domain.txt not found at: %DOMAIN_FILE%
+    exit /b 1
 )
 
 set "DOMAIN=" & set "PUBLIC_IP=" & set "COMPUTER_NAME="
@@ -42,8 +40,8 @@ for /f "tokens=2 delims==" %%A in ('findstr "DOMAIN=" "%DOMAIN_FILE%"') do set "
 for /f "tokens=2 delims==" %%A in ('findstr "PUBLIC_IP=" "%DOMAIN_FILE%"') do set "PUBLIC_IP=%%A"
 for /f "tokens=2 delims==" %%A in ('findstr "COMPUTER_NAME=" "%DOMAIN_FILE%"') do set "COMPUTER_NAME=%%A"
 
-if not defined PUBLIC_IP (echo [ERROR] PUBLIC_IP missing. Retrying... & timeout /t 60 /nobreak >nul & goto loop)
-if not defined COMPUTER_NAME (echo [ERROR] COMPUTER_NAME missing. Retrying... & timeout /t 60 /nobreak >nul & goto loop)
+if not defined PUBLIC_IP (echo [ERROR] PUBLIC_IP missing. & exit /b 1)
+if not defined COMPUTER_NAME (echo [ERROR] COMPUTER_NAME missing. & exit /b 1)
 
 :: Get Private IP
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /i "192.168.1."') do (
@@ -68,5 +66,4 @@ echo %TIMESTAMP% RESPONSE:
 type "%RESPONSE_FILE%"
 del "%RESPONSE_FILE%" >nul 2>&1
 echo.
-timeout /t %INTERVAL_SECONDS% /nobreak >nul
-goto loop
+exit /b 0

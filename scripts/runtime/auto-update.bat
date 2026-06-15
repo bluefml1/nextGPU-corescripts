@@ -1,5 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
+:: Single update cycle (for Task Scheduler). Does not loop.
 
 :: ==============================
 :: RESOLVE SCRIPT DIRECTORY
@@ -23,8 +24,6 @@ if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
 
 set "STATUS_FLAG_FILE=%TEMP%\machine_status_flag.txt"
 
-:auto_update_loop
-
 :: ==============================
 :: READ MACHINE INFO
 :: ==============================
@@ -32,9 +31,7 @@ set "DOMAIN_FILE=%SCRIPT_DIR%\domain.txt"
 
 if not exist "%DOMAIN_FILE%" (
     echo [ERROR] domain.txt not found at: %DOMAIN_FILE%
-    echo [ERROR] Retrying in 60 seconds...
-    timeout /t 60 /nobreak >nul
-    goto auto_update_loop
+    exit /b 1
 )
 
 set "DOMAIN=" & set "PUBLIC_IP=" & set "COMPUTER_NAME="
@@ -42,8 +39,8 @@ for /f "tokens=2 delims==" %%A in ('findstr "DOMAIN=" "%DOMAIN_FILE%"') do set "
 for /f "tokens=2 delims==" %%A in ('findstr "PUBLIC_IP=" "%DOMAIN_FILE%"') do set "PUBLIC_IP=%%A"
 for /f "tokens=2 delims==" %%A in ('findstr "COMPUTER_NAME=" "%DOMAIN_FILE%"') do set "COMPUTER_NAME=%%A"
 
-if not defined PUBLIC_IP (echo [ERROR] PUBLIC_IP missing. Retrying... & timeout /t 60 /nobreak >nul & goto auto_update_loop)
-if not defined COMPUTER_NAME (echo [ERROR] COMPUTER_NAME missing. Retrying... & timeout /t 60 /nobreak >nul & goto auto_update_loop)
+if not defined PUBLIC_IP (echo [ERROR] PUBLIC_IP missing. & exit /b 1)
+if not defined COMPUTER_NAME (echo [ERROR] COMPUTER_NAME missing. & exit /b 1)
 
 echo [*] Public IP: !PUBLIC_IP!
 echo [*] Computer Name: !COMPUTER_NAME!
@@ -79,8 +76,7 @@ goto machine_available
 
 :machine_not_available
 echo [!] Machine not available - skipping update.
-timeout /t 3600 /nobreak >nul
-goto auto_update_loop
+exit /b 0
 
 :machine_available
 
@@ -412,8 +408,7 @@ set "FAILPAYLOAD={\"computer_name\":\"%COMPUTER_NAME%\",\"publicIP\":\"%PUBLIC_I
 curl -s -X POST https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus -H "Content-Type: application/json" -d "%FAILPAYLOAD%"
 powershell -NoLogo -NoProfile -Command "$f='%DOMAIN_FILE%';$lines=Get-Content $f;$lines=$lines|ForEach-Object{if($_ -match '^STATUS='){'STATUS=update_fail'}else{$_}};if(-not($lines-match'^STATUS=')){$lines+='STATUS=update_fail'};$lines|Set-Content $f"
 echo [!] Status set to update_fail.
-timeout /t 3600 /nobreak >nul
-goto auto_update_loop
+exit /b 1
 
 :online_status
 echo online>"%STATUS_FLAG_FILE%"
@@ -421,6 +416,4 @@ set "UPDATEPAYLOAD={\"computer_name\":\"%COMPUTER_NAME%\",\"publicIP\":\"%PUBLIC
 curl -s -X POST https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus -H "Content-Type: application/json" -d "%UPDATEPAYLOAD%"
 powershell -NoLogo -NoProfile -Command "$f='%DOMAIN_FILE%';$lines=Get-Content $f;$lines=$lines|ForEach-Object{if($_ -match '^STATUS='){'STATUS=online'}else{$_}};if(-not($lines-match'^STATUS=')){$lines+='STATUS=online'};$lines|Set-Content $f"
 echo [*] Machine is now online.
-
-timeout /t 3600 /nobreak >nul
-goto auto_update_loop
+exit /b 0

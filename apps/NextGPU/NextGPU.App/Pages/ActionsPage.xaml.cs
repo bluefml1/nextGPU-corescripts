@@ -75,11 +75,8 @@ public partial class ActionsPage : Page
             @"scripts\maintenance\sync-games-apps-official.bat",
             keepConsoleOpen: true);
 
-        AddScriptButton(MaintenancePanel, "Auto-repair (once)", @"scripts\runtime\auto-repair-once.bat");
-
-        AddScriptButton(MaintenancePanel, "Auto-repair (service loop)",
-            @"scripts\runtime\auto-repair.bat",
-            confirm: "auto-repair.bat runs a continuous loop (NSSM service). Launch elevated console to view output? You normally leave this to the gpu-auto-repair service.",
+        AddScriptButton(MaintenancePanel, "Auto-repair (once)", @"scripts\runtime\auto-repair-once.bat",
+            confirm: "Runs a single health-check cycle. Periodic runs are handled by the nextGPU-AutoRepair scheduled task.",
             keepConsoleOpen: true);
 
         AddScriptButton(MaintenancePanel, "Network copy (copy.bat)", @"scripts\maintenance\copy.bat");

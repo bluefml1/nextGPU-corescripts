@@ -1,4 +1,4 @@
 @echo off
-:: Single auto-repair cycle (for NextGPU Controller). Does not loop forever.
-call "%~dp0auto-repair.bat" once %*
+:: Single auto-repair cycle (for NextGPU Controller).
+call "%~dp0auto-repair.bat" %*
 exit /b %errorlevel%

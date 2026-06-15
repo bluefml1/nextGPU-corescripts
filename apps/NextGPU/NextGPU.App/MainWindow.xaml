@@ -54,6 +54,7 @@
                             <Button x:Name="NavVddVadBtn" Style="{StaticResource NavButton}" Content="VDD-VAD" Click="NavVddVad_Click"/>
 
                             <TextBlock Text="HOST" Style="{StaticResource NavSectionLabel}"/>
+                            <Button x:Name="NavTaskSchedulerBtn" Style="{StaticResource NavButton}" Content="Task Scheduler" Click="NavTaskScheduler_Click"/>
                             <Button x:Name="NavUserStorageBtn" Style="{StaticResource NavButton}" Content="User Storage (U:)" Click="NavUserStorage_Click"/>
                             <Button x:Name="NavUserExperienceBtn" Style="{StaticResource NavButton}" Content="User Experience" Click="NavUserExperience_Click"/>
                             <Button x:Name="NavDiskMgmtBtn" Style="{StaticResource NavButton}" Content="Disk Management" Click="NavDiskMgmt_Click"/>

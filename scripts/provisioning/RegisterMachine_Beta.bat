@@ -732,68 +732,51 @@ if !errorlevel! neq 0 (
 )
 echo.
 
-echo [7/8] Setting up heartbeat service...
-set "HEARTBEAT_SCRIPT=%RUNTIME_DIR%\heartbeat-only.bat"
-set "HEARTBEAT_SERVICE=gpu-heartbeat"
-
-if not exist "%HEARTBEAT_SCRIPT%" (echo ERROR: heartbeat-only.bat not found. & exit /b 1)
-
-sc query %HEARTBEAT_SERVICE% >nul 2>&1 && (
-    net stop %HEARTBEAT_SERVICE% >nul 2>&1
-    "%NSSM_EXE%" remove %HEARTBEAT_SERVICE% confirm >nul 2>&1
+echo [7/8] Removing legacy heartbeat/auto-repair/auto-update NSSM services...
+for %%S in (gpu-heartbeat auto-repair auto-update) do (
+    sc query %%S >nul 2>&1 && (
+        net stop %%S >nul 2>&1
+        "%NSSM_EXE%" remove %%S confirm >nul 2>&1
+        echo [*] Removed legacy NSSM service: %%S
+    )
 )
-
-"%NSSM_EXE%" install %HEARTBEAT_SERVICE% "cmd.exe" || (echo ERROR: Failed to install heartbeat. & exit /b 1)
-"%NSSM_EXE%" set %HEARTBEAT_SERVICE% AppParameters "/c \"%HEARTBEAT_SCRIPT%\"" >nul
-"%NSSM_EXE%" set %HEARTBEAT_SERVICE% AppDirectory "%SCRIPT_DIR%" >nul
-"%NSSM_EXE%" set %HEARTBEAT_SERVICE% Start SERVICE_AUTO_START >nul
-"%NSSM_EXE%" set %HEARTBEAT_SERVICE% AppStdout "%LOG_DIR%\heartbeat.log" >nul
-"%NSSM_EXE%" set %HEARTBEAT_SERVICE% AppStderr "%LOG_DIR%\heartbeat-error.log" >nul
-"%NSSM_EXE%" set %HEARTBEAT_SERVICE% DisplayName "GPU Heartbeat" >nul
-"%NSSM_EXE%" set %HEARTBEAT_SERVICE% Description "Periodic status reporter for GPU rental machine" >nul
-net start %HEARTBEAT_SERVICE% >nul && echo [*] Heartbeat running. || echo [!] Heartbeat will start on next boot.
+if not exist "%RUNTIME_DIR%\heartbeat-only.bat" (echo ERROR: heartbeat-only.bat not found. & exit /b 1)
+if not exist "%RUNTIME_DIR%\auto-repair.bat" (echo ERROR: auto-repair.bat not found. & exit /b 1)
+if not exist "%RUNTIME_DIR%\auto-update.bat" (echo ERROR: auto-update.bat not found. & exit /b 1)
+echo [*] Heartbeat, auto-repair, and auto-update run via Task Scheduler (Register-*Task.ps1).
 
 :: ===================================================================
-:: [8/8] Auto-Update Service
+:: [8/8] Register scheduled tasks
 :: ===================================================================
-:: ===================================================================
-:: [8/8] Auto-Repair Service
-:: ===================================================================
-echo [/8] Setting up auto-repair service...
-set "AUTO_REPAIR_SCRIPT=%RUNTIME_DIR%\auto-repair.bat"
-set "AUTO_REPAIR_SERVICE=auto-repair"
-
-if not exist "%AUTO_REPAIR_SCRIPT%" (echo ERROR: auto-repair.bat not found. & exit /b 1)
-
-sc query %AUTO_REPAIR_SERVICE% >nul 2>&1 && (
-    net stop %AUTO_REPAIR_SERVICE% >nul 2>&1
-    "%NSSM_EXE%" remove %AUTO_REPAIR_SERVICE% confirm >nul 2>&1
-)
-
-"%NSSM_EXE%" install %AUTO_REPAIR_SERVICE% "cmd.exe" || (echo ERROR: Failed to install auto-repair. & exit /b 1)
-"%NSSM_EXE%" set %AUTO_REPAIR_SERVICE% AppParameters "/c \"%AUTO_REPAIR_SCRIPT%\"" >nul
-"%NSSM_EXE%" set %AUTO_REPAIR_SERVICE% AppDirectory "%SCRIPT_DIR%" >nul
-"%NSSM_EXE%" set %AUTO_REPAIR_SERVICE% Start SERVICE_AUTO_START >nul
-"%NSSM_EXE%" set %AUTO_REPAIR_SERVICE% AppStdout "%LOG_DIR%\auto-repair.log" >nul
-"%NSSM_EXE%" set %AUTO_REPAIR_SERVICE% AppStderr "%LOG_DIR%\auto-repair-error.log" >nul
-"%NSSM_EXE%" set %AUTO_REPAIR_SERVICE% DisplayName "Auto-Repair" >nul
-"%NSSM_EXE%" set %AUTO_REPAIR_SERVICE% Description "Domain health monitor for GPU rental machine" >nul
-net start %AUTO_REPAIR_SERVICE% >nul && echo [*] Auto-repair running. || echo [!] Auto-repair will start on next boot.
-
-:: ===================================================================
-:: Run TaskScheduler.ps1
-:: ===================================================================
-echo [*] Running TaskScheduler.ps1...
+echo [*] Registering scheduled tasks...
+set "TASK_HEARTBEAT=%TASKS_DIR%\Register-HeartbeatTask.ps1"
+set "TASK_AUTO_REPAIR=%TASKS_DIR%\Register-AutoRepairTask.ps1"
+set "TASK_AUTO_UPDATE=%TASKS_DIR%\Register-AutoUpdateTask.ps1"
+set "TASK_NVIDIA_LOGON=%TASKS_DIR%\Register-NvidiaLogonTask.ps1"
+set "TASK_END_SESSION=%TASKS_DIR%\Register-EndSessionTask.ps1"
 set "TASK_SCHEDULER_SCRIPT=%TASKS_DIR%\TaskScheduler.ps1"
 
-if not exist "%TASK_SCHEDULER_SCRIPT%" (
-    echo [!] WARNING: TaskScheduler.ps1 not found at "%TASK_SCHEDULER_SCRIPT%", skipping.
+for %%F in (
+    "%TASK_HEARTBEAT%"
+    "%TASK_AUTO_REPAIR%"
+    "%TASK_AUTO_UPDATE%"
+    "%TASK_NVIDIA_LOGON%"
+    "%TASK_END_SESSION%"
+) do (
+    if not exist %%~F (
+        echo [!] WARNING: Task script not found: %%~F
+        set "TASK_REGISTER_FAILED=1"
+    )
+)
+
+if defined TASK_REGISTER_FAILED (
+    echo [!] WARNING: One or more task registration scripts are missing.
 ) else (
     powershell -ExecutionPolicy Bypass -NoProfile -File "%TASK_SCHEDULER_SCRIPT%"
     if !errorlevel! neq 0 (
         echo [!] WARNING: TaskScheduler.ps1 exited with errors.
     ) else (
-        echo [*] TaskScheduler.ps1 completed successfully.
+        echo [*] Scheduled tasks registered successfully.
     )
 )
 
