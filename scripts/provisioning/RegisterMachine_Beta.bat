@@ -224,12 +224,12 @@ taskkill /f /im sunshine.exe >nul 2>&1
 timeout /t 2 /nobreak >nul
 start "" "C:\Program Files\Sunshine\sunshine.exe"
 
-set "PS_ADDAPP=%SCRIPT_DIR%\sunshine\Add-SteamGames.ps1"
-if not exist "%PS_ADDAPP%" (
-    echo Warning: Add-SteamGames.ps1 not found at "%PS_ADDAPP%", skipping.
+set "POST_SUNSHINE_PS1=%SCRIPT_DIR%\scripts\provisioning\Invoke-PostSunshineSetup.ps1"
+if not exist "%POST_SUNSHINE_PS1%" (
+    echo Warning: Invoke-PostSunshineSetup.ps1 not found at "%POST_SUNSHINE_PS1%", skipping.
 ) else (
-    echo Running Steam game importer...
-    powershell -ExecutionPolicy Bypass -NoProfile -File "%PS_ADDAPP%"
+    echo Running post-Sunshine setup...
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%POST_SUNSHINE_PS1%"
 )
 
 echo [*] Sunshine display binding runs after VDD services are up (see end of setup).

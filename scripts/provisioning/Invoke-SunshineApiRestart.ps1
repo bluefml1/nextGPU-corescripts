@@ -89,15 +89,27 @@ function Invoke-SunshineHttpPostStatusWebRequest {
         $req.Timeout = 30000
         try {
             $resp = $req.GetResponse()
-            $code = [int][System.Net.HttpWebResponse]$resp.StatusCode
-            $resp.Close()
+            $httpResp = [System.Net.HttpWebResponse]$resp
+            $code = [int]$httpResp.StatusCode
+            $httpResp.Close()
             return [pscustomobject]@{ ExitCode = 0; HttpCode = $code; Raw = 'dotnet' }
         } catch [System.Net.WebException] {
             $we = $_.Exception
             if ($we.Response) {
-                $code = [int][System.Net.HttpWebResponse]$we.Response.StatusCode
-                $we.Response.Close()
-                return [pscustomobject]@{ ExitCode = 0; HttpCode = $code; Raw = 'dotnet' }
+                $httpResp = [System.Net.HttpWebResponse]$we.Response
+                $code = [int]$httpResp.StatusCode
+                $body = ''
+                try {
+                    $stream = $httpResp.GetResponseStream()
+                    if ($stream) {
+                        $reader = New-Object System.IO.StreamReader($stream)
+                        $body = $reader.ReadToEnd()
+                        $reader.Close()
+                    }
+                } catch { }
+                $httpResp.Close()
+                $raw = if ($body.Trim()) { $body.Trim() } else { 'dotnet' }
+                return [pscustomobject]@{ ExitCode = 0; HttpCode = $code; Raw = $raw }
             }
             # Sunshine /api/restart often drops TLS before close_notify (same as curl exit 52/56).
             if ($we.Status -in @(
@@ -179,14 +191,35 @@ function Invoke-SunshineRestartOnce {
     Write-Stamp "POST $Url (restart)..."
     # Use .NET for restart: Sunshine closes the connection immediately; curl exit 56 is success but noisy in PS 7.
     $r = Invoke-SunshineHttpPostStatusWebRequest -Url $Url -CredPair $CredPair
-    if ($r.ExitCode -eq 0 -or $r.ExitCode -eq 56 -or $r.ExitCode -eq 52) {
+    if ($null -ne $r.HttpCode) {
+        if ($r.HttpCode -ge 200 -and $r.HttpCode -lt 300) {
+            Write-Stamp "restart OK (HTTP $($r.HttpCode))."
+            return $true
+        }
+        $detail = if ($r.Raw -and $r.Raw -ne 'dotnet') { " response=$($r.Raw)" } else { '' }
+        Write-Stamp "restart FAIL (HTTP $($r.HttpCode)$detail)."
+        return $false
+    }
+    if ($r.ExitCode -eq 56 -or $r.ExitCode -eq 52) {
+        Write-Stamp 'restart OK (connection closed during restart).'
+        return $true
+    }
+    if ($r.ExitCode -eq 0) {
         Write-Stamp 'restart OK (Sunshine accepted restart; connection may close abruptly).'
         return $true
     }
     # Fallback to curl if .NET path failed for an unexpected reason.
     $r = Invoke-SunshineHttpPostStatus -CurlPath $CurlPath -Url $Url -CredPair $CredPair
-    if ($r.ExitCode -eq 0 -or $r.ExitCode -eq 56 -or $r.ExitCode -eq 52) {
-        Write-Stamp 'restart OK (curl exit 0/52/56).'
+    if ($null -ne $r.HttpCode) {
+        if ($r.HttpCode -ge 200 -and $r.HttpCode -lt 300) {
+            Write-Stamp "restart OK (HTTP $($r.HttpCode), curl)."
+            return $true
+        }
+        Write-Stamp "restart FAIL (curl exit $($r.ExitCode), http=$($r.HttpCode))."
+        return $false
+    }
+    if ($r.ExitCode -eq 56 -or $r.ExitCode -eq 52) {
+        Write-Stamp 'restart OK (curl exit 52/56).'
         return $true
     }
     Write-Stamp "restart FAIL (exit $($r.ExitCode), http=$($r.HttpCode))."
