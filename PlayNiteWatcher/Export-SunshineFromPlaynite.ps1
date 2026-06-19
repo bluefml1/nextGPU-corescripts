@@ -58,6 +58,15 @@ function Invoke-SunshineExportFromPlaynite {
     }
 
     $playniteExe = Get-PlayniteDesktopExe -InstallDir $installDir
+
+    $repair = Repair-PlayniteLibraryDatabaseIfNeeded -InstallDir $installDir -LogAction $logAction
+    if (-not $repair.Success) {
+        throw "Playnite library database could not be repaired ($($repair.DatabasePath)). Run PlayNiteWatcher\Setup-PlayniteSteam.bat -SkipInstall or Update-PlayniteLibraries.ps1."
+    }
+    if ($repair.Repaired) {
+        Write-ExportLog "Library database repaired ($($repair.InvalidReason)). Run Update-PlayniteLibraries.ps1 if Steam/Epic games are missing from export." "WARN"
+    }
+
     $games = New-Object System.Collections.Generic.List[object]
     $steamEpic = Get-ExportablePlayniteGames -InstallDir $installDir -LogAction $logAction
     foreach ($g in $steamEpic) { [void]$games.Add($g) }

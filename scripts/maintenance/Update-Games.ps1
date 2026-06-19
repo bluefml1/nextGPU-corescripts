@@ -7,12 +7,14 @@
 
 param(
     [string]$ComputerName,
-    [string]$PublicIP
+    [string]$PublicIP,
+    [switch]$ForceMoonlightRefresh
 )
 
 $API_URL   = "https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateNewGame"
 $HOST_ID   = 0
-$APPS_URL  = "http://localhost:8080/api/apps?host_id=$HOST_ID&force_refresh=false"
+$refreshFlag = if ($ForceMoonlightRefresh) { 'true' } else { 'false' }
+$APPS_URL  = "http://localhost:8080/api/apps?host_id=$HOST_ID&force_refresh=$refreshFlag"
 $DOMAIN    = $null  # auto-read from domain.txt if found
 
 $ScriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }

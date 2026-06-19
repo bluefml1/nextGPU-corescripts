@@ -18,22 +18,36 @@ function ConvertTo-ObjectArray {
     return @($InputObject)
 }
 
+function Resolve-ManifestExtractPathString {
+    param([AllowNull()]$Path)
+    if ($null -eq $Path) { return '' }
+
+    if ($Path -is [string]) {
+        return $Path.Trim().Trim('"').TrimEnd('\')
+    }
+
+    if ($Path -is [pscustomobject]) {
+        if ($null -ne $Path.PSObject.Properties['ExtractPath']) {
+            return Resolve-ManifestExtractPathString -Path $Path.ExtractPath
+        }
+        if ($null -ne $Path.PSObject.Properties['FullName']) {
+            return Resolve-ManifestExtractPathString -Path ([string]$Path.FullName)
+        }
+    }
+
+    $last = ''
+    foreach ($item in @($Path)) {
+        if ($null -eq $item) { continue }
+        $s = Resolve-ManifestExtractPathString -Path $item
+        if ($s) { $last = $s }
+    }
+    return $last
+}
+
 function Get-ManifestEntryExtractPath {
     param([Parameter(Mandatory)]$Entry)
     if ($null -eq $Entry) { return '' }
-    $v = $Entry.ExtractPath
-    if ($null -eq $v) { return '' }
-    if ($v -is [string]) {
-        return $v.Trim().Trim('"').TrimEnd('\')
-    }
-    foreach ($item in @($v)) {
-        if ($null -eq $item) { continue }
-        if ($item -is [string]) {
-            $s = $item.Trim().Trim('"').TrimEnd('\')
-            if ($s) { return $s }
-        }
-    }
-    return ''
+    return Resolve-ManifestExtractPathString -Path $Entry.ExtractPath
 }
 
 function Get-ManifestEntryType {
@@ -567,4 +581,319 @@ function Update-DownloadManifest {
 
 function Get-ArrangeGamesAppsLogPath {
     return Join-Path (Get-NextGpuLogsDirectory) 'arrange-games-apps.log'
+}
+
+function Test-IsNonSystemDriveLetter {
+    param([Parameter(Mandatory)][string]$DriveLetter)
+    $letter = $DriveLetter.Trim().TrimEnd(':').ToUpperInvariant()
+    return ($letter -and $letter -ne 'C')
+}
+
+function Test-IsLocalFixedDriveLetter {
+    param([Parameter(Mandatory)][string]$DriveLetter)
+    $letter = $DriveLetter.Trim().TrimEnd(':').ToUpperInvariant()
+    if (-not $letter) { return $false }
+    if ($letter -eq 'C') { return $false }
+    $psd = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction SilentlyContinue
+    if (-not $psd) { return $false }
+    if ($psd.DisplayRoot) { return $false }
+    return (Test-Path -LiteralPath "${letter}:\")
+}
+
+function Get-GamesDriveLetterFromManifest {
+    param([object[]]$Entries = @())
+    $counts = @{}
+    foreach ($e in @(ConvertTo-ObjectArray $Entries)) {
+        $extract = Get-ManifestEntryExtractPath -Entry $e
+        if ([string]::IsNullOrWhiteSpace($extract)) { continue }
+        try {
+            $root = [System.IO.Path]::GetPathRoot($extract)
+            if ([string]::IsNullOrWhiteSpace($root)) { continue }
+            $letter = $root.TrimEnd('\').TrimEnd(':').ToUpperInvariant()
+            if (-not (Test-IsNonSystemDriveLetter -DriveLetter $letter)) { continue }
+            if (-not $counts.ContainsKey($letter)) { $counts[$letter] = 0 }
+            $counts[$letter]++
+        }
+        catch { }
+    }
+    if ($counts.Count -eq 0) { return $null }
+    return ($counts.GetEnumerator() | Sort-Object -Property Value -Descending | Select-Object -First 1).Name
+}
+
+function Get-GamesDriveLetter {
+    param([object[]]$Entries = @())
+    $fromManifest = Get-GamesDriveLetterFromManifest -Entries $Entries
+    if ($fromManifest) {
+        if (Test-IsLocalFixedDriveLetter -DriveLetter $fromManifest) { return $fromManifest }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:NEXTGPU_SYNC_DRIVE)) {
+        $preferred = $env:NEXTGPU_SYNC_DRIVE.Trim().TrimEnd(':').ToUpperInvariant()
+        if (Test-IsLocalFixedDriveLetter -DriveLetter $preferred) { return $preferred }
+    }
+
+    $syncTarget = Get-ConfiguredSyncTargetPath
+    if ($syncTarget) {
+        try {
+            $root = [System.IO.Path]::GetPathRoot($syncTarget)
+            $letter = $root.TrimEnd('\').TrimEnd(':')
+            if (Test-IsLocalFixedDriveLetter -DriveLetter $letter) { return $letter }
+        }
+        catch { }
+    }
+
+    if (Test-IsLocalFixedDriveLetter -DriveLetter 'Z') { return 'Z' }
+
+    $local = @(Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue |
+        Where-Object { -not $_.DisplayRoot -and $_.Name -ne 'C' } |
+        Sort-Object Free -Descending)
+    if ($local.Count -gt 0) { return $local[0].Name }
+
+    if ($fromManifest) { return $fromManifest }
+    return $null
+}
+
+function Resolve-SteamInstallTargetPath {
+    param([object[]]$Entries = @())
+    $driveLetter = Get-GamesDriveLetter -Entries $Entries
+    if (-not $driveLetter) {
+        throw 'Could not determine games drive for Steam install. Create the games partition (Step 2) or run Sync Game/Apps first.'
+    }
+    if (-not (Test-IsLocalFixedDriveLetter -DriveLetter $driveLetter)) {
+        throw "Games drive ${driveLetter}: is not available. Create the partition (Step 2) or run Sync Game/Apps first."
+    }
+
+    $defaultTarget = Join-Path "${driveLetter}:\" 'Steam'
+    $defaultTarget = [System.IO.Path]::GetFullPath($defaultTarget)
+
+    foreach ($e in @(ConvertTo-ObjectArray $Entries)) {
+        if ((Get-ManifestEntryType -Entry $e) -ine 'Steam app') { continue }
+        $extract = Get-ManifestEntryExtractPath -Entry $e
+        if ([string]::IsNullOrWhiteSpace($extract)) { continue }
+        try {
+            $full = [System.IO.Path]::GetFullPath($extract.TrimEnd('\'))
+            $root = [System.IO.Path]::GetPathRoot($full)
+            $letter = $root.TrimEnd('\').TrimEnd(':')
+            if ($letter -ieq $driveLetter) {
+                if (-not (Test-IsSteamClientPath -Path $full)) {
+                    return $full
+                }
+            }
+        }
+        catch { }
+    }
+
+    return $defaultTarget
+}
+
+function Find-ExistingSteamClientPath {
+    param([object[]]$Entries = @())
+
+    foreach ($path in @(
+            (Get-SteamInstallPathFromRegistry),
+            (Get-ConfiguredSteamInstallPath)
+        )) {
+        if ($path -and (Test-IsSteamClientPath -Path $path)) { return $path }
+    }
+
+    foreach ($e in @(ConvertTo-ObjectArray $Entries)) {
+        if (-not (Test-ManifestEntryIsSteamClient -Entry $e)) { continue }
+        $extract = Get-ManifestEntryExtractPath -Entry $e
+        if ([string]::IsNullOrWhiteSpace($extract)) { continue }
+        if (Test-IsSteamClientPath -Path $extract) { return [System.IO.Path]::GetFullPath($extract) }
+        $nested = Find-SteamClientPathUnderDirectory -Root $extract
+        if ($nested) { return $nested }
+    }
+
+    foreach ($candidate in @(Get-SteamInstallCandidatesFromManifest -Entries $Entries)) {
+        if (Test-IsSteamClientPath -Path $candidate) { return $candidate }
+    }
+
+    return $null
+}
+
+function Register-SteamInstallPath {
+    param(
+        [Parameter(Mandatory)][string]$SteamPath,
+        [scriptblock]$LogAction = $null
+    )
+
+    $write = if ($LogAction) { $LogAction } else { { param($Message, $Level) } }
+    $steamPath = $SteamPath.Trim().TrimEnd('\')
+    if (-not (Test-IsSteamClientPath -Path $steamPath)) {
+        throw "Not a valid Steam client folder: $steamPath"
+    }
+
+    $keyPath = 'HKLM:\SOFTWARE\WOW6432Node\Valve\Steam'
+    if (-not (Test-Path -LiteralPath $keyPath)) {
+        New-Item -Path $keyPath -Force | Out-Null
+    }
+
+    $current = $null
+    try {
+        $current = (Get-ItemProperty -LiteralPath $keyPath -Name InstallPath -ErrorAction Stop).InstallPath
+    }
+    catch { }
+
+    if ($current -and ($current.TrimEnd('\') -ieq $steamPath)) {
+        return $false
+    }
+
+    Set-ItemProperty -LiteralPath $keyPath -Name InstallPath -Value $steamPath
+    & $write "Registered Steam InstallPath in registry: $steamPath" 'INFO'
+    return $true
+}
+
+function Ensure-SteamClientForArrange {
+    param(
+        [Parameter(Mandatory)][object[]]$Entries,
+        [string]$LogPath = '',
+        [bool]$UseGui = $true
+    )
+
+    $existing = Find-ExistingSteamClientPath -Entries $Entries
+    if ($existing) {
+        $line = "Steam client already installed: $existing"
+        if ($LogPath) {
+            Add-Content -LiteralPath $LogPath -Value ('[{0}] {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $line) -Encoding UTF8 -ErrorAction SilentlyContinue
+        }
+        Write-Host "[OK] $line" -ForegroundColor Green
+        try {
+            Register-SteamInstallPath -SteamPath $existing | Out-Null
+        }
+        catch {
+            Write-Host "[WARN] Could not register Steam in registry: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+        return $existing
+    }
+
+    if ([string]::IsNullOrWhiteSpace($LogPath)) {
+        $LogPath = Get-ArrangeGamesAppsLogPath
+    }
+
+    $targetPath = Resolve-SteamInstallTargetPath -Entries $Entries
+    Write-Host "[*] No Steam client found. Installing to $targetPath ..." -ForegroundColor Cyan
+    if ($LogPath) {
+        Add-Content -LiteralPath $LogPath -Value ('[{0}] Auto-install Steam to {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $targetPath) -Encoding UTF8 -ErrorAction SilentlyContinue
+    }
+
+    if ($UseGui) {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+        $confirm = [System.Windows.Forms.MessageBox]::Show(
+            "Steam client was not found on this machine.`n`nDownload and install Steam to:`n$targetPath`n`nContinue?",
+            'Install Steam',
+            'YesNo',
+            'Question')
+        if ($confirm -ne 'Yes') {
+            throw 'Steam auto-install cancelled.'
+        }
+    }
+
+    $manifestPath = Get-ResolvedDownloadManifestPath
+    return Install-SteamClientSilent -TargetPath $targetPath -LogPath $LogPath -ManifestPath $manifestPath
+}
+
+$script:InstallSteamClientScriptPath = Join-Path $PSScriptRoot 'Install-SteamClient.ps1'
+if (Test-Path -LiteralPath $script:InstallSteamClientScriptPath) {
+    . $script:InstallSteamClientScriptPath
+}
+
+$script:InstallLevelUpClientScriptPath = Join-Path $PSScriptRoot 'Install-LevelUpClient.ps1'
+if (Test-Path -LiteralPath $script:InstallLevelUpClientScriptPath) {
+    . $script:InstallLevelUpClientScriptPath
+}
+
+$script:InstallGarenaClientScriptPath = Join-Path $PSScriptRoot 'Install-GarenaClient.ps1'
+if (Test-Path -LiteralPath $script:InstallGarenaClientScriptPath) {
+    . $script:InstallGarenaClientScriptPath
+}
+
+function Ensure-GarenaForArrange {
+    param(
+        [Parameter(Mandatory)][object[]]$Entries,
+        [string]$LogPath = '',
+        [bool]$UseGui = $true
+    )
+
+    $existing = Find-ExistingGarenaSyncPath -Entries $Entries
+    if ($existing) {
+        $line = "Garena already synced: $existing"
+        if ($LogPath) {
+            Add-Content -LiteralPath $LogPath -Value ('[{0}] {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $line) -Encoding UTF8 -ErrorAction SilentlyContinue
+        }
+        Write-Host "[OK] $line" -ForegroundColor Green
+        return (Resolve-ManifestExtractPathString -Path $existing)
+    }
+
+    if ([string]::IsNullOrWhiteSpace($LogPath)) {
+        $LogPath = Get-ArrangeGamesAppsLogPath
+    }
+
+    $targetFolder = Resolve-GarenaSyncTargetFolder -Entries $Entries
+    $bundleArchive = Get-GarenaBundleArchiveName
+    Write-Host "[*] Garena not synced. Downloading $bundleArchive to $targetFolder ..." -ForegroundColor Cyan
+    if ($LogPath) {
+        Add-Content -LiteralPath $LogPath -Value ('[{0}] Auto-sync Garena ({1}) to {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $bundleArchive, $targetFolder) -Encoding UTF8 -ErrorAction SilentlyContinue
+    }
+
+    if ($UseGui) {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+        $confirm = [System.Windows.Forms.MessageBox]::Show(
+            "Garena was not found on this machine.`n`nDownload and extract $bundleArchive to:`n$targetFolder`n`nContinue?",
+            'Install Garena',
+            'YesNo',
+            'Question')
+        if ($confirm -ne 'Yes') {
+            throw 'Garena auto-install cancelled.'
+        }
+    }
+
+    $manifestPath = Get-ResolvedDownloadManifestPath
+    $installedPath = Install-GarenaClientSilent -TargetFolder $targetFolder -LogPath $LogPath -ManifestPath $manifestPath
+    return (Resolve-ManifestExtractPathString -Path $installedPath)
+}
+
+function Ensure-LevelUpForArrange {
+    param(
+        [Parameter(Mandatory)][object[]]$Entries,
+        [string]$LogPath = '',
+        [bool]$UseGui = $true
+    )
+
+    $existing = Find-ExistingLevelUpSyncPath -Entries $Entries
+    if ($existing) {
+        $line = "LevelUp already synced: $existing"
+        if ($LogPath) {
+            Add-Content -LiteralPath $LogPath -Value ('[{0}] {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $line) -Encoding UTF8 -ErrorAction SilentlyContinue
+        }
+        Write-Host "[OK] $line" -ForegroundColor Green
+        return (Resolve-ManifestExtractPathString -Path $existing)
+    }
+
+    if ([string]::IsNullOrWhiteSpace($LogPath)) {
+        $LogPath = Get-ArrangeGamesAppsLogPath
+    }
+
+    $targetFolder = Resolve-LevelUpSyncTargetFolder -Entries $Entries
+    $bundleArchive = Get-LevelUpBundleArchiveName
+    Write-Host "[*] LevelUp not synced. Downloading $bundleArchive to $targetFolder ..." -ForegroundColor Cyan
+    if ($LogPath) {
+        Add-Content -LiteralPath $LogPath -Value ('[{0}] Auto-sync LevelUp ({1}) to {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $bundleArchive, $targetFolder) -Encoding UTF8 -ErrorAction SilentlyContinue
+    }
+
+    if ($UseGui) {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+        $confirm = [System.Windows.Forms.MessageBox]::Show(
+            "LevelUp was not found on this machine.`n`nDownload and extract $bundleArchive to:`n$targetFolder`n`nContinue?",
+            'Install LevelUp',
+            'YesNo',
+            'Question')
+        if ($confirm -ne 'Yes') {
+            throw 'LevelUp auto-install cancelled.'
+        }
+    }
+
+    $manifestPath = Get-ResolvedDownloadManifestPath
+    $installedPath = Install-LevelUpClientSilent -TargetFolder $targetFolder -LogPath $LogPath -ManifestPath $manifestPath
+    return (Resolve-ManifestExtractPathString -Path $installedPath)
 }

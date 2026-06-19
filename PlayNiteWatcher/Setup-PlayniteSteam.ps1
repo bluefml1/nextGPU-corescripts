@@ -10,6 +10,7 @@
     Default run: portable install, Steam/Epic disk-scan config, and --updatelibraries only.
     Steam discovery: machine registry/paths first, then R2 sync manifest (sync-games-apps-downloaded.txt).
     Sunshine/Moonlight export and PlayNiteWatcher are separate; use -WithSunshine to include them in setup.
+    With -WithSunshine, also pushes the Moonlight app list to AWS using domain.txt after export.
 .PARAMETER WithSunshine
     Also run headless Sunshine export and PlayNiteWatcher install (and copy SunshineAppExport when -FullSetup).
 .PARAMETER SkipInstall
@@ -22,6 +23,8 @@
     Do not run Export-SunshineFromPlaynite.ps1.
 .PARAMETER SkipWatcherInstall
     Do not run Install-PlayniteWatcher.ps1.
+.PARAMETER SkipAwsPush
+    Do not push Moonlight games to AWS after Sunshine export (default: push when -WithSunshine).
 .PARAMETER SunshineConfigDir
     Sunshine config folder (default: C:\Program Files\Sunshine\config).
 .PARAMETER LaunchPlaynite
@@ -55,6 +58,7 @@ param(
     [switch]$WithSunshine,
     [switch]$SkipSunshineExport,
     [switch]$SkipWatcherInstall,
+    [switch]$SkipAwsPush,
     [switch]$SkipSunshineExtension,
     [switch]$SkipDesktopImport,
     [switch]$LaunchPlaynite,
@@ -107,6 +111,7 @@ else {
 
 $script:RunSunshinePipeline = (-not $SkipSunshineExport) -or (-not $SkipWatcherInstall)
 $script:RunDesktopImport = (-not $SkipDesktopImport)
+$script:RunAwsPush = $WithSunshine -and (-not $SkipAwsPush)
 
 $script:SteamPluginId = "CB91DFC9-B977-43BF-8E70-55F46E410FAB"
 $script:EpicPluginId = "00000002-DBD1-46C6-B5D0-B1BA559D10E4"
@@ -135,38 +140,6 @@ function Get-SavedPlayniteInstallPath {
     return Read-SavedPlayniteInstallPath -RepoRoot $script:PlayNiteWatcherRepoRoot
 }
 
-function Show-PlayniteInstallFolderDialog {
-    param([string]$InitialDirectory)
-
-    Add-Type -AssemblyName System.Windows.Forms | Out-Null
-    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-    $dialog.Description = "Select a parent folder for Playnite portable. A Playnite subfolder is created automatically inside your selection."
-    $dialog.ShowNewFolderButton = $true
-
-    $start = $InitialDirectory
-    if ([string]::IsNullOrWhiteSpace($start)) {
-        $start = [Environment]::GetFolderPath('MyDocuments')
-    }
-    $root = [System.IO.Path]::GetPathRoot($start)
-    if ($root -and (Test-Path -LiteralPath $root)) {
-        if (Test-Path -LiteralPath $start) {
-            $dialog.SelectedPath = $start
-        }
-        else {
-            $parent = Split-Path -Path $start -Parent
-            if ($parent -and (Test-Path -LiteralPath $parent)) {
-                $dialog.SelectedPath = $parent
-            }
-        }
-    }
-
-    $result = $dialog.ShowDialog()
-    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-        return $dialog.SelectedPath
-    }
-    return $null
-}
-
 function Resolve-PlayniteInstallDirectory {
     if (-not [string]::IsNullOrWhiteSpace($PlayniteInstallDir)) {
         $expanded = Expand-PlayniteInstallDirectory -Path $PlayniteInstallDir
@@ -181,15 +154,24 @@ function Resolve-PlayniteInstallDirectory {
         }
     }
 
-    $defaultStart = [Environment]::GetFolderPath('MyDocuments')
+    $defaultStart = ""
     $savedForDialog = Get-SavedPlayniteInstallPath
     if ($savedForDialog) {
         $defaultStart = $savedForDialog
     }
 
     Write-SetupLog "Choose a folder for Playnite portable (program + library data)."
-    $picked = Show-PlayniteInstallFolderDialog -InitialDirectory $defaultStart
+    $picked = Show-PlayniteInstallFolderDialog `
+        -InitialDirectory $defaultStart `
+        -AnchorInitialToDriveRoot
     if ($picked) {
+        if (Test-PlayniteInstallParentInsideWatcherScripts -ParentPath $picked -WatcherScriptsRoot $script:SetupScriptRoot) {
+            throw @"
+Playnite cannot be installed inside the PlayNiteWatcher scripts folder.
+Pick a parent folder on a local drive (for example C:\Playnite or Z:\Playnite), then run setup again.
+"@
+        }
+
         $expanded = Expand-PlayniteInstallDirectory -Path $picked
         Write-SetupLog "Selected: $picked -> Install folder: $expanded"
         return $expanded
@@ -966,6 +948,67 @@ function Invoke-HeadlessSunshinePipeline {
     }
 }
 
+function Invoke-PushMoonlightGamesToAws {
+    $coreRepo = Get-NextGpuCoreRepoRootFromWatcher -WatcherRoot $script:PlayNiteWatcherRepoRoot
+    if (-not $coreRepo) {
+        Write-SetupLog "AWS game push skipped: could not resolve nextGPU repo root." "WARN"
+        return $false
+    }
+
+    $domainFile = Join-Path $coreRepo "domain.txt"
+    if (-not (Test-Path -LiteralPath $domainFile)) {
+        Write-SetupLog "AWS game push skipped: domain.txt not found (run RegisterMachine first)." "WARN"
+        return $false
+    }
+
+    $computerName = $null
+    $publicIp = $null
+    foreach ($line in Get-Content -LiteralPath $domainFile) {
+        if (-not $computerName -and $line -match "^COMPUTER_NAME=(.+)") { $computerName = $matches[1].Trim() }
+        if (-not $publicIp -and $line -match "^PUBLIC_IP=(.+)") { $publicIp = $matches[1].Trim() }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($computerName) -or [string]::IsNullOrWhiteSpace($publicIp)) {
+        Write-SetupLog "AWS game push skipped: domain.txt missing COMPUTER_NAME or PUBLIC_IP." "WARN"
+        return $false
+    }
+
+    $updateScript = Join-Path $coreRepo "scripts\maintenance\Update-Games.ps1"
+    if (-not (Test-Path -LiteralPath $updateScript)) {
+        Write-SetupLog "AWS game push skipped: Update-Games.ps1 not found at $updateScript" "WARN"
+        return $false
+    }
+
+    $mlSvc = Get-Service -Name 'moonlight-web' -ErrorAction SilentlyContinue
+    if (-not $mlSvc -or $mlSvc.Status -ne 'Running') {
+        Write-SetupLog "AWS game push skipped: moonlight-web service is not running." "WARN"
+        return $false
+    }
+
+    $env:NEXTGPU_REPO_ROOT = $coreRepo
+    Write-SetupLog "Pushing Moonlight games to AWS (computer_name=$computerName, publicIP=$publicIp)..."
+
+    # Sunshine restart during export can lag Moonlight's app cache; wait and force refresh.
+    Start-Sleep -Seconds 5
+
+    $maxAttempts = 3
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        if ($attempt -gt 1) {
+            Write-SetupLog "Retrying AWS game push (attempt $attempt/$maxAttempts)..." "WARN"
+            Start-Sleep -Seconds 5
+        }
+
+        & $updateScript -ComputerName $computerName -PublicIP $publicIp -ForceMoonlightRefresh
+        if ($LASTEXITCODE -eq 0) {
+            Write-SetupLog "Moonlight games pushed to AWS successfully." "INFO"
+            return $true
+        }
+    }
+
+    Write-SetupLog "AWS game push failed after $maxAttempts attempt(s). Re-run Push Moonlight Games to AWS from the User Experience tab." "WARN"
+    return $false
+}
+
 function Invoke-SetupDesktopAppImport {
     param(
         [string]$PlayniteInstallDir,
@@ -1029,6 +1072,11 @@ Desktop apps: imported from config\playnite\desktop-apps.allowlist.json (Everyth
 
 Sunshine/Moonlight (ran during setup): desktop + Steam/Epic export and PlayNiteWatcher install completed.
 "@
+        if ($script:RunAwsPush) {
+            $text += @"
+AWS: Moonlight game list was pushed to nextGPU servers using domain.txt.
+"@
+        }
     }
     else {
         $text += @"
@@ -1061,6 +1109,7 @@ try {
         if ($script:RunDesktopImport) { $script:SetupStepTotal++ }
         if (-not $SkipSunshineExtension) { $script:SetupStepTotal++ }
         if ($script:RunSunshinePipeline) { $script:SetupStepTotal++ }
+        if ($script:RunAwsPush) { $script:SetupStepTotal++ }
         if ($LaunchPlaynite) { $script:SetupStepTotal++ }
         $step = 1
 
@@ -1144,6 +1193,12 @@ try {
             Write-SetupLog "Skipped Sunshine/Moonlight steps (use -WithSunshine to include export + PlayNiteWatcher)."
         }
 
+        if ($script:RunAwsPush) {
+            Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Push Moonlight games to AWS"
+            $step++
+            Invoke-PushMoonlightGamesToAws | Out-Null
+        }
+
         Stop-PlayniteProcess -PlayniteExe $playniteExe
         Write-SetupLog "Ensured Playnite is closed so games.db is not locked (only one instance may use the library)."
 
@@ -1167,6 +1222,7 @@ try {
         if ($script:RunDesktopImport) { $script:SetupStepTotal++ }
         if (-not $SkipSunshineExtension) { $script:SetupStepTotal++ }
         if ($script:RunSunshinePipeline) { $script:SetupStepTotal++ }
+        if ($script:RunAwsPush) { $script:SetupStepTotal++ }
         $step = 1
 
         Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Resolve Playnite portable install folder"
@@ -1273,6 +1329,12 @@ try {
         }
         else {
             Write-SetupLog "Skipped Sunshine/Moonlight steps (use -WithSunshine to include export + PlayNiteWatcher)."
+        }
+
+        if ($script:RunAwsPush) {
+            Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Push Moonlight games to AWS"
+            $step++
+            Invoke-PushMoonlightGamesToAws | Out-Null
         }
 
         Stop-PlayniteProcess -PlayniteExe $playniteExe

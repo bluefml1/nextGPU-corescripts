@@ -28,7 +28,7 @@ The batch file runs **`Setup-PlayniteSteam.ps1 -PickInstallFolder -WithSunshine`
 8. When prompted, choose a **drive or folder** for desktop app search (e.g. `Z:\` or `Z:\Adobe`), or **all non-system drives**.
 9. Wait until the window finishes. Check **`Setup-PlayniteSteam.log`** in the repo if anything fails.
 
-**Done.** Playnite is installed, Steam/Epic libraries are updated, desktop apps are synced into `library\games.db`, and Sunshine export runs when `-WithSunshine` is used. Path is saved in **`PlayniteInstall.path`** in this repo.
+**Done.** Playnite is installed, Steam/Epic libraries are updated, desktop apps are synced into `library\games.db`, Sunshine export runs when `-WithSunshine` is used, and the Moonlight app list is pushed to AWS from `domain.txt`. Path is saved in **`PlayniteInstall.path`** in this repo.
 
 ### Playnite-only (no desktop import / Sunshine)
 

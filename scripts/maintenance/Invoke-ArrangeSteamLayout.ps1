@@ -543,6 +543,9 @@ function Invoke-ArrangeSteamLayout {
         throw 'No entries in download manifest.'
     }
 
+    Ensure-SteamClientForArrange -Entries $entries -LogPath $logPath -UseGui:$UseGui | Out-Null
+    $entries = ConvertTo-ObjectArray (Read-DownloadManifestEntries -ManifestPath $manifestPath)
+
     $steamRoot = Resolve-SteamClientRoot -Entries $entries -UseGui:$UseGui
     if (-not $steamRoot) {
         $steamRoot = Pick-SteamClientRootFolder -Entries $entries -UseGui:$UseGui

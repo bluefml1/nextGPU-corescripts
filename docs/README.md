@@ -106,7 +106,8 @@ The root launcher delegates to `scripts/provisioning/RegisterMachine_Beta.bat`. 
    - Removes any existing install under `C:\Program Files\Sunshine`.
    - Downloads `sunshine.zip` from [nextGPU-sunshine releases](https://github.com/bluefml1/nextGPU-sunshine/releases/latest).
    - Silent install (`Sunshine.exe /S`), sets credentials, starts Sunshine.
-   - Runs `sunshine\Add-SteamGames.ps1` if present (imports Steam library into Sunshine).
+   - Runs `scripts\runtime\Run-StreamingStackUpdate.bat` → `Update-NextGpuStreamingStack.ps1` (shared Sunshine/Moonlight update, pairing, repo conf, VDD, PlayNite export).
+   - Game publishing requires Get Started step 05 / `PlayNiteWatcher\Setup-PlayniteSteam.bat` if PlayNite is not configured yet. After installing new games on disk, run `PlayNiteWatcher\Update-PlayniteLibraries.bat` then export (or post-Sunshine setup with `-RefreshPlayniteLibrary`).
    - **`setup_sunshine_device_id` subroutine:**
      - `Get-DisplayDeviceId.ps1` resolves the VDD monitor device ID for logging; writes `dd_configuration_option = ensure_only_display` and `dd_config_revert_on_disconnect = enabled` into `sunshine.conf` (does **not** set `output_name`; set manually if you need a fixed VDD head), then restarts Sunshine.
 
@@ -231,12 +232,34 @@ Every **60 seconds** (after network is reachable):
 
 Skips repair when `domain.txt` has `STATUS=updating`.
 
+On full repair, runs `scripts/runtime/Run-StreamingStackUpdate.bat ForceReinstall ForceReinstall ForcePairing` → `Update-NextGpuStreamingStack.ps1` (same Sunshine/Moonlight/pairing path as update scripts, but always reinstalls and re-pairs).
+
+### Shared streaming stack (`Update-NextGpuStreamingStack.ps1`)
+
+`auto-update.bat`, `checking-update.bat`, and `auto-repair.bat` no longer duplicate Sunshine/Moonlight logic. They call `scripts/runtime/Run-StreamingStackUpdate.bat`, which invokes `scripts/provisioning/Update-NextGpuStreamingStack.ps1`.
+
+| Caller | Sunshine mode | Moonlight mode | Pairing |
+|--------|---------------|----------------|---------|
+| `auto-update.bat` | `CheckUpdate` | `CheckUpdate` | After update only |
+| `checking-update.bat` | `CheckUpdate` | `CheckUpdate` | After update only |
+| `auto-repair.bat` (full repair) | `ForceReinstall` | `ForceReinstall` | Always (`ForcePairing`) |
+
+After Sunshine install/reinstall, the stack runs `Invoke-PostSunshineSetup.ps1`:
+
+1. `Install-SunshineScripts.ps1` — repo `sunshine.conf` → `config/`, `dd_*` settings, support scripts
+2. `Set-SunshineVddOutput.ps1` — up to 6 retries with Sunshine restart; resolves VDD `device_id` from display paths and/or `sunshine.log` (log wins when present); writes `output_name` to `sunshine.conf` (logs to `logs/sunshine-vdd-setup.log`; WARN only if not resolved)
+3. PlayNite export when `PlayNiteWatcher\PlayniteInstall.path` exists
+
+`RegisterMachine_Beta.bat` `:setup_sunshine_device_id` is unchanged (writes `dd_*` only; does not set `output_name` automatically).
+
 ### Other maintenance scripts (not run by main setup)
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/runtime/auto-update.bat` | Separate update flow (not installed as a service by `RegisterMachine_Beta.bat`) |
-| `scripts/runtime/checking-update.bat` | Update check helper |
+| `scripts/runtime/auto-update.bat` | Remote-triggered update; uses shared streaming stack (`CheckUpdate`) |
+| `scripts/runtime/checking-update.bat` | Periodic update check; uses shared streaming stack (`CheckUpdate`) |
+| `scripts/runtime/Run-StreamingStackUpdate.bat` | Thin wrapper for `Update-NextGpuStreamingStack.ps1` |
+| `scripts/provisioning/Update-NextGpuStreamingStack.ps1` | Sunshine + Moonlight install/update/pairing (single source of truth) |
 | `scripts/maintenance/copy.bat` / `scripts/maintenance/extract.bat` / `scripts/maintenance/garena.bat` | Image-specific game/app deployment |
 | `scripts/drivers/InstallVDD-VAD.bat` | Standalone VDD+VAD installer wrapper |
 
@@ -286,7 +309,7 @@ nextGPU-corescripts/
 │   └── auto-repair-error.log
 ├── moonlight-web/                # Downloaded at setup
 ├── nssm/                         # NSSM binaries
-├── sunshine/                     # Extracted installer + Add-SteamGames.ps1
+├── sunshine/                     # Extracted installer + support scripts (legacy Add-SteamGames.ps1)
 └── cloudflared.exe               # Downloaded if missing
 ```
 
@@ -334,7 +357,7 @@ This is separate from R2 games sync (`Sync-GamesApps-Official.ps1`). Uninstall r
 | Symptom | What to check |
 |---------|----------------|
 | Setup exits at WMI step | `logs/wmi-probe.log`, run `scripts/provisioning/Ensure-WmiSupport.ps1` manually |
-| No virtual display in Sunshine | Inspect `logs\VDD-VAD.log`, reboot, then run `Get-DisplayDeviceId.ps1 -ListAll -IncludeInactive` |
+| No virtual display in Sunshine | Inspect `logs\VDD-VAD.log`, `logs\sunshine-vdd-setup.log`, reboot, then run `Get-DisplayDeviceId.ps1 -ListAll -IncludeInactive` |
 | Pairing warnings | Sunshine running? Firewall on 47990? See Moonlight logs in `%TEMP%` |
 | Heartbeat errors | `domain.txt` exists? `gpu-heartbeat` service running? Check `logs/heartbeat.log`. |
 | Public URL not loading | `sc query cloudflared`, tunnel DNS in Cloudflare dashboard |

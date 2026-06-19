@@ -90,7 +90,7 @@ public partial class GetStartedPage : Page
             new StepItem(
                 "06",
                 "Implement PlayNite",
-                "Run after RegisterMachine (Sunshine must exist). Requires 7-Zip or WinRAR, Steam/Epic games on disk, and optional Everything + config\\playnite\\desktop-apps.allowlist.json. Installs portable PlayNite, imports libraries, exports to Sunshine, and installs PlayNiteWatcher.",
+                "Run after RegisterMachine (Sunshine must exist). Requires 7-Zip or WinRAR, Steam/Epic games on disk, and optional Everything + config\\playnite\\desktop-apps.allowlist.json. Installs portable PlayNite, imports libraries, exports to Sunshine, installs PlayNiteWatcher, and pushes Moonlight games to AWS from domain.txt.",
                 "Run PlayNite Setup",
                 () => RunBatch(@"PlayNiteWatcher\Setup-PlayniteSteam.bat", keepConsoleOpen: true),
                 "Open PlayNite Tab",

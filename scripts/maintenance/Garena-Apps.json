@@ -1,0 +1,12 @@
+{
+  "templateInstallRoot": "Z:\\Garena",
+  "templateUserId": "233351997",
+  "apps": {
+    "32837": {
+      "displayName": "FC Online",
+      "templateInstallPath": "Z:\\Garena\\Games\\32837",
+      "installSubfolder": "32837",
+      "manifestLeaves": ["FCONLINE"]
+    }
+  }
+}

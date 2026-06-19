@@ -4,12 +4,18 @@
     Arrange synced games/apps into launcher-specific layouts.
 .PARAMETER Steam
     Run Steam steamapps layout arrange (skip menu).
+.PARAMETER LevelUp
+    Run LevelUp deploy and games.json path arrange (skip menu).
+.PARAMETER Garena
+    Run Garena client deploy, gxx to ProgramData, and user.dat install path arrange (skip menu).
 .PARAMETER NoGui
     Console prompts only.
 #>
 [CmdletBinding()]
 param(
     [switch]$Steam,
+    [switch]$LevelUp,
+    [switch]$Garena,
     [switch]$NoGui
 )
 
@@ -27,6 +33,18 @@ if (-not (Test-Path -LiteralPath $steamArrangePath)) {
 }
 . $steamArrangePath
 
+$levelUpArrangePath = Join-Path $PSScriptRoot 'Invoke-ArrangeLevelUpLayout.ps1'
+if (-not (Test-Path -LiteralPath $levelUpArrangePath)) {
+    throw "Required file missing: $levelUpArrangePath (copy from nextGPU-corescripts\scripts\maintenance\)."
+}
+. $levelUpArrangePath
+
+$garenaArrangePath = Join-Path $PSScriptRoot 'Invoke-ArrangeGarenaLayout.ps1'
+if (-not (Test-Path -LiteralPath $garenaArrangePath)) {
+    throw "Required file missing: $garenaArrangePath (copy from nextGPU-corescripts\scripts\maintenance\)."
+}
+. $garenaArrangePath
+
 function Write-Step([string]$Message) { Write-Host ''; Write-Host "[*] $Message" -ForegroundColor Cyan }
 function Write-Ok([string]$Message) { Write-Host "[OK] $Message" -ForegroundColor Green }
 function Write-Warn([string]$Message) { Write-Host "[WARN] $Message" -ForegroundColor Yellow }
@@ -38,11 +56,13 @@ function Show-ArrangePlatformMenu {
         $form = New-Object System.Windows.Forms.Form
         $form.Text = 'Arrange Games/Apps'
         $form.Width = 360
-        $form.Height = 220
+        $form.Height = 260
         $form.StartPosition = 'CenterScreen'
         $form.FormBorderStyle = 'FixedDialog'
         $form.MaximizeBox = $false
         $form.MinimizeBox = $false
+
+        $script:ArrangePlatformChoice = $null
 
         $lbl = New-Object System.Windows.Forms.Label
         $lbl.Text = 'Choose platform:'
@@ -57,50 +77,48 @@ function Show-ArrangePlatformMenu {
         $btnSteam.Top = 48
         $btnSteam.Width = 310
         $btnSteam.Height = 32
-        $btnSteam.DialogResult = [System.Windows.Forms.DialogResult]::Yes
+        $btnSteam.Add_Click({ $script:ArrangePlatformChoice = 'Steam'; $form.Close() })
         $form.Controls.Add($btnSteam)
 
         $btnLevel = New-Object System.Windows.Forms.Button
-        $btnLevel.Text = 'LevelUp (coming soon)'
+        $btnLevel.Text = 'LevelUp'
         $btnLevel.Left = 16
         $btnLevel.Top = 88
         $btnLevel.Width = 310
         $btnLevel.Height = 32
-        $btnLevel.Enabled = $false
+        $btnLevel.Add_Click({ $script:ArrangePlatformChoice = 'LevelUp'; $form.Close() })
         $form.Controls.Add($btnLevel)
 
-        $btnHoyo = New-Object System.Windows.Forms.Button
-        $btnHoyo.Text = 'HoyoPlay (coming soon)'
-        $btnHoyo.Left = 16
-        $btnHoyo.Top = 128
-        $btnHoyo.Width = 310
-        $btnHoyo.Height = 32
-        $btnHoyo.Enabled = $false
-        $form.Controls.Add($btnHoyo)
+        $btnGarena = New-Object System.Windows.Forms.Button
+        $btnGarena.Text = 'Garena'
+        $btnGarena.Left = 16
+        $btnGarena.Top = 128
+        $btnGarena.Width = 310
+        $btnGarena.Height = 32
+        $btnGarena.Add_Click({ $script:ArrangePlatformChoice = 'Garena'; $form.Close() })
+        $form.Controls.Add($btnGarena)
 
         $btnCancel = New-Object System.Windows.Forms.Button
         $btnCancel.Text = 'Cancel'
         $btnCancel.Left = 16
-        $btnCancel.Top = 168
+        $btnCancel.Top = 208
         $btnCancel.Width = 310
         $btnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
         $form.Controls.Add($btnCancel)
 
-        $form.AcceptButton = $btnSteam
         $form.CancelButton = $btnCancel
-        $dr = $form.ShowDialog()
-        if ($dr -eq [System.Windows.Forms.DialogResult]::Yes) { return 'Steam' }
-        return $null
+        $null = $form.ShowDialog()
+        return $script:ArrangePlatformChoice
     }
 
     Write-Host '  [1] Steam' -ForegroundColor Cyan
-    Write-Host '  [2] LevelUp (coming soon)' -ForegroundColor DarkGray
-    Write-Host '  [3] HoyoPlay (coming soon)' -ForegroundColor DarkGray
+    Write-Host '  [2] LevelUp' -ForegroundColor Cyan
+    Write-Host '  [3] Garena' -ForegroundColor Cyan
     $n = Read-Host 'Choice (1-3, Enter to cancel)'
     switch ($n) {
         '1' { return 'Steam' }
-        '2' { Write-Warn 'LevelUp — coming soon.'; return 'ComingSoon' }
-        '3' { Write-Warn 'HoyoPlay — coming soon.'; return 'ComingSoon' }
+        '2' { return 'LevelUp' }
+        '3' { return 'Garena' }
         default { return $null }
     }
 }
@@ -110,19 +128,32 @@ Write-Host ' NextGPU Arrange Games/Apps'
 Write-Host '==============================================='
 
 $useGui = -not $NoGui.IsPresent
-$choice = if ($Steam.IsPresent) { 'Steam' } else { Show-ArrangePlatformMenu -UseGui:$useGui }
+$platformSwitches = @($Steam.IsPresent, $LevelUp.IsPresent, $Garena.IsPresent) | Where-Object { $_ }
+if ($platformSwitches.Count -gt 1) {
+    throw 'Use only one of -Steam, -LevelUp, or -Garena.'
+}
+$choice = if ($Steam.IsPresent) { 'Steam' } elseif ($LevelUp.IsPresent) { 'LevelUp' } elseif ($Garena.IsPresent) { 'Garena' } else { Show-ArrangePlatformMenu -UseGui:$useGui }
 
 if (-not $choice) {
     Write-Warn 'Cancelled.'
-    exit 0
-}
-if ($choice -eq 'ComingSoon') {
     exit 0
 }
 
 if ($choice -eq 'Steam') {
     Write-Step 'Arranging Steam layout...'
     $code = Invoke-ArrangeSteamLayout -NoGui:$NoGui.IsPresent
+    exit $code
+}
+
+if ($choice -eq 'LevelUp') {
+    Write-Step 'Arranging LevelUp layout...'
+    $code = Invoke-ArrangeLevelUpLayout -NoGui:$NoGui.IsPresent
+    exit $code
+}
+
+if ($choice -eq 'Garena') {
+    Write-Step 'Arranging Garena layout...'
+    $code = Invoke-ArrangeGarenaLayout -NoGui:$NoGui.IsPresent
     exit $code
 }
 

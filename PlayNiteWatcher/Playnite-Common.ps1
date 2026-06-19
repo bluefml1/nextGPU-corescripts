@@ -15,6 +15,9 @@ function Get-NormalizedDirectoryPath {
         return $null
     }
     $trimmed = $Path.Trim().TrimEnd('\')
+    if ($trimmed -match '^[A-Za-z]:$') {
+        return "$($trimmed)\"
+    }
     if (-not (Test-Path -LiteralPath $trimmed)) {
         return $trimmed
     }
@@ -112,6 +115,160 @@ function Get-7ZipExecutable {
 function Get-PlayniteDownloadDir {
     param([string]$InstallDir)
     return Join-Path $InstallDir "Download"
+}
+
+function Normalize-FolderPickerPath {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $null
+    }
+
+    $trimmed = $Path.Trim().TrimEnd('\')
+    if ($trimmed -match '^[A-Za-z]:$') {
+        return "$trimmed\"
+    }
+
+    if (Test-Path -LiteralPath $trimmed) {
+        return ([System.IO.Path]::GetFullPath($trimmed)).TrimEnd('\')
+    }
+
+    return $trimmed
+}
+
+function Test-FolderPickerPathIsDriveRoot {
+    param([string]$Path)
+
+    $normalized = Normalize-FolderPickerPath -Path $Path
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        return $false
+    }
+
+    return ($normalized -match '^[A-Za-z]:\\$')
+}
+
+function Get-PlayniteFolderPickerInitialDirectory {
+    param(
+        [string]$PreferredPath,
+        [switch]$AnchorToDriveRoot
+    )
+
+    if ($AnchorToDriveRoot -and -not [string]::IsNullOrWhiteSpace($PreferredPath)) {
+        $driveRoot = [System.IO.Path]::GetPathRoot($PreferredPath)
+        if ($driveRoot -and (Test-Path -LiteralPath $driveRoot)) {
+            return $driveRoot.TrimEnd('\')
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($PreferredPath)) {
+        if (Test-Path -LiteralPath $PreferredPath) {
+            return (Normalize-FolderPickerPath -Path $PreferredPath)
+        }
+
+        $parent = Split-Path -Path $PreferredPath -Parent
+        if ($parent -and (Test-Path -LiteralPath $parent)) {
+            return (Normalize-FolderPickerPath -Path $parent)
+        }
+    }
+
+    $systemDrive = $env:SystemDrive
+    if ($systemDrive -and (Test-Path -LiteralPath $systemDrive)) {
+        return $systemDrive.TrimEnd('\')
+    }
+
+    return [Environment]::GetFolderPath('MyDocuments')
+}
+
+function Get-CommittedFolderBrowserPath {
+    param(
+        [System.Windows.Forms.FolderBrowserDialog]$Dialog
+    )
+
+    $path = $Dialog.SelectedPath
+    $flags = [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic
+    $field = $Dialog.GetType().GetField('selectedPath', $flags)
+    if ($field) {
+        $internalPath = [string]$field.GetValue($Dialog)
+        if (-not [string]::IsNullOrWhiteSpace($internalPath)) {
+            $path = $internalPath
+        }
+    }
+
+    return Normalize-FolderPickerPath -Path $path
+}
+
+function Show-PlayniteFolderBrowserDialog {
+    param(
+        [string]$Description,
+        [string]$InitialDirectory = "",
+        [bool]$ShowNewFolderButton = $false,
+        [switch]$AnchorInitialToDriveRoot
+    )
+
+    Add-Type -AssemblyName System.Windows.Forms | Out-Null
+
+    $start = Get-PlayniteFolderPickerInitialDirectory `
+        -PreferredPath $InitialDirectory `
+        -AnchorToDriveRoot:$AnchorInitialToDriveRoot
+
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.Description = $Description
+    $dialog.ShowNewFolderButton = $ShowNewFolderButton
+    $dialog.RootFolder = [Environment+SpecialFolder]::MyComputer
+
+    if (-not [string]::IsNullOrWhiteSpace($start)) {
+        $selected = $start
+        if (Test-FolderPickerPathIsDriveRoot -Path $selected) {
+            $selected = Normalize-FolderPickerPath -Path $selected
+        }
+        if ((Test-Path -LiteralPath $selected) -or (Test-FolderPickerPathIsDriveRoot -Path $selected)) {
+            $dialog.SelectedPath = $selected
+        }
+    }
+
+    if ($dialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
+        return $null
+    }
+
+    return Get-CommittedFolderBrowserPath -Dialog $dialog
+}
+
+function Test-PlayniteInstallParentInsideWatcherScripts {
+    param(
+        [string]$ParentPath,
+        [string]$WatcherScriptsRoot
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ParentPath) -or [string]::IsNullOrWhiteSpace($WatcherScriptsRoot)) {
+        return $false
+    }
+
+    try {
+        $parent = Normalize-FolderPickerPath -Path $ParentPath
+        $watcher = Normalize-FolderPickerPath -Path $WatcherScriptsRoot
+        if (-not $parent -or -not $watcher) {
+            return $false
+        }
+
+        return $parent.Equals($watcher, [StringComparison]::OrdinalIgnoreCase) -or
+            $parent.StartsWith("$watcher\", [StringComparison]::OrdinalIgnoreCase)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Show-PlayniteInstallFolderDialog {
+    param(
+        [string]$InitialDirectory = "",
+        [switch]$AnchorInitialToDriveRoot
+    )
+
+    return Show-PlayniteFolderBrowserDialog `
+        -Description "Select a parent folder for Playnite portable. A Playnite subfolder is created automatically inside your selection." `
+        -InitialDirectory $InitialDirectory `
+        -ShowNewFolderButton $true `
+        -AnchorInitialToDriveRoot:$AnchorInitialToDriveRoot
 }
 
 function Resolve-PlayniteInstallDir {
@@ -814,6 +971,278 @@ function Test-PlayniteLiteDbDatabase {
     }
 }
 
+function Get-PlayniteLiteDbInvalidReason {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return "missing"
+    }
+
+    try {
+        $bytes = [System.IO.File]::ReadAllBytes($Path)
+        if ($bytes.Length -lt 6) {
+            return "too_small"
+        }
+
+        $ascii = [System.Text.Encoding]::ASCII.GetString($bytes, 0, [Math]::Min(15, $bytes.Length))
+        if ($ascii.StartsWith("SQLite format 3")) {
+            return "sqlite"
+        }
+
+        if ($bytes[5] -ne 0xFF) {
+            return "not_litedb"
+        }
+
+        return $null
+    }
+    catch {
+        if ($_.Exception.Message -match 'being used by another process') {
+            return "locked"
+        }
+        return "unreadable"
+    }
+}
+
+function Stop-PlayniteApplication {
+    param(
+        [string]$PlayniteExe = "",
+        [string]$InstallDir = "",
+        [int]$WaitSeconds = 20,
+        [switch]$Force
+    )
+
+    if ([string]::IsNullOrWhiteSpace($InstallDir) -and $PlayniteExe -and (Test-Path -LiteralPath $PlayniteExe)) {
+        $InstallDir = Split-Path -Path $PlayniteExe -Parent
+    }
+
+    $processNames = @("Playnite.DesktopApp", "Playnite.FullscreenApp")
+    $running = @(Get-Process -Name $processNames -ErrorAction SilentlyContinue)
+
+    if (-not $Force -and $running.Count -gt 0 -and $PlayniteExe -and (Test-Path -LiteralPath $PlayniteExe)) {
+        try {
+            Start-PlayniteProcess -PlayniteExe $PlayniteExe -ArgumentList "--shutdown" -WindowStyle Hidden | Out-Null
+        }
+        catch { }
+
+        $graceDeadline = [datetime]::UtcNow.AddSeconds([Math]::Min(12, $WaitSeconds))
+        while ([datetime]::UtcNow -lt $graceDeadline) {
+            $running = @(Get-Process -Name $processNames -ErrorAction SilentlyContinue)
+            if ($running.Count -eq 0) {
+                break
+            }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+
+    Get-Process -Name $processNames -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+
+    if ($InstallDir) {
+        try {
+            $installPrefix = $InstallDir.TrimEnd('\') + '\'
+            Get-CimInstance -ClassName Win32_Process -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $_.ExecutablePath -and
+                    $_.ExecutablePath.StartsWith($installPrefix, [StringComparison]::OrdinalIgnoreCase) -and
+                    $_.Name -match '^Playnite\.'
+                } |
+                ForEach-Object {
+                    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+                }
+        }
+        catch { }
+    }
+
+    $deadline = [datetime]::UtcNow.AddSeconds($WaitSeconds)
+    while ([datetime]::UtcNow -lt $deadline) {
+        $running = @(Get-Process -Name $processNames -ErrorAction SilentlyContinue)
+        if ($running.Count -eq 0) {
+            return
+        }
+        Start-Sleep -Milliseconds 500
+    }
+
+    Get-Process -Name $processNames -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+}
+
+function Move-PlayniteLibraryDatabaseAside {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DbPath,
+        [string]$PlayniteExe = "",
+        [string]$InstallDir = "",
+        [int]$MaxAttempts = 6,
+        [scriptblock]$LogAction
+    )
+
+    if (-not (Test-Path -LiteralPath $DbPath)) {
+        return $null
+    }
+
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $backupPath = "$DbPath.invalid-$stamp"
+    $lastError = $null
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        if ($LogAction -and $attempt -gt 1) {
+            & $LogAction "games.db still locked; force-stopping Playnite (attempt $attempt / $MaxAttempts)..." "WARN"
+        }
+
+        Stop-PlayniteApplication -PlayniteExe $PlayniteExe -InstallDir $InstallDir -WaitSeconds 30 -Force
+        Start-Sleep -Seconds ([Math]::Min(2 * $attempt, 8))
+
+        try {
+            Move-Item -LiteralPath $DbPath -Destination $backupPath -Force -ErrorAction Stop
+            if ($LogAction) {
+                & $LogAction "Backed up invalid library to: $backupPath"
+            }
+            return $backupPath
+        }
+        catch {
+            $lastError = $_
+            if ($_.Exception.Message -notmatch 'being used by another process') {
+                throw
+            }
+        }
+    }
+
+    throw "Could not move locked Playnite library database after $MaxAttempts attempt(s): $DbPath. $($lastError.Exception.Message)"
+}
+
+function Invoke-PlayniteLibraryDatabaseBootstrap {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InstallDir,
+        [int]$MaxWaitSeconds = 90,
+        [scriptblock]$LogAction
+    )
+
+    $playniteExe = Get-PlayniteDesktopExe -InstallDir $InstallDir
+    $dbPath = Get-PlayniteLibraryGamesDbPath -InstallDir $InstallDir
+    $libraryDir = Split-Path -Path $dbPath -Parent
+
+    if (-not (Test-Path -LiteralPath $libraryDir)) {
+        New-Item -ItemType Directory -Path $libraryDir -Force | Out-Null
+    }
+
+    if ($LogAction) {
+        & $LogAction "Bootstrapping Playnite library database: $dbPath"
+    }
+
+    Stop-PlayniteApplication -PlayniteExe $playniteExe -InstallDir $InstallDir -WaitSeconds 30 -Force
+
+    $initArgs = @("--startdesktop", "--hidesplashscreen", "--safestartup", "--nolibupdate")
+    $init = Start-PlayniteProcess -PlayniteExe $playniteExe -ArgumentList $initArgs -PassThru
+
+    $deadline = (Get-Date).AddSeconds($MaxWaitSeconds)
+    while ((Get-Date) -lt $deadline) {
+        Start-Sleep -Seconds 3
+        if (Test-PlayniteLiteDbDatabase -Path $dbPath) {
+            if ($LogAction) {
+                & $LogAction "Library database created: $dbPath"
+            }
+            break
+        }
+        if ($init.HasExited) {
+            if ($LogAction) {
+                & $LogAction "Playnite exited during library bootstrap." "WARN"
+            }
+            break
+        }
+    }
+
+    Stop-PlayniteApplication -PlayniteExe $playniteExe -InstallDir $InstallDir -WaitSeconds 30 -Force
+    if (-not $init.HasExited) {
+        try { $init.WaitForExit(10000) } catch { }
+    }
+
+    return (Test-PlayniteLiteDbDatabase -Path $dbPath)
+}
+
+function Repair-PlayniteLibraryDatabaseIfNeeded {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InstallDir,
+        [scriptblock]$LogAction
+    )
+
+    $playniteExe = Get-PlayniteDesktopExe -InstallDir $InstallDir
+    $dbPath = Get-PlayniteLibraryGamesDbPath -InstallDir $InstallDir
+
+    if ($LogAction) {
+        & $LogAction "Force-stopping Playnite before library database check..."
+    }
+    Stop-PlayniteApplication -PlayniteExe $playniteExe -InstallDir $InstallDir -WaitSeconds 30 -Force
+    Start-Sleep -Seconds 2
+
+    if (Test-PlayniteLiteDbDatabase -Path $dbPath) {
+        if ($LogAction) {
+            & $LogAction "Playnite library database is valid after ensuring Playnite is closed: $dbPath"
+        }
+        return [PSCustomObject]@{
+            Success              = $true
+            Repaired             = $false
+            NeedsLibraryUpdate   = $false
+            DatabasePath         = $dbPath
+            InvalidReason        = $null
+        }
+    }
+
+    $reason = Get-PlayniteLiteDbInvalidReason -Path $dbPath
+    $reasonText = if ($reason) { $reason } else { "unknown" }
+
+    if ($LogAction) {
+        $detail = switch ($reason) {
+            "sqlite" { "SQLite (pre-Playnite 10) library at $dbPath" }
+            "missing" { "library database missing at $dbPath" }
+            "too_small" { "library database too small or empty at $dbPath" }
+            "locked" { "library database locked at $dbPath" }
+            default { "invalid library database at $dbPath ($reasonText)" }
+        }
+        & $LogAction "Repairing Playnite library: $detail" "WARN"
+    }
+
+    if (Test-Path -LiteralPath $dbPath) {
+        $backupPath = Move-PlayniteLibraryDatabaseAside `
+            -DbPath $dbPath `
+            -PlayniteExe $playniteExe `
+            -InstallDir $InstallDir `
+            -LogAction $LogAction
+
+        if ($backupPath -match '\.invalid-(\d{8}-\d{6})$') {
+            $stamp = $Matches[1]
+        }
+        else {
+            $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+        }
+
+        foreach ($suffix in @("-lock", ".backup")) {
+            $sidecar = "$dbPath$suffix"
+            if (Test-Path -LiteralPath $sidecar) {
+                $sidecarBackup = "$sidecar.invalid-$stamp"
+                try {
+                    Move-Item -LiteralPath $sidecar -Destination $sidecarBackup -Force -ErrorAction Stop
+                }
+                catch {
+                    if ($LogAction) {
+                        & $LogAction "Could not move sidecar file $sidecar : $($_.Exception.Message)" "WARN"
+                    }
+                }
+            }
+        }
+    }
+
+    $bootOk = Invoke-PlayniteLibraryDatabaseBootstrap -InstallDir $InstallDir -LogAction $LogAction
+    return [PSCustomObject]@{
+        Success              = $bootOk
+        Repaired             = $true
+        NeedsLibraryUpdate   = $bootOk
+        DatabasePath         = $dbPath
+        InvalidReason        = $reasonText
+    }
+}
+
 function Initialize-LiteDbFromPlayniteInstall {
     param([string]$InstallDir)
 
@@ -1314,65 +1743,15 @@ function Get-DesktopAppAllowlist {
 function Show-PlayniteFolderPicker {
     param(
         [string]$Description = "Select a folder",
-        [string]$InitialDirectory = ""
+        [string]$InitialDirectory = "",
+        [switch]$AnchorInitialToDriveRoot
     )
 
-    Add-Type -AssemblyName System.Windows.Forms | Out-Null
-    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-    $dialog.Description = $Description
-    $dialog.ShowNewFolderButton = $false
-
-    $start = $InitialDirectory
-    if ([string]::IsNullOrWhiteSpace($start)) {
-        $start = [Environment]::GetFolderPath('MyDocuments')
-    }
-    if (Test-Path -LiteralPath $start) {
-        $dialog.SelectedPath = $start
-    }
-
-    if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        return $dialog.SelectedPath
-    }
-    return $null
-}
-
-function Stop-PlayniteApplication {
-    param(
-        [string]$PlayniteExe = "",
-        [int]$WaitSeconds = 20
-    )
-
-    $processNames = @("Playnite.DesktopApp", "Playnite.FullscreenApp")
-    $running = @(Get-Process -Name $processNames -ErrorAction SilentlyContinue)
-
-    # Never launch Playnite with --shutdown when it is not already running (that opens games.db briefly).
-    if ($running.Count -gt 0 -and $PlayniteExe -and (Test-Path -LiteralPath $PlayniteExe)) {
-        try {
-            Start-PlayniteProcess -PlayniteExe $PlayniteExe -ArgumentList "--shutdown" -WindowStyle Hidden | Out-Null
-        }
-        catch { }
-
-        $graceDeadline = [datetime]::UtcNow.AddSeconds([Math]::Min(12, $WaitSeconds))
-        while ([datetime]::UtcNow -lt $graceDeadline) {
-            $running = @(Get-Process -Name $processNames -ErrorAction SilentlyContinue)
-            if ($running.Count -eq 0) {
-                return
-            }
-            Start-Sleep -Milliseconds 500
-        }
-    }
-
-    Get-Process -Name $processNames -ErrorAction SilentlyContinue |
-        Stop-Process -Force -ErrorAction SilentlyContinue
-
-    $deadline = [datetime]::UtcNow.AddSeconds($WaitSeconds)
-    while ([datetime]::UtcNow -lt $deadline) {
-        $running = @(Get-Process -Name $processNames -ErrorAction SilentlyContinue)
-        if ($running.Count -eq 0) {
-            return
-        }
-        Start-Sleep -Milliseconds 500
-    }
+    return Show-PlayniteFolderBrowserDialog `
+        -Description $Description `
+        -InitialDirectory $InitialDirectory `
+        -ShowNewFolderButton $false `
+        -AnchorInitialToDriveRoot:$AnchorInitialToDriveRoot
 }
 
 function Resolve-PlayNiteWatcherRepoRoot {
@@ -1567,6 +1946,11 @@ function Register-PlayniteSteamInstallPath {
     )
 
     $write = if ($LogAction) { $LogAction } else { { param($Message, $Level) } }
+    Import-NextGpuGamesAppsManifest | Out-Null
+    if (Get-Command Register-SteamInstallPath -ErrorAction SilentlyContinue) {
+        return Register-SteamInstallPath -SteamPath $SteamPath -LogAction $LogAction
+    }
+
     $steamPath = $SteamPath.Trim().TrimEnd('\')
     if (-not (Test-PlayniteSteamClientPath -Path $steamPath)) {
         throw "Not a valid Steam client folder: $steamPath"
@@ -3691,7 +4075,8 @@ function Resolve-DesktopAppImportScanRoots {
             }
             $folder = Show-PlayniteFolderPicker `
                 -Description "Select drive or folder to scan for allowlisted desktop apps" `
-                -InitialDirectory $initial
+                -InitialDirectory $initial `
+                -AnchorInitialToDriveRoot
         }
         if ([string]::IsNullOrWhiteSpace($folder)) {
             & $write "Desktop import skipped (drive/folder picker cancelled)." "WARN"

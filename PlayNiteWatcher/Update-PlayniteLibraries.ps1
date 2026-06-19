@@ -55,7 +55,7 @@ try {
         Write-MigrationLog "Steam ready for library scan ($($steamResolved.Source)): $($steamResolved.Path)"
     }
 
-    Stop-PlayniteApplication -PlayniteExe $playniteExe
+    Stop-PlayniteApplication -PlayniteExe $playniteExe -InstallDir $installDir -WaitSeconds 30 -Force
 
     $playniteLog = Join-Path $script:PlayniteAppData "playnite.log"
     $startedAfter = Get-Date
@@ -74,7 +74,7 @@ try {
         Write-MigrationLog "Playnite may still be open - check for first-run wizard dialogs." "WARN"
     }
 
-    Stop-PlayniteApplication -PlayniteExe $playniteExe
+    Stop-PlayniteApplication -PlayniteExe $playniteExe -InstallDir $installDir -WaitSeconds 30 -Force
 
     if ($ok) {
         Write-MigrationLog "Done. Library update finished. Re-run Setup-PlayniteSteam.ps1 -WithSunshine or run Export/Install scripts if you use Sunshine/Moonlight." "INFO"
@@ -89,6 +89,7 @@ catch {
 }
 finally {
     if ($script:UpdatePlayniteExe) {
-        Stop-PlayniteApplication -PlayniteExe $script:UpdatePlayniteExe
+        $installDirFromExe = Split-Path -Path $script:UpdatePlayniteExe -Parent
+        Stop-PlayniteApplication -PlayniteExe $script:UpdatePlayniteExe -InstallDir $installDirFromExe -WaitSeconds 30 -Force
     }
 }

@@ -119,9 +119,39 @@ if (-not (Test-Path -LiteralPath $playnitePathFile)) {
     exit 0
 }
 
-if ($RefreshPlayniteLibrary) {
+$playniteCommonPs1 = Join-Path $repoRoot "PlayNiteWatcher\Playnite-Common.ps1"
+$playniteInstallDir = $null
+if (Test-Path -LiteralPath $playnitePathFile) {
+    $playniteInstallDir = (Get-Content -LiteralPath $playnitePathFile -Raw -ErrorAction SilentlyContinue).Trim()
+}
+
+$libraryWasRepaired = $false
+if ($playniteInstallDir -and (Test-Path -LiteralPath $playniteCommonPs1)) {
+    try {
+        . $playniteCommonPs1
+        $repairLog = { param($Message, $Level) Write-SetupMessage $Message $(if ($Level -eq 'WARN') { 'WARN' } else { 'INFO' }) }
+        $repair = Repair-PlayniteLibraryDatabaseIfNeeded -InstallDir $playniteInstallDir -LogAction $repairLog
+        if ($repair.Repaired) {
+            $libraryWasRepaired = $repair.Success
+            if (-not $repair.Success) {
+                Write-SetupMessage "[!] Playnite library repair failed; Sunshine export will be skipped." "WARN"
+            }
+        }
+    }
+    catch {
+        Write-SetupMessage "Playnite library repair check failed: $($_.Exception.Message)" "WARN"
+    }
+}
+
+$shouldRefreshLibrary = $RefreshPlayniteLibrary -or $libraryWasRepaired
+if ($shouldRefreshLibrary) {
     if (Test-Path -LiteralPath $updateLibrariesPs1) {
-        Write-SetupMessage "[*] Refreshing Playnite libraries before Sunshine export (-RefreshPlayniteLibrary)..."
+        if ($libraryWasRepaired -and -not $RefreshPlayniteLibrary) {
+            Write-SetupMessage "[*] Refreshing Playnite libraries after library database repair..."
+        }
+        else {
+            Write-SetupMessage "[*] Refreshing Playnite libraries before Sunshine export (-RefreshPlayniteLibrary)..."
+        }
         try {
             Invoke-ExternalPowerShell -ScriptPath $updateLibrariesPs1 -ArgumentList @("-SkipMetadata")
         }
@@ -143,6 +173,9 @@ if (-not (Test-Path -LiteralPath $exportSunshinePs1)) {
 }
 
 Write-SetupMessage "[*] Exporting Sunshine apps via PlayNiteWatcher..."
-Invoke-ExternalPowerShell -ScriptPath $exportSunshinePs1
+$exportExit = Invoke-ExternalPowerShellAllowFailure -ScriptPath $exportSunshinePs1
+if ($exportExit -ne 0) {
+    Write-SetupMessage "[!] Sunshine app export failed (exit $exportExit). Sunshine update completed; re-run PlayNiteWatcher\Export-SunshineFromPlaynite.ps1 or Setup-PlayniteSteam.bat -SkipInstall." "WARN"
+}
 
 Write-SetupMessage "=== Post-Sunshine setup finished ==="

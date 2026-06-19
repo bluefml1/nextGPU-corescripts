@@ -72,7 +72,7 @@ public partial class PlaynitePage : Page
 
         ActionPageTools.AddPrimaryBatchButton(SetupPanel, "Run Full PlayNite Setup",
             @"PlayNiteWatcher\Setup-PlayniteSteam.bat", keepConsoleOpen: true,
-            helpText: "End-to-end first-time setup: installs portable Playnite, configures Steam/Epic disk scan, updates libraries, optionally exports to Sunshine, and installs PlayNiteWatcher. Run after RegisterMachine when Sunshine is already present.");
+            helpText: "End-to-end first-time setup: installs portable Playnite, configures Steam/Epic disk scan, updates libraries, exports to Sunshine, installs PlayNiteWatcher, and pushes Moonlight games to AWS from domain.txt. Run after RegisterMachine when Sunshine is already present.");
         ActionPageTools.AddPowerShellButton(SetupPanel, "Setup Playnite Only",
             @"PlayNiteWatcher\Setup-PlayniteSteam.ps1", "-PickInstallFolder", keepConsoleOpen: true,
             helpText: "Installs or configures portable Playnite only. Prompts for install folder. Does not run the full Sunshine export + watcher pipeline.");

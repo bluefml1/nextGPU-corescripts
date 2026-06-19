@@ -36,15 +36,22 @@ param(
     [string]$LocalFolder = '',
     [string[]]$LocalZip = @(),
     [switch]$PushAllInFolder,
-    [switch]$ForceOverwrite
+    [switch]$ForceOverwrite,
+    [string[]]$InstallArchive = @(),
+    [switch]$Quiet
 )
 
 $ErrorActionPreference = 'Stop'
+$script:QuietInstall = $Quiet.IsPresent -or ($InstallArchive.Count -gt 0)
+if ($script:QuietInstall) {
+    $NoGui = $true
+}
 if (-not $NoGui.IsPresent) {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName Microsoft.VisualBasic
 }
 $script:UseGui = -not $NoGui.IsPresent
+$script:SuppressPrompts = $script:QuietInstall
 
 $script:GamesAppsManifestPath = Join-Path $PSScriptRoot 'GamesApps-Manifest.ps1'
 if (-not (Test-Path -LiteralPath $script:GamesAppsManifestPath)) {
@@ -496,6 +503,7 @@ function Confirm-YesNo {
         [bool]$DefaultYes = $true,
         [switch]$PreferConsole
     )
+    if ($script:SuppressPrompts) { return $DefaultYes }
     if ($PreferConsole -or -not $script:UseGui) {
         Write-Host ''
         Write-Host $Prompt -ForegroundColor Cyan
@@ -628,6 +636,13 @@ function Ensure-RcloneConfig([string]$Remote, [string]$StorageRegion) {
     if (-not (Test-Path -LiteralPath $configDir)) { New-Item -ItemType Directory -Path $configDir -Force | Out-Null }
     $existing = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw } else { '' }
     $hasRemote = $existing -match "(?m)^\[$([regex]::Escape($Remote))\]$"
+    if ($script:SuppressPrompts) {
+        if (-not $hasRemote) {
+            throw "rclone [$Remote] is not configured. Run Sync Game/Apps Officially once to configure R2 credentials."
+        }
+        Repair-RcloneR2RemoteConfig -ConfigPath $configPath -Remote $Remote
+        return $configPath
+    }
     if ($hasRemote -and (Prompt-YesNo 'rclone config' "Reuse existing [$Remote] config?" $true)) {
         Repair-RcloneR2RemoteConfig -ConfigPath $configPath -Remote $Remote
         return $configPath
@@ -713,6 +728,43 @@ function Get-ReleaseArchives {
         }
     }
     return ,@(ConvertTo-ObjectArray $list.ToArray())
+}
+
+function Resolve-InstallArchivePick {
+    param(
+        [Parameter(Mandatory)][object[]]$Archives,
+        [Parameter(Mandatory)][string[]]$WantedNames
+    )
+    $Archives = ConvertTo-ObjectArray $Archives
+    $wanted = @($WantedNames | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($wanted.Count -eq 0) { return @() }
+
+    $picked = @($Archives | Where-Object { $wanted -contains [string]$_.Name })
+    if ($picked.Count -gt 0) { return ConvertTo-ObjectArray $picked }
+
+    if (-not $script:QuietInstall) { return @() }
+
+    $wantBases = @($wanted | ForEach-Object { [System.IO.Path]::GetFileNameWithoutExtension($_) } | Select-Object -Unique)
+    $bundleBases = @('VNG', 'LevelUp', 'Garena')
+    $asksBundle = @($wantBases | Where-Object { $bundleBases -contains $_ }).Count -gt 0
+    if (-not $asksBundle) { return @() }
+
+    $candidates = @($Archives | Where-Object {
+        $base = [System.IO.Path]::GetFileNameWithoutExtension([string]$_.Name)
+        $base -ieq 'VNG' -or $base -ieq 'LevelUp' -or $base -ieq 'Garena'
+    })
+    if ($candidates.Count -eq 0) { return @() }
+
+    $best = @($candidates | Sort-Object `
+        @{ Expression = { $b = [System.IO.Path]::GetFileNameWithoutExtension([string]$_.Name); if ($b -ieq 'VNG') { 0 } elseif ($b -ieq 'Garena') { 1 } else { 2 } } }, `
+        @{ Expression = { if ([string]$_.Name -match '\.7z$') { 0 } else { 1 } } }, `
+        @{ Expression = { [string]$_.Name } } |
+        Select-Object -First 1)
+    if ($best) {
+        Write-Ok ("Resolved install archive on R2: {0}" -f $best.Name)
+        return ConvertTo-ObjectArray @($best)
+    }
+    return @()
 }
 
 function Get-ArchiveSizeBytes {
@@ -1525,7 +1577,9 @@ Write-Host '  Script: 2026-06-03l (multi-thread R2 download + single-thread fall
 Write-Host '  Flow: lsjson list -> pick -> copyto -> 7z into <name> folder -> delete zip'
 Write-Host '==============================================='
 
-Invoke-DiskPrepIfRequested
+if (-not $script:QuietInstall) {
+    Invoke-DiskPrepIfRequested
+}
 
 Ensure-WingetPackage -PackageId 'Rclone.Rclone' -FriendlyName 'rclone'
 Ensure-WingetPackage -PackageId '7zip.7zip' -FriendlyName '7-Zip'
@@ -1579,7 +1633,28 @@ if ((Get-ObjectCount $archives) -eq 0) {
 
 Write-Ok ("Found {0} archive(s)." -f (Get-ObjectCount $archives))
 
-if ($InstallAllZips) {
+if ($InstallArchive.Count -gt 0) {
+    $wanted = @($InstallArchive | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    $picked = @(Resolve-InstallArchivePick -Archives $archives -WantedNames $wanted)
+    if ($picked.Count -eq 0) {
+        $available = @($archives | ForEach-Object { [string]$_.Name } | Sort-Object) -join ', '
+        throw ("Archive(s) not found on R2: {0}. Available: {1}" -f ($wanted -join ', '), $(if ($available) { $available } else { '(none listed)' }))
+    }
+    if ($script:QuietInstall -and $wanted.Count -eq 1) {
+        $resolvedName = [string]$picked[0].Name
+        if ($resolvedName -and ($wanted -notcontains $resolvedName)) {
+            Write-Ok ("Using R2 archive: $resolvedName")
+        }
+    }
+    elseif ($wanted.Count -gt 1) {
+        $missing = @($wanted | Where-Object { $_ -notin @($picked | ForEach-Object { [string]$_.Name }) })
+        if ($missing.Count -gt 0) {
+            throw ("Archive(s) not found on R2: {0}" -f ($missing -join ', '))
+        }
+    }
+    $picked = ConvertTo-ObjectArray $picked
+}
+elseif ($InstallAllZips) {
     $picked = $archives
 }
 else {
@@ -1589,8 +1664,33 @@ else {
 $picked = ConvertTo-ObjectArray $picked
 $pickCount = Get-ObjectCount $picked
 
+$drive = $null
 $configuredSyncTarget = Get-ConfiguredSyncTargetPath
-if ($configuredSyncTarget) {
+if ($script:QuietInstall) {
+    if ($configuredSyncTarget) {
+        Write-Ok ("Install target from NEXTGPU_SYNC_TARGET: $configuredSyncTarget")
+        $targetFolder = $configuredSyncTarget
+    }
+    else {
+        $manifestEntries = @(Read-DownloadManifestEntries)
+        $driveLetter = Get-GamesDriveLetter -Entries $manifestEntries
+        if (-not $driveLetter) {
+            throw 'Could not determine games drive for quiet install. Set NEXTGPU_SYNC_TARGET or run Sync Game/Apps first.'
+        }
+        $targetFolder = [System.IO.Path]::GetFullPath("${driveLetter}:\")
+        Write-Ok ("Install target (quiet): $targetFolder")
+    }
+    if (-not (Test-Path -LiteralPath $targetFolder)) {
+        New-Item -ItemType Directory -Path $targetFolder -Force | Out-Null
+    }
+    try {
+        $driveRoot = [System.IO.Path]::GetPathRoot($targetFolder)
+        $driveName = $driveRoot.TrimEnd('\').TrimEnd(':')
+        $drive = Get-PSDrive -Name $driveName -PSProvider FileSystem -ErrorAction SilentlyContinue
+    }
+    catch { }
+}
+elseif ($configuredSyncTarget) {
     Write-Ok ("Install target from NEXTGPU_SYNC_TARGET: $configuredSyncTarget")
     $targetFolder = $configuredSyncTarget
 }
@@ -1625,7 +1725,7 @@ elseif ($largest -gt 0) {
 else {
     $needDisk = [int64]0
 }
-if ($needDisk -gt 0 -and $drive.Free -lt $needDisk) {
+if ($needDisk -gt 0 -and $drive -and $drive.Free -lt $needDisk) {
     Write-Warn ("Recommend {0} GB free; you have {1} GB." -f (Format-GB $needDisk), (Format-GB $drive.Free))
     if (-not (Prompt-YesNo 'Space' 'Continue anyway?' $false)) { throw 'Aborted.' }
 }
