@@ -18,9 +18,4 @@ if not defined GARENA_EXE (
 
 start "" "%GARENA_EXE%"
 
-for %%D in ("%GARENA_EXE%") do set "GARENA_DIR=%%~dpD"
-powershell -WindowStyle Hidden -Command ^
-"Unblock-File '%GARENA_DIR%Garena platform service.lnk' -ErrorAction SilentlyContinue; ^
- Start-Process '%GARENA_DIR%Garena platform service.lnk' -WindowStyle Hidden -ErrorAction SilentlyContinue"
-
 exit /b 0

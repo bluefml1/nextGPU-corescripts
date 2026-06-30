@@ -42,10 +42,52 @@ echo [INFO] Running with Administrator privileges.
 echo [INFO] Script directory: %SCRIPT_DIR%
 echo.
 
+:: Parse optional CLI VDD flags (prompt appears under Required Configuration)
+set "ENABLE_VDD="
+set "VDD_CLI_SET="
+:parse_rm_args
+if "%~1"=="" goto :parse_rm_args_done
+if /i "%~1"=="/NoVdd" (set "ENABLE_VDD=0" & set "VDD_CLI_SET=1")
+if /i "%~1"=="-NoVdd" (set "ENABLE_VDD=0" & set "VDD_CLI_SET=1")
+if /i "%~1"=="/UseVdd" (set "ENABLE_VDD=1" & set "VDD_CLI_SET=1")
+if /i "%~1"=="-UseVdd" (set "ENABLE_VDD=1" & set "VDD_CLI_SET=1")
+shift /1
+goto :parse_rm_args
+:parse_rm_args_done
+
 :: =============== USER INPUT SECTION ===============
 echo ========================================
 echo Required Configuration
 echo ========================================
+echo.
+
+:input_vdd_choice
+if defined VDD_CLI_SET goto :vdd_choice_persist
+if defined ENABLE_VDD goto :vdd_choice_persist
+echo Some machines use a physical monitor only and do NOT need VDD/VAD.
+echo Others need virtual display + audio drivers for headless streaming.
+echo.
+choice /C YN /N /M "Install VDD/VAD and configure Sunshine for VDD on this machine? [Y/N]: "
+if !errorlevel! equ 2 (
+    set "ENABLE_VDD=0"
+) else (
+    set "ENABLE_VDD=1"
+)
+:vdd_choice_persist
+set "MACHINE_PROFILE_PS1=%PROVISIONING_DIR%\MachineProfile.ps1"
+if not exist "%MACHINE_PROFILE_PS1%" (
+    echo [!] WARNING: MachineProfile.ps1 not found; VDD preference will not be persisted.
+) else if "!ENABLE_VDD!"=="1" (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command ". '%MACHINE_PROFILE_PS1%'; Set-NextGpuVddEnabled -RepoRoot '%SCRIPT_DIR%' -Enabled $true"
+) else (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command ". '%MACHINE_PROFILE_PS1%'; Set-NextGpuVddEnabled -RepoRoot '%SCRIPT_DIR%' -Enabled $false"
+)
+if "!ENABLE_VDD!"=="1" (
+    echo [*] VDD/VAD enabled for this machine ^(saved to machine-profile.json^).
+) else (
+    echo [*] VDD/VAD disabled for this machine ^(saved to machine-profile.json^).
+)
+>>"%SUNSHINE_BIND_LOG%" echo [%DATE% %TIME%] ENABLE_VDD=!ENABLE_VDD!
 echo.
 
 :input_cf_token
@@ -80,6 +122,7 @@ if "%ADMIN_ACCOUNT_NAME%"=="" (echo ERROR: Admin account username cannot be empt
 
 echo.
 echo Configuration Summary:
+if "!ENABLE_VDD!"=="1" (echo - VDD/VAD: enabled) else (echo - VDD/VAD: disabled)
 echo - API Token: %CF_API_TOKEN:~0,10%...
 echo - Account ID: %ACCOUNT_ID%
 echo - Price: $%PRICE%
@@ -90,7 +133,12 @@ set /p "CONFIRM=Is this correct? (Y/N): "
 if /i not "%CONFIRM%"=="Y" (
     echo Please re-enter the configuration.
     echo.
-    goto input_cf_token
+    if defined VDD_CLI_SET (
+        goto input_cf_token
+    ) else (
+        set "ENABLE_VDD="
+        goto input_vdd_choice
+    )
 )
 set "COMPUTER_NAME_LOWER="
 for /f "delims=" %%A in ('powershell -NoLogo -NoProfile -Command "$n='%COMPUTER_NAME_CUSTOM%'; if([string]::IsNullOrWhiteSpace($n)){''} else {$n.Trim().ToLowerInvariant()}"') do set "COMPUTER_NAME_LOWER=%%A"
@@ -143,38 +191,37 @@ set "ROOT_DOMAIN=next-gpu.com"
 :: ===================================================================
 :: [1] VDD + VAD
 :: ===================================================================
-echo [1] Installing Virtual Display Driver and Virtual Audio Driver...
-set "VDD_PS1=%DRIVERS_DIR%\silent-install-vdd-vad.ps1"
-set "VDD_LOG=%LOG_DIR%\VDD-VAD.log"
-set "VDD_INSTALL_DIR=%SCRIPT_DIR%\VDD-VAD-Install"
-choice /C YN /N /M "Install or refresh VDD/VAD now? [Y/N]: "
-if !errorlevel! equ 2 (
-    echo [*] Skipping VDD/VAD installer by user choice.
-) else (
-    if not exist "%VDD_PS1%" (
+if "!ENABLE_VDD!"=="1" (
+    echo [1] Installing Virtual Display Driver and Virtual Audio Driver...
+    set "VDD_PS1=%DRIVERS_DIR%\silent-install-vdd-vad.ps1"
+    set "VDD_LOG=%LOG_DIR%\VDD-VAD.log"
+    set "VDD_INSTALL_DIR=%SCRIPT_DIR%\VDD-VAD-Install"
+    if not exist "!VDD_PS1!" (
         echo [!] WARNING: silent-install-vdd-vad.ps1 not found, continuing without VDD/VAD install.
     ) else (
-        powershell -NoProfile -ExecutionPolicy Bypass -File "%VDD_PS1%" -LogPath "%VDD_LOG%" -InstallDir "%VDD_INSTALL_DIR%"
+        powershell -NoProfile -ExecutionPolicy Bypass -File "!VDD_PS1!" -LogPath "!VDD_LOG!" -InstallDir "!VDD_INSTALL_DIR!"
         if !errorlevel! neq 0 (
-            echo [!] WARNING: VDD/VAD installer returned exit code !errorlevel!. See %VDD_LOG%
+            echo [!] WARNING: VDD/VAD installer returned exit code !errorlevel!. See !VDD_LOG!
             echo [!] WARNING: Continuing Sunshine setup without requiring a virtual display.
         ) else (
             echo [*] VDD ready.
         )
-        echo [*] Driver files: %VDD_INSTALL_DIR%
+        echo [*] Driver files: !VDD_INSTALL_DIR!
     )
-)
-call :verify_vdd_ready
-if !errorlevel! neq 0 (
-    echo [!] WARNING: No ready VDD display was detected.
-    echo [!] WARNING: Continuing Sunshine setup without a virtual display. See %VDD_LOG% or run scripts\drivers\InstallVDD-VAD.bat later.
+    call :verify_vdd_ready
+    if !errorlevel! neq 0 (
+        echo [!] WARNING: No ready VDD display was detected.
+        echo [!] WARNING: Continuing Sunshine setup without a virtual display. See !VDD_LOG! or run scripts\drivers\InstallVDD-VAD.bat later.
+    )
+    echo [*] Waiting for virtual display to enumerate...
+    timeout /t 10 /nobreak >nul
+) else (
+    echo [*] Skipping VDD/VAD install ^(disabled in machine-profile.json^).
 )
 call :enable_rdp_recovery
 if !errorlevel! neq 0 (
     echo [!] WARNING: Failed to verify/enable RDP recovery access. Do not disconnect physical monitors until RDP is confirmed manually.
 )
-echo [*] Waiting for virtual display to enumerate...
-timeout /t 10 /nobreak >nul
 echo.
 
 echo.
@@ -232,7 +279,11 @@ if not exist "%POST_SUNSHINE_PS1%" (
     powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%POST_SUNSHINE_PS1%"
 )
 
-echo [*] Sunshine display binding runs after VDD services are up (see end of setup).
+if "!ENABLE_VDD!"=="1" (
+    echo [*] Sunshine display binding runs after VDD services are up ^(see end of setup^).
+) else (
+    echo [*] Sunshine VDD binding skipped for this machine ^(machine-profile.json^).
+)
 
 :: ===================================================================
 :: [2/8] NSSM
@@ -417,7 +468,7 @@ if exist "%COOKIES%" del "%COOKIES%" >nul 2>&1
 :: ===================================================================
 :: ViGEmBus
 :: ===================================================================
-echo [*] Installing ViGEmBus...
+echo [*] Installing ViGEmBus ^(existing install is removed first, if present^)...
 set "VIGEM_BAT=%DRIVERS_DIR%\ViGEmBus.bat"
 if not exist "%VIGEM_BAT%" (
     echo [!] WARNING: ViGEmBus.bat not found, skipping.
@@ -722,15 +773,21 @@ if !errorlevel! neq 0 (
     >>"%SUNSHINE_BIND_LOG%" echo [%DATE% %TIME%] Sunshine API ready on port 47990
 )
 
-echo.
-call :setup_sunshine_device_id
-if !errorlevel! neq 0 (
-    echo [!] WARNING: Sunshine VDD device_id step not completed yet. Will retry at end of setup.
-    set "SUNSHINE_DEVICE_ID_DEFERRED=1"
+if "!ENABLE_VDD!"=="1" (
+    echo.
+    call :setup_sunshine_device_id
+    if !errorlevel! neq 0 (
+        echo [!] WARNING: Sunshine VDD device_id step not completed yet. Will retry at end of setup.
+        set "SUNSHINE_DEVICE_ID_DEFERRED=1"
+    ) else (
+        set "SUNSHINE_DEVICE_ID_DEFERRED="
+    )
+    echo.
 ) else (
+    echo [*] Skipping Sunshine VDD device_id setup ^(VDD disabled for this machine^).
+    >>"%SUNSHINE_BIND_LOG%" echo [%DATE% %TIME%] SKIP: setup_sunshine_device_id ^(ENABLE_VDD=0^)
     set "SUNSHINE_DEVICE_ID_DEFERRED="
 )
-echo.
 
 echo [7/8] Removing legacy heartbeat/auto-repair/auto-update NSSM services...
 for %%S in (gpu-heartbeat auto-repair auto-update) do (
@@ -892,7 +949,7 @@ if not exist "%SHUTDOWN_POLICY_BAT%" (
 )
 echo.
 
-if defined SUNSHINE_DEVICE_ID_DEFERRED (
+if "!ENABLE_VDD!"=="1" if defined SUNSHINE_DEVICE_ID_DEFERRED (
     echo [*] Retrying Sunshine display binding...
     call :setup_sunshine_device_id
     if !errorlevel! neq 0 (

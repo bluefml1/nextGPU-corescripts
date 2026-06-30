@@ -144,6 +144,30 @@
                      "nameId":  "10000203",
                      "title":  "Blender",
                      "type":  "ThirdParty"
+                 },
+                 {
+                     "exe":  "DeltaForceClient.exe",
+                     "nameId":  "10000302",
+                     "title":  "Delta Force",
+                     "type":  "Games"
+                 },
+                 {
+                     "exe":  "GenshinImpact.exe",
+                     "nameId":  "10000301",
+                     "title":  "Genshin Impact",
+                     "type":  "Games"
+                 },
+                 {
+                     "exe":  "Level Up.exe",
+                     "nameId":  "10000303",
+                     "title":  "Naraka Bladepoint",
+                     "type":  "Games"
+                 },
+                 {
+                     "exe":  "Garena.exe",
+                     "nameId":  "10000304",
+                     "title":  "Garena FC Online",
+                     "type":  "Games"
                  }
              ]
 }

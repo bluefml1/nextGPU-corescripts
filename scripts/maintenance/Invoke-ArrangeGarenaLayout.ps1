@@ -714,17 +714,6 @@ function Start-GarenaClientAfterArrange {
 
     Write-ArrangeGarenaLog -LogPath $LogPath -Message "Launching Garena.exe for manual game sync: $exe"
     Start-Process -FilePath $exe -WorkingDirectory $clientDir
-
-    $serviceLink = Join-Path $clientDir 'Garena platform service.lnk'
-    if (Test-Path -LiteralPath $serviceLink -PathType Leaf) {
-        try {
-            Unblock-File -LiteralPath $serviceLink -ErrorAction SilentlyContinue
-            Start-Process -FilePath $serviceLink -WorkingDirectory $clientDir -WindowStyle Hidden -ErrorAction SilentlyContinue
-        }
-        catch {
-            Write-ArrangeGarenaWarn -LogPath $LogPath -Message "Could not start Garena platform service: $($_.Exception.Message)"
-        }
-    }
     return $true
 }
 

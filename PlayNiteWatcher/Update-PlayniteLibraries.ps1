@@ -34,10 +34,12 @@ function Get-ResolvedPlayniteInstallDir {
 }
 
 $script:UpdatePlayniteExe = $null
+$script:UpdatePlayniteInstallDir = $null
 
 try {
     Write-MigrationLog "=== Update-PlayniteLibraries started ==="
     $installDir = Get-ResolvedPlayniteInstallDir
+    $script:UpdatePlayniteInstallDir = $installDir
     if (-not $installDir) {
         throw "Playnite install folder is not set. Run Setup-PlayniteSteam.bat and choose a folder, or pass -PlayniteInstallDir."
     }
@@ -91,5 +93,15 @@ finally {
     if ($script:UpdatePlayniteExe) {
         $installDirFromExe = Split-Path -Path $script:UpdatePlayniteExe -Parent
         Stop-PlayniteApplication -PlayniteExe $script:UpdatePlayniteExe -InstallDir $installDirFromExe -WaitSeconds 30 -Force
+    }
+
+    if ($script:UpdatePlayniteInstallDir) {
+        try {
+            $reapplyLog = { param($Message, $Level) Write-MigrationLog $Message $Level }
+            Invoke-ReapplyPlayniteBypassShortcuts -InstallDir $script:UpdatePlayniteInstallDir -RepoRoot $PSScriptRoot -LogAction $reapplyLog
+        }
+        catch {
+            Write-MigrationLog "Bypass re-apply after library update failed: $($_.Exception.Message)" "WARN"
+        }
     }
 }

@@ -8,3 +8,16 @@ apps/NextGPU/publish/*
 !apps/NextGPU/publish/README.txt
 !apps/NextGPU/publish/.gitkeep
 /NextGPU.exe
+
+# Runtime logs (keep logs/.gitkeep)
+logs/*.log
+
+# Machine-local arrange / install state
+scripts/maintenance/GarenaInstall.path
+scripts/maintenance/Garena-Apps.paths.json
+
+# Local IDE / scratch (not repo config)
+.vscode/
+config.json
+data.json
+setup logs.txt

@@ -506,13 +506,19 @@ if ($ListAll) {
     exit 0
 }
 
-$match = $devices | Where-Object {
+$match = @($devices | Where-Object {
     ($HardwareId -and $_.InstanceId -like "*$HardwareId*") -or
     (Test-EdidMatch -Edid $_.Edid -Mfg $ManufacturerId -Product $ProductCode)
-} | Select-Object -First 1
+}) | Sort-Object `
+    @{ Expression = { [bool]$_.Active }; Descending = $true }, `
+    @{ Expression = { $null -ne $_.Edid -and $_.Edid.Length -gt 0 }; Descending = $true } `
+    | Select-Object -First 1
 
 if (-not $match) {
-    $match = $devices | Where-Object { $_.InstanceId -like '*MTT1337*' } | Select-Object -First 1
+    $match = @($devices | Where-Object { $_.InstanceId -like '*MTT1337*' }) | Sort-Object `
+        @{ Expression = { [bool]$_.Active }; Descending = $true }, `
+        @{ Expression = { $null -ne $_.Edid -and $_.Edid.Length -gt 0 }; Descending = $true } `
+        | Select-Object -First 1
 }
 
 if (-not $match) {

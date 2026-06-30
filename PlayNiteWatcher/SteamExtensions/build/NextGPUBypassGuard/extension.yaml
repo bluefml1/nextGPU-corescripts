@@ -1,0 +1,6 @@
+Id: NextGPUBypassGuard
+Name: NextGPU Bypass Guard
+Author: NextGPU
+Version: 1.0.0
+Module: NextGPUBypassGuard.dll
+Type: GenericPlugin

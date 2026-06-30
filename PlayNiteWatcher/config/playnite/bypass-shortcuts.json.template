@@ -1,0 +1,10 @@
+{
+  "_comment": "bypassesPath is the Game Shortcuts folder (default subfolder name under parentPath). Legacy installs may still use Bypasses.",
+  "_bindingFields": "Optional per-binding: launcherMode (AppOnly|HelperAndApp), launchPath (.lnk or .cmd play path), launcherScript (.ps1 source), helperPath (extra exe launched with shortcut), shortcutLnkPath, exe (game exe leaf for allowlist)",
+  "parentPath": "",
+  "bypassesPath": "",
+  "runAsToolExe": "",
+  "adminUser": "NextGPU-Authority",
+  "updatedAt": "",
+  "bindings": []
+}

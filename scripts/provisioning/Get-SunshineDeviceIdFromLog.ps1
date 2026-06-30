@@ -4,6 +4,8 @@
     Parse Sunshine log for the VDD display device_id (friendly_name "VDD by MTT" or edid MTT/1337).
 
     Scans every common sunshine.log location and uses the file that actually contains VDD JSON.
+    Picks the best usable entry (display_name + info) via VddDisplaySelection.ps1; exits 1 when
+    only incomplete phantom entries exist so callers can fall back to Get-DisplayDeviceId.ps1.
 #>
 [CmdletBinding()]
 param(
@@ -14,24 +16,7 @@ param(
 
 $ErrorActionPreference = 'Continue'
 
-function Test-IsVddSunshineDisplay {
-    param($Display)
-    if (-not $Display) { return $false }
-
-    $fn = [string]$Display.friendly_name
-    if ($fn -match 'VDD by MTT') { return $true }
-
-    $edid = $Display.edid
-    if ($edid) {
-        $mfg = [string]$edid.manufacturer_id
-        $pc = $edid.product_code
-        $pcStr = if ($null -eq $pc) { '' } else { [string]$pc }
-        if ($mfg -eq 'MTT' -and ($pcStr -eq '1337' -or $pcStr -eq '0x1337' -or $pc -eq 1337)) {
-            return $true
-        }
-    }
-    return $false
-}
+. (Join-Path $PSScriptRoot 'VddDisplaySelection.ps1')
 
 function Test-VddContextText {
     param([string]$Context)
@@ -179,18 +164,28 @@ if ($bestEntries.Count -eq 0) {
     exit 1
 }
 
-$pick = $bestEntries | Select-Object -Last 1
+$pick = Select-BestVddSunshineLogEntry -Entries $bestEntries
 
 if ($ListAll) {
     foreach ($e in $bestEntries) {
-        $dn = if ($e.Display) { [string]$e.Display.display_name } else { '?' }
+        $summary = Get-VddSunshineLogEntrySummary -Display $e.Display
         $fn = if ($e.Display) { [string]$e.Display.friendly_name } else { 'VDD (context)' }
-        Write-Host "log VDD: $($e.DeviceId)  display_name=$dn  friendly_name=$fn"
+        $selected = ($pick -and $pick.DeviceId -eq $e.DeviceId)
+        $tag = if ($selected) { ' SELECTED' } else { '' }
+        Write-Host ("log VDD: {0}  usable={1}  score={2}  display_name={3}  primary={4}  friendly_name={5}{6}" -f `
+            $e.DeviceId, $summary.Usable, $summary.Score, $summary.DisplayName, $summary.Primary, $fn, $tag)
     }
     if ($usedLog) { Write-Host "source: $usedLog" }
+    if (-not $pick) {
+        Write-Host "selected: (none usable - $($bestEntries.Count) incomplete candidate(s))"
+    }
     exit 0
 }
 
-# Sunshine log is authoritative when user confirmed VDD appears in Sunshine output.
+if (-not $pick) {
+    [Console]::Error.WriteLine("No usable VDD device_id in sunshine.log ($($bestEntries.Count) incomplete candidate(s)).")
+    exit 1
+}
+
 [Console]::Out.WriteLine($pick.DeviceId)
 exit 0

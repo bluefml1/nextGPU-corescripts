@@ -13,6 +13,28 @@
 
                     <Border BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="0,1,0,0" Margin="0,12,0,0" Padding="0,12,0,0">
                         <StackPanel>
+                            <TextBlock Text="Uninstall" Style="{StaticResource SectionTitleText}" Margin="0,0,0,8"/>
+                            <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"
+                                       Text="Remove RunAsTool and Game Shortcuts without deleting Playnite, or remove the entire portable Playnite folder."/>
+                            <StackPanel x:Name="UninstallPanel"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="0,1,0,0" Margin="0,12,0,0" Padding="0,12,0,0">
+                        <StackPanel>
+                            <WrapPanel Margin="0,0,0,8">
+                                <TextBlock Text="Bypass" Style="{StaticResource SectionTitleText}" VerticalAlignment="Center"/>
+                                <Button Content="?" Style="{StaticResource HelpIconButton}" Click="BypassHelp_Click"
+                                        ToolTip="RunAsTool bypass shortcuts for elevated launches" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                            </WrapPanel>
+                            <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"
+                                       Text="Automated seed setup copies bundled Game Shortcuts and imports RunAsTool. Playnite stores the shortcut path so Moonlight launches elevated games via Playnite."/>
+                            <StackPanel x:Name="BypassPanel"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="0,1,0,0" Margin="0,12,0,0" Padding="0,12,0,0">
+                        <StackPanel>
                             <WrapPanel Margin="0,0,0,8">
                                 <TextBlock Text="DESKTOP APP ALLOWLIST" Style="{StaticResource LabelCaptionText}" VerticalAlignment="Center"/>
                                 <Button Content="?" Style="{StaticResource HelpIconButton}" Click="AllowlistHelp_Click"

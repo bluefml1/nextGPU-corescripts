@@ -72,6 +72,6 @@ if ($vadHealth.NeedsFallback) {
     Write-Host "[RECOMMEND] VAD is not usable. Run fallback installer:" -ForegroundColor Yellow
     Write-Host "  scripts\drivers\Install-VAD-Fallback.ps1" -ForegroundColor Yellow
     if ($vadHealth.Primary.Count -gt 0) {
-        Write-Host "  (Primary VAD may show Code 52 / CM_PROB_UNSIGNED_DRIVER — VB-CABLE is the signed workaround.)" -ForegroundColor Yellow
+        Write-Host '  (Primary VAD may show Code 52 / CM_PROB_UNSIGNED_DRIVER - VB-CABLE is the signed workaround.)' -ForegroundColor Yellow
     }
 }

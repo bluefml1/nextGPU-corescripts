@@ -99,5 +99,6 @@ public static class RepoCatalog
     public const string PlayniteExportLog = "Export-SunshineFromPlaynite.log";
     public const string PlayniteWatcherInstallLog = "Install-PlayniteWatcher.log";
     public const string PlayniteLibraryUpdateLog = "Update-PlayniteLibraries.log";
+    public const string PlayniteBypassSyncLog = "Sync-PlayniteBypassShortcuts.log";
     public const string PlayniteWatcherRuntimeLog = "log.txt";
 }

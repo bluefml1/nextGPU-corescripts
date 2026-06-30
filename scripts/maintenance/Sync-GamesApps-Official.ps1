@@ -745,18 +745,18 @@ function Resolve-InstallArchivePick {
     if (-not $script:QuietInstall) { return @() }
 
     $wantBases = @($wanted | ForEach-Object { [System.IO.Path]::GetFileNameWithoutExtension($_) } | Select-Object -Unique)
-    $bundleBases = @('VNG', 'LevelUp', 'Garena')
+    $bundleBases = @('VNG', 'LevelUp', 'Garena', 'Steam')
     $asksBundle = @($wantBases | Where-Object { $bundleBases -contains $_ }).Count -gt 0
     if (-not $asksBundle) { return @() }
 
     $candidates = @($Archives | Where-Object {
         $base = [System.IO.Path]::GetFileNameWithoutExtension([string]$_.Name)
-        $base -ieq 'VNG' -or $base -ieq 'LevelUp' -or $base -ieq 'Garena'
+        $base -ieq 'VNG' -or $base -ieq 'LevelUp' -or $base -ieq 'Garena' -or $base -ieq 'Steam'
     })
     if ($candidates.Count -eq 0) { return @() }
 
     $best = @($candidates | Sort-Object `
-        @{ Expression = { $b = [System.IO.Path]::GetFileNameWithoutExtension([string]$_.Name); if ($b -ieq 'VNG') { 0 } elseif ($b -ieq 'Garena') { 1 } else { 2 } } }, `
+        @{ Expression = { $b = [System.IO.Path]::GetFileNameWithoutExtension([string]$_.Name); if ($b -ieq 'VNG') { 0 } elseif ($b -ieq 'Garena') { 1 } elseif ($b -ieq 'Steam') { 2 } else { 3 } } }, `
         @{ Expression = { if ([string]$_.Name -match '\.7z$') { 0 } else { 1 } } }, `
         @{ Expression = { [string]$_.Name } } |
         Select-Object -First 1)

@@ -68,6 +68,8 @@ public partial class PlaynitePage : Page
     private void BuildButtons()
     {
         SetupPanel.Children.Clear();
+        UninstallPanel.Children.Clear();
+        BypassPanel.Children.Clear();
         ExportPanel.Children.Clear();
 
         ActionPageTools.AddPrimaryBatchButton(SetupPanel, "Run Full PlayNite Setup",
@@ -92,6 +94,8 @@ public partial class PlaynitePage : Page
             @"PlayNiteWatcher\Import-PlayniteDesktopApps.ps1", "-SkipEverythingInstall", keepConsoleOpen: true,
             helpText: "Imports allowlisted desktop apps without Everything by walking install directories. Slower but works when es.exe is unavailable.");
 
+        BuildBypassButtons();
+
         AddSetupActionButton(SetupPanel, "Launch Playnite", (_, _) => LaunchPlaynite(),
             "Opens Playnite.DesktopApp.exe from the saved portable install path for manual inspection or troubleshooting.");
         ActionPageTools.AddOpenExplorerButton(SetupPanel, "Open Playnite Install Folder", GetPlayniteInstallFolder,
@@ -99,6 +103,8 @@ public partial class PlaynitePage : Page
         ActionPageTools.AddOpenExplorerButton(SetupPanel, "Open PlayNiteWatcher Folder",
             () => Path.Combine(App.Session.RepoRoot ?? "", RepoCatalog.PlayNiteWatcherRelativeDir),
             helpText: "Opens the PlayNiteWatcher scripts folder in the repo for logs, config, and manual script runs.");
+
+        BuildUninstallButtons();
 
         AddConfirmedPowerShellButton(ExportPanel, "Export to Sunshine",
             @"PlayNiteWatcher\Export-SunshineFromPlaynite.ps1", "",
@@ -127,6 +133,91 @@ public partial class PlaynitePage : Page
             "Opens Update-PlayniteLibraries.log — Steam/Epic disk scan and import completion lines.");
         AddOpenPlayniteLogButton(ExportPanel, "Open Watcher Runtime Log", RepoCatalog.PlayniteWatcherRuntimeLog,
             "Opens PlayNiteWatcher runtime log — session start/stop and cleanup events during Moonlight streaming.");
+    }
+
+    private void BuildBypassButtons()
+    {
+        ActionPageTools.AddPowerShellButton(BypassPanel, "1. Setup Bypass (Automated)",
+            @"PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1", keepConsoleOpen: true,
+            helpText: "Pick parent folder, deploy bundled shortcuts, import RunAsTool app list. You will be prompted for the NextGPU-Authority password once during import.");
+        ActionPageTools.AddPowerShellButton(BypassPanel, "2. Launch RunAsTool",
+            @"PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1", "-RunAsToolOnly", keepConsoleOpen: true,
+            helpText: "Optional — open RunAsTool to verify which games/apps were imported.");
+        ActionPageTools.AddPowerShellButton(BypassPanel, "3. Review and Sync",
+            @"PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1", "-Interactive", keepConsoleOpen: true,
+            helpText: "Scans Game Shortcuts .lnk files, review In allowlist vs Outside allowlist, then updates Playnite games.db and allowlist. Admin only.");
+        ActionPageTools.AddPowerShellButton(BypassPanel, "Re-sync Shortcuts",
+            @"PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1", "-SyncOnly", keepConsoleOpen: true,
+            helpText: "Re-bind existing .lnk files to Playnite without UI. Use after library update or manual shortcut edits.");
+        ActionPageTools.AddPowerShellButton(BypassPanel, "Install Steam Extensions",
+            @"PlayNiteWatcher\Install-SteamExtensions.ps1", keepConsoleOpen: true,
+            helpText: "Install or repair SteamLibrary_NextGPU + NextGPUBypassGuard from repo build output.");
+        ActionPageTools.AddPowerShellButton(BypassPanel, "Launch RunAsTool (Maintenance)",
+            @"PlayNiteWatcher\Launch-RunAsTool.ps1", keepConsoleOpen: true,
+            helpText: "Download/install RunAsTool if missing and open it for troubleshooting.");
+        ActionPageTools.AddOpenExplorerButton(BypassPanel, "Open Game Shortcuts Folder", GetGameShortcutsFolder,
+            helpText: "Opens the configured Game Shortcuts folder in Explorer (from bypass-shortcuts.json).");
+        AddOpenPlayniteLogButton(BypassPanel, "Open Bypass Sync Log", RepoCatalog.PlayniteBypassSyncLog,
+            "Opens Sync-PlayniteBypassShortcuts.log — shortcut scan, Playnite binding, and export steps.");
+    }
+
+    private void BuildUninstallButtons()
+    {
+        AddConfirmedPowerShellButton(UninstallPanel, "Uninstall Game Shortcuts + RunAsTool",
+            @"PlayNiteWatcher\Uninstall-PlayniteBypass.ps1", "-Force",
+            "Remove RunAsTool, delete Game Shortcuts folders, clear bypass config, and revert bypass play paths in Playnite. The Playnite install folder is kept. Continue?",
+            "Removes bypass/RunAsTool only — does not delete the portable Playnite folder.");
+        AddConfirmedPowerShellButton(UninstallPanel, "Uninstall Portable Playnite",
+            @"PlayNiteWatcher\Uninstall-PlayniteBypass.ps1", "-Force -RemovePlayniteInstall",
+            "Remove RunAsTool, bypass config, AND delete the entire portable Playnite install folder (games.db, extensions, config). Continue?",
+            "Full Playnite removal. Use only when you want to delete the portable install entirely. Re-run setup afterward to reinstall.");
+    }
+
+    private void BypassHelp_Click(object sender, RoutedEventArgs e) =>
+        MessageBox.Show(BypassSectionHelpText, "Bypass Shortcuts", MessageBoxButton.OK, MessageBoxImage.Information);
+
+    private const string BypassSectionHelpText =
+        """
+        Bypass shortcuts let Playnite launch elevated games through RunAsTool .lnk files (e.g. Genshin, Wuthering Waves).
+
+        Typical workflow:
+        1. Setup Bypass (Automated) — pick parent folder; copies bundled shortcuts and imports RunAsTool app list (one password prompt)
+        2. Launch RunAsTool — optional; verify imported games/apps in RunAsTool
+        3. Review and Sync — match each shortcut to Playnite (In allowlist for desktop apps, Outside allowlist for Steam/Epic games)
+
+        After Steam library updates, run Re-sync Shortcuts so play paths stay on the .lnk files.
+
+        NextGPUBypassGuard (installed with Steam extensions) and Re-sync publish bypass-bindings.json so paths survive --updatelibraries.
+
+        Uninstall: use the Uninstall section above to remove RunAsTool and bypass config while keeping Playnite, or remove the portable Playnite folder entirely.
+        """;
+
+    private string GetGameShortcutsFolder()
+    {
+        var repo = App.Session.RepoRoot;
+        if (string.IsNullOrWhiteSpace(repo))
+            return "";
+
+        var configPath = Path.Combine(repo, RepoCatalog.PlayNiteWatcherRelativeDir, @"config\playnite\bypass-shortcuts.json");
+        if (!File.Exists(configPath))
+            return "";
+
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
+            if (!doc.RootElement.TryGetProperty("bypassesPath", out var pathEl))
+                return "";
+
+            var path = pathEl.GetString()?.Trim();
+            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+                return "";
+
+            return path.TrimEnd('\\', '/');
+        }
+        catch
+        {
+            return "";
+        }
     }
 
     private void BuildAllowlistActionButtons()
@@ -233,8 +324,11 @@ public partial class PlaynitePage : Page
         var pathFile = Path.Combine(repo, RepoCatalog.PlayNiteWatcherRelativeDir, RepoCatalog.PlayniteInstallPathFile);
         if (!File.Exists(pathFile))
             return "";
-        var parent = File.ReadAllText(pathFile).Trim();
-        return string.IsNullOrWhiteSpace(parent) ? "" : Path.Combine(parent, "Playnite");
+        var saved = File.ReadAllText(pathFile).Trim();
+        if (string.IsNullOrWhiteSpace(saved))
+            return "";
+        // PlayniteInstall.path stores the full portable folder (e.g. Z:\Playnite), not the parent.
+        return saved.TrimEnd('\\', '/');
     }
 
     private void LaunchPlaynite()

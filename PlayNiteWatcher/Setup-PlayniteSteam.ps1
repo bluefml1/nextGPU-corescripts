@@ -1142,7 +1142,7 @@ try {
         $step++
         Set-PlayniteBootstrapConfig -SteamUserIdParam $SteamUserId -SteamApiKeyParam $SteamApiKey
 
-        Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Install Steam/Epic library extensions"
+        Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Install NextGPU Steam + Epic library extensions"
         $step++
         $extLogAction = { param($Message, $Level) Write-SetupLog $Message $Level }
         Install-PlayniteBuiltinLibraryExtensions -InstallDir $playniteDir -RepoRoot $script:PlayNiteWatcherRepoRoot -LogAction $extLogAction
@@ -1267,7 +1267,7 @@ try {
         $step++
         Set-PlayniteBootstrapConfig -SteamUserIdParam $SteamUserId -SteamApiKeyParam $SteamApiKey
 
-        Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Install Steam/Epic library extensions"
+        Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Install NextGPU Steam + Epic library extensions"
         $step++
         $extLogAction = { param($Message, $Level) Write-SetupLog $Message $Level }
         Install-PlayniteBuiltinLibraryExtensions -InstallDir $playniteDir -RepoRoot $script:PlayNiteWatcherRepoRoot -LogAction $extLogAction

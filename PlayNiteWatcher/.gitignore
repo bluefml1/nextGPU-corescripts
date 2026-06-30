@@ -2,3 +2,18 @@
 
 # Per-machine install folder from Setup folder picker
 PlayniteInstall.path
+
+# RunAsTool binaries (place manually or use Install-RunAsTool.ps1 -Download)
+tools/runastool/**/*.exe
+tools/runastool/**/*.zip
+
+# Everything CLI (downloaded by setup if missing)
+tools/everything/es.exe
+config/playnite/bypass-shortcuts.json
+
+# Runtime logs and downloaded installers (not source)
+*.log
+Download/
+PlayNiteWatcher.zip
+
+# SteamExtensions/build/ is committed intentionally (prebuilt extensions for setup)

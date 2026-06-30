@@ -52,6 +52,7 @@ $required = @(
     @('scripts\desktop\Release-DefaultUserHives.ps1', 'Hive release helper'),
     @('scripts\desktop\Clear-NextGpuUserDesktop.ps1', 'nextGPU desktop cleanup'),
     @('scripts\desktop\Register-NextGpuDesktopCleanupTask.ps1', 'nextGPU desktop logon task'),
+    @('scripts\provisioning\VddDisplaySelection.ps1', 'VDD log/display selection helpers'),
     @('scripts\provisioning\Get-DisplayDeviceId.ps1', 'Sunshine display ID'),
     @('scripts\provisioning\Get-SunshineDeviceIdFromLog.ps1', 'Sunshine log device_id parser'),
     @('scripts\provisioning\Register-SunshineLogonTask.ps1', 'Sunshine logon task'),
@@ -121,6 +122,19 @@ if (Test-Path -LiteralPath $hivePath) {
     } else {
         Write-Host '[FAIL] DefaultUserHive: Invoke-DefaultUserNtuserScript missing' -ForegroundColor Red
         $fail++
+    }
+}
+
+$vddSelectPath = Join-Path $RepoRoot 'scripts\provisioning\VddDisplaySelection.ps1'
+if (Test-Path -LiteralPath $vddSelectPath) {
+    . $vddSelectPath
+    if (Get-Command Test-VddDisplaySelectionSamples -ErrorAction SilentlyContinue) {
+        if (Test-VddDisplaySelectionSamples) {
+            Write-Host '[OK]   VddDisplaySelection sample tests' -ForegroundColor Green
+        } else {
+            Write-Host '[FAIL] VddDisplaySelection sample tests' -ForegroundColor Red
+            $fail++
+        }
     }
 }
 

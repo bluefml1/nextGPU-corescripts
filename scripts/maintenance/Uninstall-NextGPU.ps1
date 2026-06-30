@@ -6,7 +6,8 @@
 .DESCRIPTION
     Stops and removes Windows services, removes Sunshine/Moonlight/NSSM/cloudflared
     files, uninstalls VDD/VAD and ViGEmBus drivers, unregisters scheduled tasks
-    (including nextGPU-*), removes wallpaper/shutdown policy and Default-user hive
+    (including nextGPU-*), removes Playnite portable install, RunAsTool, Game
+    Shortcuts bypass config, wallpaper/shutdown policy and Default-user hive
     keys, releases stale NTUSER mounts, removes CLOUDFLARE_TUNNEL_TOKEN, optional
     nextGPU local user, and generated setup/runtime logs.
 
@@ -18,6 +19,7 @@ param(
     [switch]$Force,
     [switch]$SkipDrivers,
     [switch]$SkipGeneratedFiles,
+    [switch]$SkipPlaynite,
     [switch]$KeepLocalUsers,
     [string]$RepoRoot = ''
 )
@@ -872,6 +874,36 @@ function Remove-WallpaperPolicy {
     }
 }
 
+function Remove-PlayniteAndBypassStack {
+    param([string]$RepoRoot)
+
+    $uninstallScript = Join-Path $RepoRoot 'PlayNiteWatcher\Uninstall-PlayniteBypass.ps1'
+    if (-not (Test-Path -LiteralPath $uninstallScript)) {
+        Write-Log "Uninstall-PlayniteBypass.ps1 not found at $uninstallScript" -Level SKIP
+        return
+    }
+
+    if ($PSCmdlet.ShouldProcess('Playnite, RunAsTool, and Game Shortcuts', 'Run bypass/Playnite uninstall')) {
+        Stop-ProcessSafe -Names @('Playnite.DesktopApp', 'Playnite.FullscreenApp', 'RunAsTool', 'RunAsTool_x64')
+        try {
+            $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+                '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                '-File', $uninstallScript,
+                '-Force', '-RemovePlayniteInstall'
+            ) -Wait -PassThru -WindowStyle Hidden
+            if ($proc.ExitCode -eq 0) {
+                Write-Log 'Removed Playnite portable install, RunAsTool, and Game Shortcuts bypass config.' -Level OK
+            }
+            else {
+                Write-Log "Uninstall-PlayniteBypass.ps1 exit code: $($proc.ExitCode)" -Level WARN
+            }
+        }
+        catch {
+            Write-Log "Playnite/RunAsTool uninstall failed: $($_.Exception.Message)" -Level WARN
+        }
+    }
+}
+
 function Remove-Sunshine {
     Stop-ProcessSafe -Names @('sunshine', 'Sunshine')
     $sunshineInstall = 'C:\Program Files\Sunshine'
@@ -899,6 +931,7 @@ if (-not (Test-Admin)) {
     if ($Force) { $args += '-Force' }
     if ($SkipDrivers) { $args += '-SkipDrivers' }
     if ($SkipGeneratedFiles) { $args += '-SkipGeneratedFiles' }
+    if ($SkipPlaynite) { $args += '-SkipPlaynite' }
     if ($KeepLocalUsers) { $args += '-KeepLocalUsers' }
     if ($RepoRoot) { $args += '-RepoRoot'; $args += "`"$RepoRoot`"" }
     if ($WhatIfPreference) { $args += '-WhatIf' }
@@ -911,7 +944,7 @@ Write-Log "ScriptRoot=$ScriptRoot"
 Write-Log "LogPath=$LogPath"
 
 if (-not $Force -and -not $WhatIfPreference) {
-    Write-Warning 'This will remove nextGPU services, installed components, drivers, scheduled tasks, policy settings, environment variables, and generated logs.'
+    Write-Warning 'This will remove nextGPU services, installed components, drivers, scheduled tasks, Playnite/RunAsTool/Game Shortcuts, policy settings, environment variables, and generated logs.'
     $answer = Read-Host 'Type UNINSTALL to continue'
     if ($answer -ne 'UNINSTALL') {
         Write-Log 'Uninstall cancelled by user.' -Level WARN
@@ -933,7 +966,7 @@ Write-Log 'Removing Windows services...'
 foreach ($serviceName in @('auto-repair', 'gpu-heartbeat', 'gpu-sunshine', 'moonlight-web')) {
     Remove-ServiceSafe -Name $serviceName -NssmExe $nssmExe -CloudflaredExe ''
 }
-Stop-ProcessSafe -Names @('sunshine', 'Sunshine', 'web-server', 'cloudflared', 'curl', 'nssm')
+    Stop-ProcessSafe -Names @('sunshine', 'Sunshine', 'web-server', 'cloudflared', 'curl', 'nssm', 'Playnite.DesktopApp', 'Playnite.FullscreenApp', 'RunAsTool', 'RunAsTool_x64')
 Start-Sleep -Seconds 2
 
 Write-Log 'Unmounting per-user S3 storage (if mounted)...'
@@ -951,6 +984,14 @@ if (Test-Path -LiteralPath $unmountScript) {
 
 Write-Log 'Removing scheduled tasks...'
 Remove-AllNextGpuScheduledTasks
+
+if ($SkipPlaynite) {
+    Write-Log 'Playnite / RunAsTool / Game Shortcuts removal skipped by -SkipPlaynite.' -Level SKIP
+}
+else {
+    Write-Log 'Removing Playnite, RunAsTool, and Game Shortcuts bypass stack...'
+    Remove-PlayniteAndBypassStack -RepoRoot $ScriptRoot
+}
 
 Write-Log 'Removing Sunshine...'
 Remove-Sunshine
