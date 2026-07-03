@@ -175,7 +175,7 @@ The root launcher delegates to `scripts/provisioning/RegisterMachine_Beta.bat`. 
 
 22. **Wallpaper** — `scripts/desktop/Setup-Wallpaper.bat inline` -> `scripts/desktop/Set-DesktopWallpaper-Gpo.ps1` (Fit desktop, lock/sign-in, **`nextGPU-WallpaperFitLogon`**; runs **before** account changes).
 23. **Rename admin** — Renames `{ADMIN_ACCOUNT_NAME}` → **`NextGPU-Authority`** (username + full name).
-24. **Create user** — `net user nextGPU /add` (standard user for rental sessions). Registers **`nextGPU-DesktopCleanupLogon`**: at every **nextGPU** logon, `Clear-NextGpuUserDesktop.ps1` removes all items from that user’s Desktop folder (and runs once from setup if the profile folder already exists). Does **not** clear **`C:\Users\Public\Desktop`** (those shortcuts still appear for every user unless removed separately).
+24. **Create user** — creates local group **`NextGPURestricted`**, then `net user nextGPU /add`, then adds **nextGPU** to **NextGPURestricted** (standard user for rental sessions; remains in **BUILTIN\Users**). Registers **`nextGPU-DesktopCleanupLogon`**: at every **nextGPU** logon, `Clear-NextGpuUserDesktop.ps1` removes all items from that user’s Desktop folder (and runs once from setup if the profile folder already exists). Does **not** clear **`C:\Users\Public\Desktop`** (those shortcuts still appear for every user unless removed separately).
 25. **Shutdown lock** — `Setup-Shutdown-Policy.bat` / `Set-ShutdownPolicy.ps1`: only **`NextGPU-Authority`** may shut down or restart; `nextGPU` and all other users are blocked (user rights + Start menu policy + logon task).
 26. **Completion message** — Prompts for **manual reboot** (drivers, display paths, accounts).
 

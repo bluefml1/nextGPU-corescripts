@@ -814,6 +814,9 @@ function Start-PlayniteDesktop {
     param([string]$PlayniteExe)
 
     Write-SetupLog "Start-PlayniteDesktop: opening Playnite"
+    if (Test-IsAdministrator) {
+        Write-SetupLog "Setup is elevated; launching Playnite at limited (non-admin) run level."
+    }
 
     Stop-PlayniteProcess -PlayniteExe $PlayniteExe
 
@@ -1111,6 +1114,7 @@ try {
         if ($script:RunSunshinePipeline) { $script:SetupStepTotal++ }
         if ($script:RunAwsPush) { $script:SetupStepTotal++ }
         if ($LaunchPlaynite) { $script:SetupStepTotal++ }
+        $script:SetupStepTotal++
         $step = 1
 
         Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Resolve Playnite portable install folder"
@@ -1137,6 +1141,13 @@ try {
         $script:SetupPlayniteExe = $playniteExe
         Set-PlayniteAppDataFromInstallDir -InstallDir $playniteDir
         Write-SetupLog "Using Playnite executable: $playniteExe"
+
+        Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Grant Playnite rental access"
+        $step++
+        $aclOk = Grant-PlayniteRentalAccess -InstallDir $playniteDir -LogAction { param($Message, $Level) Write-SetupLog $Message $Level }
+        if (-not $aclOk) {
+            Write-SetupLog "Playnite rental ACL grant failed or skipped (requires elevated setup)." "WARN"
+        }
 
         Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Write disk-scan Steam/Epic plugin config"
         $step++
@@ -1223,6 +1234,7 @@ try {
         if (-not $SkipSunshineExtension) { $script:SetupStepTotal++ }
         if ($script:RunSunshinePipeline) { $script:SetupStepTotal++ }
         if ($script:RunAwsPush) { $script:SetupStepTotal++ }
+        $script:SetupStepTotal++
         $step = 1
 
         Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Resolve Playnite portable install folder"
@@ -1262,6 +1274,13 @@ try {
         $script:SetupPlayniteExe = $playniteExe
         Set-PlayniteAppDataFromInstallDir -InstallDir $playniteDir
         Write-SetupLog "Using Playnite executable: $playniteExe"
+
+        Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Grant Playnite rental access"
+        $step++
+        $aclOk = Grant-PlayniteRentalAccess -InstallDir $playniteDir -LogAction { param($Message, $Level) Write-SetupLog $Message $Level }
+        if (-not $aclOk) {
+            Write-SetupLog "Playnite rental ACL grant failed or skipped (requires elevated setup)." "WARN"
+        }
 
         Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Write disk-scan Steam/Epic plugin config"
         $step++

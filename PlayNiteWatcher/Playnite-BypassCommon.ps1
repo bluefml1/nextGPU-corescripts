@@ -2307,6 +2307,60 @@ function Uninstall-PlayniteWatcherHooks {
     }
 }
 
+function Remove-DirectoryInFreshProcess {
+    <#
+        Deletes a folder from a new PowerShell process so assemblies loaded from that
+        folder in the caller (e.g. Playnite LiteDB.dll via Add-Type) do not lock files.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$LiteralPath,
+        [int]$MaxAttempts = 4
+    )
+
+    if (-not (Test-Path -LiteralPath $LiteralPath)) {
+        return $true
+    }
+
+    $pathLiteral = $LiteralPath.Replace("'", "''")
+    $installPrefix = $LiteralPath.TrimEnd('\').Replace("'", "''") + '\'
+    $innerScript = @"
+`$target = '$pathLiteral'
+`$installPrefix = '$installPrefix'
+for (`$attempt = 1; `$attempt -le $MaxAttempts; `$attempt++) {
+    Get-Process -Name 'Playnite.DesktopApp', 'Playnite.FullscreenApp' -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+    try {
+        Get-CimInstance -ClassName Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object {
+                `$_.ExecutablePath -and
+                `$_.ExecutablePath.StartsWith(`$installPrefix, [StringComparison]::OrdinalIgnoreCase) -and
+                `$_.Name -match '^Playnite\.'
+            } |
+            ForEach-Object { Stop-Process -Id `$_.ProcessId -Force -ErrorAction SilentlyContinue }
+    }
+    catch { }
+    Start-Sleep -Seconds 2
+    if (-not (Test-Path -LiteralPath `$target)) { exit 0 }
+    try {
+        Remove-Item -LiteralPath `$target -Recurse -Force -ErrorAction Stop
+        exit 0
+    }
+    catch {
+        Start-Sleep -Seconds 3
+    }
+}
+exit 1
+"@
+
+    $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($innerScript))
+    $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+        '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+        '-EncodedCommand', $encoded
+    ) -Wait -PassThru -WindowStyle Hidden
+    return ($proc.ExitCode -eq 0)
+}
+
 function Remove-PlaynitePortableInstall {
     param(
         [string]$RepoRoot,
@@ -2332,25 +2386,14 @@ function Remove-PlaynitePortableInstall {
     Start-Sleep -Seconds 2
 
     if (Test-Path -LiteralPath $InstallDir) {
-        $removed = $false
-        for ($attempt = 1; $attempt -le 4; $attempt++) {
-            try {
-                Remove-Item -LiteralPath $InstallDir -Recurse -Force -ErrorAction Stop
-                $removed = $true
-                if ($LogAction) { & $LogAction "Removed Playnite portable install: $InstallDir" }
-                break
-            }
-            catch {
-                if ($LogAction) {
-                    & $LogAction "Playnite folder removal attempt $attempt/4 failed: $($_.Exception.Message)" "WARN"
-                }
-                Stop-Process -Name 'Playnite.DesktopApp', 'Playnite.FullscreenApp' -Force -ErrorAction SilentlyContinue
-                Start-Sleep -Seconds 3
-            }
+        if ($LogAction) { & $LogAction "Removing Playnite portable install in a separate process (avoids LiteDB.dll lock from this session)..." }
+        $removed = Remove-DirectoryInFreshProcess -LiteralPath $InstallDir
+        if ($removed) {
+            if ($LogAction) { & $LogAction "Removed Playnite portable install: $InstallDir" }
         }
-        if (-not $removed) {
+        else {
             if ($LogAction) {
-                & $LogAction "Could not remove Playnite folder (files may be locked). Bypass/RunAsTool cleanup completed; repair or delete $InstallDir manually after reboot." "WARN"
+                & $LogAction "Could not remove Playnite folder (files may still be locked by Playnite or another app). Bypass/RunAsTool cleanup completed; close Playnite and delete $InstallDir manually or reboot and retry." "WARN"
             }
             return $false
         }

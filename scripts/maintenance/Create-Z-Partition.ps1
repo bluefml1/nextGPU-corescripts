@@ -255,6 +255,61 @@ function Resolve-ShrinkSizeGb {
     throw ('Cancelled: requested {0} GB but max shrinkable is {1} GB.' -f $RequestedGb, $max)
 }
 
+function Set-NextGpuDataDriveRentalAcl {
+    <#
+    .SYNOPSIS
+        Lock down a data volume root for rental use.
+        BUILTIN\Users: read/execute; NextGPURestricted: deny delete (inherited to children).
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$DriveLetter
+    )
+
+    $letter = $DriveLetter.Trim().TrimEnd(':').ToUpperInvariant()
+    $root = '{0}:\' -f $letter
+    $usersGroup = 'Users'
+    $restrictedGroup = 'NextGPURestricted'
+
+    if (-not (Test-Path -LiteralPath $root)) {
+        Write-Warning "Drive root not found: $root"
+        return $false
+    }
+
+    $ensurePs1 = Join-Path $PSScriptRoot '..\provisioning\Ensure-NextGpuRestrictedGroup.ps1'
+    if (Test-Path -LiteralPath $ensurePs1) {
+        . $ensurePs1
+        $null = Ensure-NextGpuRestrictedGroupMembership -CreateGroupOnly
+    }
+    else {
+        Write-Warning "Ensure-NextGpuRestrictedGroup.ps1 not found; deny ACE may fail if group is missing."
+    }
+
+    Write-Host ('[*] Applying rental ACLs on {0} ...' -f $root) -ForegroundColor Cyan
+
+    $ok = $true
+
+    & icacls.exe $root /inheritance:d 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { $ok = $false }
+
+    # Remove may fail when no Users ACE exists yet; continue either way.
+    & icacls.exe $root /remove:g $usersGroup 2>&1 | Out-Null
+
+    & icacls.exe $root /grant:r "${usersGroup}:(OI)(CI)(RX)" 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { $ok = $false }
+
+    & icacls.exe $root /deny "${restrictedGroup}:(OI)(CI)(DE,DC)" 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { $ok = $false }
+
+    if ($ok) {
+        Write-Host ('[OK] Rental ACLs applied on {0} (Users: RX; NextGPURestricted: deny delete).' -f $root) -ForegroundColor Green
+    }
+    else {
+        Write-Warning "One or more icacls steps failed on $root (verify ACLs manually)."
+    }
+    return $ok
+}
+
 Write-Host '=== NextGPU Disk: Shrink + Extend or Create ===' -ForegroundColor Cyan
 
 $vols = @(Get-FixedLetterVolumes)
@@ -477,6 +532,8 @@ else {
     Write-Host ('[OK] {0}: created (~{1} GB).' -f $targetLetter, $NewPartitionSizeGB) -ForegroundColor Green
     Write-Host ('    {0}: now ~{1} GB' -f $source, (Format-GB $targetSourceSize)) -ForegroundColor Green
 }
+
+$null = Set-NextGpuDataDriveRentalAcl -DriveLetter $targetLetter
 
 $restart = [System.Windows.Forms.MessageBox]::Show(
     "Disk operation complete.`n`nRestart now (recommended)?",

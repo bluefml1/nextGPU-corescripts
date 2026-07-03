@@ -76,7 +76,7 @@ public partial class GetStartedPage : Page
                 "Provision Full Host",
                 "Run the complete NextGPU provisioning flow (services, tasks, Sunshine/Moonlight/tunnel integration).",
                 "Run RegisterMachine",
-                () => RunBatch(@"RegisterMachine_Beta.bat", keepConsoleOpen: true),
+                () => RegisterMachineLauncher.RunWithForm(Window.GetWindow(this), keepConsoleOpen: true),
                 "Open Provisioning Logs",
                 () => NavigateLogs("sunshine-bind.log")),
             new StepItem(

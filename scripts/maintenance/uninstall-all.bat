@@ -53,7 +53,8 @@ echo ========================================
 echo nextGPU Full Local Uninstaller
 echo ========================================
 echo.
-echo This removes local services, Sunshine/Moonlight/cloudflared, drivers,
+echo This removes local services, Sunshine/Moonlight/cloudflared, drivers
+echo (VDD/VAD/VB-CABLE - reboot if they still appear in Device Manager),
 echo scheduled tasks (including nextGPU-*), wallpaper/shutdown policy,
 echo CLOUDFLARE_TUNNEL_TOKEN, the nextGPU local user, and generated logs.
 echo It does not delete Cloudflare DNS/tunnel resources from your account.
@@ -64,7 +65,7 @@ powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%PS1%" %PS_ARGS%
 set "ERR=!errorlevel!"
 echo.
 if !ERR! equ 0 (
-    echo [*] Uninstall completed. Reboot is recommended.
+    echo [*] Uninstall completed. Reboot is recommended, especially if VDD/VAD were installed.
 ) else (
     echo [!] Uninstall exited with code !ERR!.
 )

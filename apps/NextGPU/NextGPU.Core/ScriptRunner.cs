@@ -36,9 +36,11 @@ public sealed class ScriptRunner
             return (false, $"Not found: {full}");
 
         var prefix = keepConsoleOpen ? "-NoExit " : "";
-        var args = $"{prefix}-NoLogo -NoProfile -ExecutionPolicy Bypass -File \"{full}\" {psArguments}".Trim();
+        var psCommand = $"{prefix}-NoLogo -NoProfile -ExecutionPolicy Bypass -File \"{full}\" {psArguments}".Trim();
         _audit.Write($"Run PowerShell: {relativePath} {psArguments} keepConsole={keepConsoleOpen}");
-        return RunProcess("powershell.exe", elevated, args, isExecutablePath: false, keepConsoleOpen);
+        if (elevated)
+            return RunElevatedPowerShellViaCmd(full, psCommand, keepConsoleOpen);
+        return RunProcess("powershell.exe", false, psCommand, isExecutablePath: false, keepConsoleOpen);
     }
 
     public (bool Success, string Message) RunPowerShellCapture(string relativePath, string psArguments)
@@ -83,6 +85,18 @@ public sealed class ScriptRunner
         return combined;
     }
 
+    /// <summary>
+    /// Elevated PowerShell via UAC often drops -File/-ExecutionPolicy when started directly.
+    /// Launch through cmd.exe so scripts run reliably on Restricted execution policy hosts.
+    /// </summary>
+    private (bool Success, string Message) RunElevatedPowerShellViaCmd(string scriptFullPath, string psCommand, bool keepConsoleOpen)
+    {
+        var scriptDir = Path.GetDirectoryName(scriptFullPath) ?? _repoRoot;
+        var cmdFlag = keepConsoleOpen ? "/k" : "/c";
+        var cmdArgs = $"{cmdFlag} cd /d \"{scriptDir}\" && powershell.exe {psCommand}";
+        return RunProcess("cmd.exe", elevated: true, cmdArgs, isExecutablePath: true, keepConsoleOpen);
+    }
+
     private (bool Success, string Message) RunProcess(string fileName, bool elevated, string? arguments, bool isExecutablePath = true, bool keepConsoleOpen = false)
     {
         try
@@ -90,8 +104,9 @@ public sealed class ScriptRunner
             ProcessStartInfo psi;
             if (isExecutablePath && fileName.EndsWith(".bat", StringComparison.OrdinalIgnoreCase))
             {
+                var batDir = Path.GetDirectoryName(fileName) ?? _repoRoot;
                 var cmdFlag = keepConsoleOpen ? "/k" : "/c";
-                var cmdArgs = $"{cmdFlag} \"\"{fileName}\" {arguments ?? ""}\"".Trim();
+                var cmdArgs = $"{cmdFlag} cd /d \"{batDir}\" && \"{fileName}\" {arguments ?? ""}".Trim();
                 psi = new ProcessStartInfo("cmd.exe", cmdArgs)
                 {
                     WorkingDirectory = _repoRoot

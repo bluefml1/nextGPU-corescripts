@@ -28,12 +28,15 @@ set "SUNSHINE_BIND_LOG=%LOG_DIR%\sunshine-bind.log"
 :: =========================================================
 
 :: Auto-elevate to Admin (visible console so install progress can be tracked)
+set "RM_ELEVATE_EXTRA_ARGS="
 fltmc >nul 2>&1
 if %errorlevel% neq 0 (
     echo Requesting Administrator privileges...
     set "RM_ELEVATE_BAT=%~f0"
     set "RM_ELEVATE_DIR=%SCRIPT_DIR%"
-    powershell -NoProfile -Command "Start-Process cmd.exe -Verb RunAs -WindowStyle Normal -ArgumentList ('/k','cd /d \"\"' + $env:RM_ELEVATE_DIR + '\"\" && call \"\"' + $env:RM_ELEVATE_BAT + '\"\" __elevated__')"
+    if /i "%~1"=="/UiConfig" set "RM_ELEVATE_EXTRA_ARGS=/UiConfig"
+    if /i "%~1"=="-UiConfig" set "RM_ELEVATE_EXTRA_ARGS=/UiConfig"
+    powershell -NoProfile -Command "$extra=$env:RM_ELEVATE_EXTRA_ARGS; $args=@('/k','cd /d \"\"' + $env:RM_ELEVATE_DIR + '\"\"','&&','call','\"\"' + $env:RM_ELEVATE_BAT + '\"\"','__elevated__'); if($extra){$args+=$extra}; Start-Process cmd.exe -Verb RunAs -WindowStyle Normal -ArgumentList $args"
     exit /b
 )
 if /i "%~1"=="__elevated__" shift /1
@@ -42,18 +45,23 @@ echo [INFO] Running with Administrator privileges.
 echo [INFO] Script directory: %SCRIPT_DIR%
 echo.
 
-:: Parse optional CLI VDD flags (prompt appears under Required Configuration)
+:: Parse optional CLI flags (VDD + UI config)
 set "ENABLE_VDD="
 set "VDD_CLI_SET="
+set "RM_UI_CONFIG="
 :parse_rm_args
 if "%~1"=="" goto :parse_rm_args_done
 if /i "%~1"=="/NoVdd" (set "ENABLE_VDD=0" & set "VDD_CLI_SET=1")
 if /i "%~1"=="-NoVdd" (set "ENABLE_VDD=0" & set "VDD_CLI_SET=1")
 if /i "%~1"=="/UseVdd" (set "ENABLE_VDD=1" & set "VDD_CLI_SET=1")
 if /i "%~1"=="-UseVdd" (set "ENABLE_VDD=1" & set "VDD_CLI_SET=1")
+if /i "%~1"=="/UiConfig" set "RM_UI_CONFIG=1"
+if /i "%~1"=="-UiConfig" set "RM_UI_CONFIG=1"
 shift /1
 goto :parse_rm_args
 :parse_rm_args_done
+
+if "!RM_UI_CONFIG!"=="1" goto :load_ui_config
 
 :: =============== USER INPUT SECTION ===============
 echo ========================================
@@ -73,6 +81,38 @@ if !errorlevel! equ 2 (
 ) else (
     set "ENABLE_VDD=1"
 )
+goto :vdd_choice_persist
+
+:load_ui_config
+echo ========================================
+echo Required Configuration (from NextGPU UI)
+echo ========================================
+echo.
+set "RM_UI_CONFIG_FILE=%LOG_DIR%\register-machine-ui-config.json"
+set "RM_UI_VARS_BAT=%LOG_DIR%\register-machine-vars.cmd"
+set "RM_IMPORT_PS1=%PROVISIONING_DIR%\Import-RegisterMachineConfig.ps1"
+if not exist "!RM_UI_CONFIG_FILE!" (
+    echo ERROR: UI config not found: !RM_UI_CONFIG_FILE!
+    echo Run Register Machine from the NextGPU app and submit the form first.
+    pause
+    exit /b 1
+)
+if not exist "!RM_IMPORT_PS1!" (
+    echo ERROR: Import-RegisterMachineConfig.ps1 not found.
+    pause
+    exit /b 1
+)
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "!RM_IMPORT_PS1!" -ConfigPath "!RM_UI_CONFIG_FILE!" -OutputBatPath "!RM_UI_VARS_BAT!"
+if !errorlevel! neq 0 (
+    echo ERROR: Failed to load UI configuration. See !RM_UI_CONFIG_FILE!
+    pause
+    exit /b 1
+)
+call "!RM_UI_VARS_BAT!"
+del "!RM_UI_VARS_BAT!" >nul 2>&1
+del "!RM_UI_CONFIG_FILE!" >nul 2>&1
+goto :vdd_choice_persist
+
 :vdd_choice_persist
 set "MACHINE_PROFILE_PS1=%PROVISIONING_DIR%\MachineProfile.ps1"
 if not exist "%MACHINE_PROFILE_PS1%" (
@@ -89,6 +129,7 @@ if "!ENABLE_VDD!"=="1" (
 )
 >>"%SUNSHINE_BIND_LOG%" echo [%DATE% %TIME%] ENABLE_VDD=!ENABLE_VDD!
 echo.
+if "!RM_UI_CONFIG!"=="1" goto :config_summary
 
 :input_cf_token
 set /p "CF_API_TOKEN=Enter Cloudflare API Token: "
@@ -120,6 +161,7 @@ for /f "delims=" %%V in ('powershell -NoLogo -NoProfile -Command "$v='%VENDOR_ID
 set /p "ADMIN_ACCOUNT_NAME=Enter current admin account username to rename: "
 if "%ADMIN_ACCOUNT_NAME%"=="" (echo ERROR: Admin account username cannot be empty! & goto input_admin_account)
 
+:config_summary
 echo.
 echo Configuration Summary:
 if "!ENABLE_VDD!"=="1" (echo - VDD/VAD: enabled) else (echo - VDD/VAD: disabled)
@@ -129,6 +171,7 @@ echo - Price: $%PRICE%
 if defined VENDOR_ID if not "!VENDOR_ID!"=="" (echo - Vendor ID: !VENDOR_ID!) else (echo - Vendor ID: ^(not set^))
 echo - Admin account (username + full name): %ADMIN_ACCOUNT_NAME% -^> NextGPU-Authority
 echo.
+if "!RM_UI_CONFIG!"=="1" goto :config_confirmed
 set /p "CONFIRM=Is this correct? (Y/N): "
 if /i not "%CONFIRM%"=="Y" (
     echo Please re-enter the configuration.
@@ -140,6 +183,7 @@ if /i not "%CONFIRM%"=="Y" (
         goto input_vdd_choice
     )
 )
+:config_confirmed
 set "COMPUTER_NAME_LOWER="
 for /f "delims=" %%A in ('powershell -NoLogo -NoProfile -Command "$n='%COMPUTER_NAME_CUSTOM%'; if([string]::IsNullOrWhiteSpace($n)){''} else {$n.Trim().ToLowerInvariant()}"') do set "COMPUTER_NAME_LOWER=%%A"
 if not defined COMPUTER_NAME_LOWER (
@@ -893,12 +937,29 @@ if !errorlevel! neq 0 (
     echo [!] WARNING: Failed to update admin account. It may not exist or was already configured.
 )
 
+echo [*] Creating NextGPURestricted group...
+set "NEXTGPU_GROUP_PS1=%PROVISIONING_DIR%\Ensure-NextGpuRestrictedGroup.ps1"
+if exist "%NEXTGPU_GROUP_PS1%" (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%NEXTGPU_GROUP_PS1%" -CreateGroupOnly
+    if !errorlevel! neq 0 (
+        echo [!] WARNING: Ensure-NextGpuRestrictedGroup.ps1 -CreateGroupOnly failed ^(exit !errorlevel!^).
+    )
+) else (
+    echo [!] WARNING: Ensure-NextGpuRestrictedGroup.ps1 not found.
+)
+
 echo [*] Creating new user account...
 net user "nextGPU" /add
 if !errorlevel! equ 0 (
     echo [*] User account 'nextGPU' created successfully.
 ) else (
     echo [!] WARNING: Failed to create user account. It may already exist.
+)
+if exist "%NEXTGPU_GROUP_PS1%" (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%NEXTGPU_GROUP_PS1%"
+    if !errorlevel! neq 0 (
+        echo [!] WARNING: Ensure-NextGpuRestrictedGroup.ps1 failed ^(exit !errorlevel!^).
+    )
 )
 set "NEXTGPU_DESKTOP_REG=%DESKTOP_DIR%\Register-NextGpuDesktopCleanupTask.ps1"
 set "NEXTGPU_DESKTOP_CLR=%DESKTOP_DIR%\Clear-NextGpuUserDesktop.ps1"

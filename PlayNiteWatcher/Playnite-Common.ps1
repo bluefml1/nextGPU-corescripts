@@ -333,10 +333,144 @@ function Get-PlayniteInstallRootFromExe {
     return (Split-Path -Path $PlayniteExe -Parent)
 }
 
+function Get-ProcessByExecutablePath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ExePath,
+        [int]$TimeoutSeconds = 45
+    )
+
+    $procName = [System.IO.Path]::GetFileName($ExePath)
+    if ([string]::IsNullOrWhiteSpace($procName)) {
+        return $null
+    }
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        $match = Get-CimInstance -ClassName Win32_Process -Filter "Name='$procName'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.ExecutablePath -and ($_.ExecutablePath -ieq $ExePath) } |
+            Select-Object -First 1
+        if ($match) {
+            return Get-Process -Id $match.ProcessId -ErrorAction SilentlyContinue
+        }
+        Start-Sleep -Milliseconds 250
+    }
+
+    return $null
+}
+
+function Start-LimitedUserProcess {
+    <#
+        Start a process at the interactive user's non-elevated (Limited) run level.
+        Used when setup scripts run elevated but must not launch Playnite as admin.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [string[]]$ArgumentList = @(),
+        [string]$WorkingDirectory = '',
+        [ValidateSet('Normal', 'Hidden', 'Minimized', 'Maximized')]
+        [string]$WindowStyle = 'Normal',
+        [switch]$PassThru,
+        [switch]$Wait
+    )
+
+    if (-not (Test-IsAdministrator)) {
+        $params = @{
+            FilePath = $FilePath
+        }
+        if ($ArgumentList -and $ArgumentList.Count -gt 0) {
+            $params.ArgumentList = $ArgumentList
+        }
+        if ($WorkingDirectory) {
+            $params.WorkingDirectory = $WorkingDirectory
+        }
+        if ($PassThru) {
+            $params.PassThru = $true
+        }
+        if ($Wait) {
+            $params.Wait = $true
+        }
+        if ($PSBoundParameters.ContainsKey('WindowStyle')) {
+            $params.WindowStyle = $WindowStyle
+        }
+        return Start-Process @params
+    }
+
+    $userId = if ($env:USERDOMAIN -and $env:USERNAME) {
+        "$env:USERDOMAIN\$env:USERNAME"
+    }
+    else {
+        $env:USERNAME
+    }
+
+    $taskName = "NextGPU-LimitedLaunch-$([guid]::NewGuid().ToString('N'))"
+    $useHiddenLaunch = $PSBoundParameters.ContainsKey('WindowStyle') -and $WindowStyle -eq 'Hidden'
+
+    if ($useHiddenLaunch) {
+        $escapedExe = $FilePath.Replace("'", "''")
+        $escapedWd = $WorkingDirectory.Replace("'", "''")
+        $argLiteral = ($ArgumentList | ForEach-Object { "'$($_.Replace("'", "''"))'" }) -join ','
+        if (-not $argLiteral) {
+            $argLiteral = '@()'
+        }
+        else {
+            $argLiteral = "@($argLiteral)"
+        }
+
+        $launchScript = @"
+Set-Location -LiteralPath '$escapedWd'
+Start-Process -FilePath '$escapedExe' -ArgumentList $argLiteral -WindowStyle Hidden
+"@
+        $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($launchScript))
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -EncodedCommand $encoded"
+    }
+    else {
+        $actionParams = @{
+            Execute = $FilePath
+        }
+        if ($ArgumentList -and $ArgumentList.Count -gt 0) {
+            $actionParams.Argument = ($ArgumentList -join ' ')
+        }
+        if ($WorkingDirectory) {
+            $actionParams.WorkingDirectory = $WorkingDirectory
+        }
+        $action = New-ScheduledTaskAction @actionParams
+    }
+
+    $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Limited
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+
+    Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings -Force | Out-Null
+    try {
+        Start-ScheduledTask -TaskName $taskName | Out-Null
+        $proc = $null
+        if ($PassThru -or $Wait) {
+            $proc = Get-ProcessByExecutablePath -ExePath $FilePath -TimeoutSeconds 60
+        }
+        if ($Wait -and $proc) {
+            try { $proc.WaitForExit() } catch { }
+            return $proc
+        }
+        if ($PassThru) {
+            return $proc
+        }
+    }
+    finally {
+        Start-Sleep -Milliseconds 300
+        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+    }
+
+    return $null
+}
+
 function Start-PlayniteProcess {
     <#
         Launch Playnite with install folder as working directory.
-        Uses Push-Location because Start-Process -WorkingDirectory requires PowerShell 6+.
+        When the caller is elevated, launches at the interactive user's limited (non-admin) token
+        so Playnite does not show the elevated-privileges warning.
+        Uses Push-Location on non-elevated paths because Start-Process -WorkingDirectory requires PowerShell 6+.
     #>
     [CmdletBinding()]
     param(
@@ -350,6 +484,23 @@ function Start-PlayniteProcess {
     )
 
     $playniteRoot = Get-PlayniteInstallRootFromExe -PlayniteExe $PlayniteExe
+
+    if (Test-IsAdministrator) {
+        $limitedParams = @{
+            FilePath = $PlayniteExe
+            WorkingDirectory = $playniteRoot
+            PassThru = $PassThru
+            Wait = $Wait
+        }
+        if ($ArgumentList -and $ArgumentList.Count -gt 0) {
+            $limitedParams.ArgumentList = $ArgumentList
+        }
+        if ($PSBoundParameters.ContainsKey('WindowStyle')) {
+            $limitedParams.WindowStyle = $WindowStyle
+        }
+        return Start-LimitedUserProcess @limitedParams
+    }
+
     Push-Location -LiteralPath $playniteRoot
     try {
         $params = @{
@@ -420,6 +571,103 @@ function Test-IsAdministrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+$script:PlayniteRentalAccessGroup = 'BUILTIN\Users'
+$script:PlayniteRentalAdminGroup = 'BUILTIN\Administrators'
+
+function Write-PlayniteRentalAccessLog {
+    param(
+        [string]$Message,
+        [string]$Level = 'INFO',
+        [scriptblock]$LogAction
+    )
+
+    if ($LogAction) {
+        & $LogAction $Message $Level
+        return
+    }
+    Write-Verbose $Message
+}
+
+function Grant-PlayniteRentalAccess {
+    <#
+        Grant BUILTIN\Users Modify on the portable Playnite install folder only.
+        Breaks inherited rental volume ACLs (RX + deny delete) so nextGPU can run Playnite.
+        Requires an elevated session (icacls).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InstallDir,
+        [scriptblock]$LogAction
+    )
+
+    $normalized = Expand-PlayniteInstallDirectory -Path $InstallDir
+    if ([string]::IsNullOrWhiteSpace($normalized) -or -not (Test-Path -LiteralPath $normalized)) {
+        Write-PlayniteRentalAccessLog "Playnite install folder not found: $InstallDir" 'ERROR' $LogAction
+        return $false
+    }
+
+    $null = Get-PlayniteDesktopExe -InstallDir $normalized
+
+    if (-not (Test-IsAdministrator)) {
+        Write-PlayniteRentalAccessLog 'Grant-PlayniteRentalAccess requires Administrator (elevated setup).' 'WARN' $LogAction
+        return $false
+    }
+
+    Write-PlayniteRentalAccessLog "Granting rental access on Playnite folder: $normalized" 'INFO' $LogAction
+
+    $ok = $true
+    $usersGrant = "${script:PlayniteRentalAccessGroup}:(OI)(CI)M"
+    $adminGrant = "${script:PlayniteRentalAdminGroup}:(OI)(CI)F"
+
+    & icacls.exe $normalized /inheritance:r 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { $ok = $false }
+
+    & icacls.exe $normalized /grant:r $usersGrant 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { $ok = $false }
+
+    & icacls.exe $normalized /grant:r $adminGrant 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { $ok = $false }
+
+    if ($ok) {
+        Write-PlayniteRentalAccessLog "Rental ACL applied ($usersGrant; $adminGrant)." 'INFO' $LogAction
+    }
+    else {
+        Write-PlayniteRentalAccessLog 'One or more icacls steps failed on Playnite install folder.' 'ERROR' $LogAction
+    }
+
+    return $ok
+}
+
+function Test-PlayniteRentalAccess {
+    <#
+        True when the current user can write and delete under the portable Playnite install folder.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InstallDir
+    )
+
+    $normalized = Expand-PlayniteInstallDirectory -Path $InstallDir
+    if ([string]::IsNullOrWhiteSpace($normalized) -or -not (Test-Path -LiteralPath $normalized)) {
+        return $false
+    }
+
+    $probePath = Join-Path $normalized '.nextgpu-acl-probe'
+    try {
+        [System.IO.File]::WriteAllText($probePath, 'ok')
+        Remove-Item -LiteralPath $probePath -Force -ErrorAction Stop
+        return $true
+    }
+    catch {
+        if (Test-Path -LiteralPath $probePath) {
+            Remove-Item -LiteralPath $probePath -Force -ErrorAction SilentlyContinue
+        }
+        return $false
+    }
 }
 
 function Get-DefaultSunshineConfigPath {

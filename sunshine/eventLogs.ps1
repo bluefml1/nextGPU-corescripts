@@ -1,0 +1,1 @@
+Write-EventLog -LogName "Application" -Source "LogoffManager" -EntryType Information -EventId 2002 -Message "UserEndSession"

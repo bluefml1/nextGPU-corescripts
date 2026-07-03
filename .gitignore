@@ -11,6 +11,8 @@ apps/NextGPU/publish/*
 
 # Runtime logs (keep logs/.gitkeep)
 logs/*.log
+logs/register-machine-ui-config.json
+logs/register-machine-vars.cmd
 
 # Machine-local arrange / install state
 scripts/maintenance/GarenaInstall.path

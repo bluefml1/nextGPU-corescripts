@@ -20,3 +20,9 @@
 [2026-06-06 03:13:21] PowerShell capture exit=0
 [2026-06-06 03:17:18] PowerShell capture exit=0
 [2026-06-06 11:53:58] NextGPU Controller session started
+[2026-07-01 15:41:35] NextGPU Controller session started
+[2026-07-01 17:55:45] Run PowerShell: PlayNiteWatcher\Import-PlayniteDesktopApps.ps1  keepConsole=True
+[2026-07-01 17:55:47] Started: powershell.exe
+[2026-07-02 14:44:24] NextGPU Controller session started
+[2026-07-02 14:44:29] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-02 14:44:31] Started: C:\Users\tuanv\Downloads\AUtomate 100%\RegisterMachineEZC\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat

@@ -918,10 +918,38 @@ function Remove-Sunshine {
 }
 
 function Remove-Drivers {
-    Remove-PnpDevicesByPattern -Pattern 'DISPLAY\MTT1337*' -Label 'VDD display (MTT1337)'
-    Remove-PnpDevicesByPattern -Pattern 'ROOT\MttVDD*' -Label 'Virtual Display Driver'
-    Remove-PnpDevicesByPattern -Pattern 'ROOT\VirtualAudioDriver*' -Label 'Virtual Audio Driver'
-    Remove-DriverPackagesByOriginalName -OriginalNames @('MttVDD.inf', 'VirtualAudioDriver.inf') -Label 'VDD/VAD'
+    $vddVadCommon = Join-Path $ScriptRoot 'scripts\drivers\VddVadCommon.ps1'
+    if (-not (Test-Path -LiteralPath $vddVadCommon)) {
+        Write-Log "VddVadCommon.ps1 not found at $vddVadCommon" -Level WARN
+        return
+    }
+    . $vddVadCommon
+
+    $logAction = {
+        param([string]$Message, [string]$Level)
+        Write-Log -Message $Message -Level $Level
+    }
+
+    if ($PSCmdlet.ShouldProcess('VDD/VAD/VB-CABLE stack', 'Remove drivers and PnP devices')) {
+        Write-Log 'Removing VDD, VAD, and VB-CABLE drivers...'
+        Remove-VddVadStack -IncludeVbCable -RemoveVddSettings -LogAction $logAction
+        $absent = Test-VddVadAbsent -IncludeVbCable
+        if (-not $absent.AllClear) {
+            Write-Log 'Remnant VDD/VAD/VB-CABLE devices found; running second removal pass...' -Level WARN
+            Remove-VddVadStack -IncludeVbCable -LogAction $logAction
+            $absent = Test-VddVadAbsent -IncludeVbCable
+        }
+        if (-not $absent.AllClear) {
+            Write-Log "VDD/VAD/VB-CABLE still visible in PnP: $($absent.Summary). Reboot recommended." -Level WARN
+            foreach ($dev in $absent.Remaining) {
+                Write-Log "  Remaining: $($dev.InstanceId) [$($dev.FriendlyName)]" -Level WARN
+            }
+        }
+        else {
+            Write-Log 'VDD/VAD/VB-CABLE removed from PnP (AllClear).' -Level OK
+        }
+    }
+
     Uninstall-ViGEmBus
 }
 

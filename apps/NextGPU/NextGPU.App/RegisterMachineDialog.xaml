@@ -1,0 +1,87 @@
+<Window x:Class="NextGPU.App.RegisterMachineDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Register Machine — Configuration"
+        Height="640" Width="520"
+        MinHeight="520" MinWidth="460"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip"
+        Background="{StaticResource BgBrush}">
+    <Border Margin="16" CornerRadius="16" Padding="20" Background="{StaticResource CardBrush}"
+            BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                <TextBlock Text="Required Configuration" Style="{StaticResource SectionTitleText}" Margin="0"/>
+                <TextBlock Text="Fill in provisioning details. Secrets are masked. The elevated console will run setup after you confirm."
+                           Style="{StaticResource PageSubtitleText}"/>
+            </StackPanel>
+
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="INSTALL VDD/VAD" Style="{StaticResource LabelCaptionText}"/>
+                    <ComboBox x:Name="VddCombo" Margin="0,0,0,14" SelectedIndex="0">
+                        <ComboBoxItem Content="Yes"/>
+                        <ComboBoxItem Content="No"/>
+                    </ComboBox>
+                    <TextBlock Text="Virtual display + audio for headless streaming. Choose No if this machine uses a physical monitor only."
+                               Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,-10,0,14"/>
+
+                    <TextBlock Text="CLOUDFLARE API TOKEN" Style="{StaticResource LabelCaptionText}"/>
+                    <Grid Margin="0,0,0,14">
+                        <PasswordBox x:Name="CfTokenBox"/>
+                        <TextBlock x:Name="CfTokenPlaceholder" Text="Paste Cloudflare API token"
+                                   Foreground="{StaticResource MutedBrush}" FontSize="13"
+                                   Margin="14,10,14,0" IsHitTestVisible="False" VerticalAlignment="Top"/>
+                    </Grid>
+
+                    <TextBlock Text="CLOUDFLARE ACCOUNT ID" Style="{StaticResource LabelCaptionText}"/>
+                    <TextBox x:Name="AccountIdBox" Margin="0,0,0,14"/>
+
+                    <TextBlock Text="API KEY" Style="{StaticResource LabelCaptionText}"/>
+                    <Grid Margin="0,0,0,14">
+                        <PasswordBox x:Name="ApiKeyBox"/>
+                        <TextBlock x:Name="ApiKeyPlaceholder" Text="Paste API key"
+                                   Foreground="{StaticResource MutedBrush}" FontSize="13"
+                                   Margin="14,10,14,0" IsHitTestVisible="False" VerticalAlignment="Top"/>
+                    </Grid>
+
+                    <TextBlock Text="COMPUTER NAME" Style="{StaticResource LabelCaptionText}"/>
+                    <TextBox x:Name="ComputerNameBox" Margin="0,0,0,14"/>
+
+                    <TextBlock Text="ORIGINAL PRICE" Style="{StaticResource LabelCaptionText}"/>
+                    <Grid Margin="0,0,0,14">
+                        <TextBox x:Name="PriceBox"/>
+                        <TextBlock x:Name="PricePlaceholder" Text="10.99"
+                                   Foreground="{StaticResource MutedBrush}" FontSize="13"
+                                   Margin="14,10,14,0" IsHitTestVisible="False" VerticalAlignment="Top"/>
+                    </Grid>
+
+                    <TextBlock Text="VENDOR ID (OPTIONAL)" Style="{StaticResource LabelCaptionText}"/>
+                    <TextBox x:Name="VendorIdBox" Margin="0,0,0,14"/>
+
+                    <TextBlock Text="ADMIN ACCOUNT TO RENAME" Style="{StaticResource LabelCaptionText}"/>
+                    <TextBox x:Name="AdminAccountBox" Margin="0,0,0,4"/>
+                    <TextBlock Text="Renamed to NextGPU-Authority during setup."
+                               Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <StackPanel Grid.Row="2" Margin="0,16,0,0">
+                <TextBlock x:Name="ErrorText" Foreground="{StaticResource ErrBrush}" TextWrapping="Wrap"
+                           Visibility="Collapsed" Margin="0,0,0,10" FontSize="12"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="Cancel" IsCancel="True" Margin="0,0,10,0"
+                            Style="{StaticResource SecondaryButton}" Click="Cancel_Click"/>
+                    <Button Content="Run Register Machine" IsDefault="True"
+                            Style="{StaticResource PrimaryButton}" Click="Ok_Click"/>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

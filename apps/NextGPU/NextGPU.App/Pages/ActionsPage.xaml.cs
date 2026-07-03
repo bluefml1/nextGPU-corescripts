@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using NextGPU.App;
 using NextGPU.Core;
 
 namespace NextGPU.App.Pages;
@@ -157,10 +158,18 @@ public partial class ActionsPage : Page
 
     private void AddDangerButtons()
     {
-        AddScriptButton(DangerPanel, "Full setup (RegisterMachine)",
-            @"RegisterMachine_Beta.bat",
-            confirm: "Launch full machine setup? This is a long install. The elevated console stays open (/k) when finished so you can read output — also use Logs → setup_log_*.txt (Live tail) and sunshine-bind.log.",
-            keepConsoleOpen: true);
+        var registerBtn = CreateActionButton(
+            "Full setup (RegisterMachine)",
+            "Opens the configuration form, then runs RegisterMachine_Beta.bat elevated. Console stays open (/k) when finished.");
+        registerBtn.Click += (_, _) =>
+        {
+            if (!Confirm(
+                    "Launch full machine setup? This is a long install. The elevated console stays open (/k) when finished so you can read output — also use Logs → setup_log_*.txt (Live tail) and sunshine-bind.log.",
+                    requireYes: false))
+                return;
+            RegisterMachineLauncher.RunWithForm(Window.GetWindow(this), keepConsoleOpen: true);
+        };
+        DangerPanel.Children.Add(registerBtn);
 
         AddScriptButton(DangerPanel, "Uninstall nextGPU",
             @"uninstall-all.bat",

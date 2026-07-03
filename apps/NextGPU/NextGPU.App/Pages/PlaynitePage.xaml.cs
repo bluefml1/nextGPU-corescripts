@@ -87,11 +87,13 @@ public partial class PlaynitePage : Page
         ActionPageTools.AddPowerShellButton(SetupPanel, "Update Libraries (Skip Metadata)",
             @"PlayNiteWatcher\Update-PlayniteLibraries.ps1", "-SkipMetadata", keepConsoleOpen: true,
             helpText: "Same as Update Libraries but skips metadata enrichment for a faster refresh when only game presence needs updating.");
-        ActionPageTools.AddPowerShellButton(SetupPanel, "Import Desktop Apps",
-            @"PlayNiteWatcher\Import-PlayniteDesktopApps.ps1", keepConsoleOpen: true,
+        ActionPageTools.AddBatchButton(SetupPanel, "Import Desktop Apps",
+            @"PlayNiteWatcher\Import-PlayniteDesktopApps.bat", ImportDesktopAppsHeadlessArgs, keepConsoleOpen: true,
+            elevated: false,
             helpText: "Imports allowlisted desktop apps (Adobe, Autodesk, etc.) into Playnite using Everything (es.exe) to locate executables. Run after editing the allowlist.");
-        ActionPageTools.AddPowerShellButton(SetupPanel, "Import Desktop Apps (Directory Walk)",
-            @"PlayNiteWatcher\Import-PlayniteDesktopApps.ps1", "-SkipEverythingInstall", keepConsoleOpen: true,
+        ActionPageTools.AddBatchButton(SetupPanel, "Import Desktop Apps (Directory Walk)",
+            @"PlayNiteWatcher\Import-PlayniteDesktopApps.bat", ImportDesktopAppsDirectoryWalkArgs, keepConsoleOpen: true,
+            elevated: false,
             helpText: "Imports allowlisted desktop apps without Everything by walking install directories. Slower but works when es.exe is unavailable.");
 
         BuildBypassButtons();
@@ -131,6 +133,8 @@ public partial class PlaynitePage : Page
             "Opens Install-PlayniteWatcher.log — prep-cmd injection and Sunshine restart results.");
         AddOpenPlayniteLogButton(ExportPanel, "Open Library Update Log", RepoCatalog.PlayniteLibraryUpdateLog,
             "Opens Update-PlayniteLibraries.log — Steam/Epic disk scan and import completion lines.");
+        AddOpenPlayniteLogButton(ExportPanel, "Open Desktop Import Log", RepoCatalog.PlayniteDesktopImportLog,
+            "Opens Import-PlayniteDesktopApps.log — allowlist scan, Everything search, and games.db sync results.");
         AddOpenPlayniteLogButton(ExportPanel, "Open Watcher Runtime Log", RepoCatalog.PlayniteWatcherRuntimeLog,
             "Opens PlayNiteWatcher runtime log — session start/stop and cleanup events during Moonlight streaming.");
     }
@@ -175,6 +179,9 @@ public partial class PlaynitePage : Page
 
     private void BypassHelp_Click(object sender, RoutedEventArgs e) =>
         MessageBox.Show(BypassSectionHelpText, "Bypass Shortcuts", MessageBoxButton.OK, MessageBoxImage.Information);
+
+    private const string ImportDesktopAppsHeadlessArgs = "-Headless -DesktopImportScanMode AllDrives";
+    private const string ImportDesktopAppsDirectoryWalkArgs = "-Headless -DesktopImportScanMode AllDrives -SkipEverythingInstall";
 
     private const string BypassSectionHelpText =
         """
@@ -1039,8 +1046,12 @@ public partial class PlaynitePage : Page
             case "UpdateLibraries":
                 App.Session.Scripts.RunBatchRelative(@"PlayNiteWatcher\Update-PlayniteLibraries.bat", elevated: true, keepConsoleOpen: true);
                 break;
+            case "GrantPlayniteRentalAccess":
+                App.Session.Scripts.RunPowerShellRelative(@"PlayNiteWatcher\Grant-PlayniteRentalAccess.ps1", "", elevated: true, keepConsoleOpen: true);
+                break;
             case "ImportDesktopApps":
-                App.Session.Scripts.RunPowerShellRelative(@"PlayNiteWatcher\Import-PlayniteDesktopApps.ps1", "", elevated: true, keepConsoleOpen: true);
+                App.Session.Scripts.RunBatchRelative(@"PlayNiteWatcher\Import-PlayniteDesktopApps.bat",
+                    elevated: false, arguments: ImportDesktopAppsHeadlessArgs, keepConsoleOpen: true);
                 break;
             case "ExportSunshine":
                 App.Session.Scripts.RunPowerShellRelative(@"PlayNiteWatcher\Export-SunshineFromPlaynite.ps1", "", elevated: true, keepConsoleOpen: true);

@@ -177,6 +177,13 @@ Workflow:
   - **Extend existing volume** — e.g. add freed space to existing `**Z:`** (only works when target partition is immediately adjacent on disk)
   - **Create new partition** — assign a new drive letter
 
+After a successful shrink/extend/create, the script applies data-drive ACLs on the target volume:
+
+- **BUILTIN\Users** — allow read/execute `(OI)(CI)(RX)`
+- **NextGPURestricted** — deny delete `(OI)(CI)(DE,DC)` (rental account **nextGPU** is added to this group during RegisterMachine and session recreate)
+
+Disk prep may run before **nextGPU** exists; the **NextGPURestricted** group is created at ACL time if missing.
+
 ### Expected layout after disk prep
 
 

@@ -156,6 +156,17 @@ else {
     [void]$checks.Add((New-StatusCheck -Id 'P3' -Name 'Portable layout' -Status 'Fail' -Detail 'Install path unknown' -FixAction 'FullSetup' -FixLabel 'Run Full PlayNite Setup'))
 }
 
+# P7
+if ($installDir -and (Test-PlayniteRentalAccess -InstallDir $installDir)) {
+    [void]$checks.Add((New-StatusCheck -Id 'P7' -Name 'Rental write access' -Status 'Pass' -Detail 'nextGPU can write portable Playnite data'))
+}
+elseif ($installDir) {
+    [void]$checks.Add((New-StatusCheck -Id 'P7' -Name 'Rental write access' -Status 'Fail' -Detail 'nextGPU cannot write Playnite portable data' -FixAction 'GrantPlayniteRentalAccess' -FixLabel 'Grant Playnite rental access'))
+}
+else {
+    [void]$checks.Add((New-StatusCheck -Id 'P7' -Name 'Rental write access' -Status 'Fail' -Detail 'Install path unknown' -FixAction 'GrantPlayniteRentalAccess' -FixLabel 'Grant Playnite rental access'))
+}
+
 # P4/P5 + stats
 if ($installDir) {
     try {
