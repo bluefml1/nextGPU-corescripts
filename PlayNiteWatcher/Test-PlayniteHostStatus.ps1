@@ -156,12 +156,19 @@ else {
     [void]$checks.Add((New-StatusCheck -Id 'P3' -Name 'Portable layout' -Status 'Fail' -Detail 'Install path unknown' -FixAction 'FullSetup' -FixLabel 'Run Full PlayNite Setup'))
 }
 
-# P7
-if ($installDir -and (Test-PlayniteRentalAccess -InstallDir $installDir)) {
-    [void]$checks.Add((New-StatusCheck -Id 'P7' -Name 'Rental write access' -Status 'Pass' -Detail 'nextGPU can write portable Playnite data'))
-}
-elseif ($installDir) {
-    [void]$checks.Add((New-StatusCheck -Id 'P7' -Name 'Rental write access' -Status 'Fail' -Detail 'nextGPU cannot write Playnite portable data' -FixAction 'GrantPlayniteRentalAccess' -FixLabel 'Grant Playnite rental access'))
+# P7 — rental ACL on portable install folder (BUILTIN\Users Modify for nextGPU)
+if ($installDir) {
+    $aclStatus = Get-PlayniteRentalAclStatus -InstallDir $installDir
+    if ($aclStatus.Granted) {
+        $p7Detail = $aclStatus.Detail
+        if (-not $aclStatus.CurrentWrite) {
+            $p7Detail += ' (current user cannot write; re-run grant elevated if needed)'
+        }
+        [void]$checks.Add((New-StatusCheck -Id 'P7' -Name 'Rental write access' -Status 'Pass' -Detail $p7Detail))
+    }
+    else {
+        [void]$checks.Add((New-StatusCheck -Id 'P7' -Name 'Rental write access' -Status 'Fail' -Detail $aclStatus.Detail -FixAction 'GrantPlayniteRentalAccess' -FixLabel 'Grant Playnite rental access'))
+    }
 }
 else {
     [void]$checks.Add((New-StatusCheck -Id 'P7' -Name 'Rental write access' -Status 'Fail' -Detail 'Install path unknown' -FixAction 'GrantPlayniteRentalAccess' -FixLabel 'Grant Playnite rental access'))

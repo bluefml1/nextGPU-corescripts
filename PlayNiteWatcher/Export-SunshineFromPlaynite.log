@@ -1,0 +1,35 @@
+﻿[2026-07-10 17:09:44] [INFO] === Export-SunshineFromPlaynite started ===
+[2026-07-10 17:09:44] [] Reading games from LiteDB: Z:\Playnite\library\games.db
+[2026-07-10 17:09:44] [INFO] Found 6 Steam/Epic game(s) in library/games.db (LiteDB)
+[2026-07-10 17:09:44] [] Reading games with play actions from: Z:\Playnite\library\games.db
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000001 exe=Adobe Premiere Pro.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000002 exe=AfterFX.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000003 exe=Adobe Audition.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000004 exe=lightroom.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000005 exe=Adobe Media Encoder.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000006 exe=Photoshop.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000015 exe=Illustrator.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000017 exe=Lightroom.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000016 exe=Acrobat.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000007 exe=Animate.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000008 exe=Adobe Bridge.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000009 exe=Character Animator.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000010 exe=Adobe Dimension.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000011 exe=Dreamweaver.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000012 exe=InCopy.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000013 exe=InDesign.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000014 exe=Adobe UXP Developer Tools.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000101 exe=acad.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000102 exe=Revit.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000103 exe=3dsmax.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000104 exe=maya.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000201 exe=CapCut.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000202 exe=SketchUp.exe
+[2026-07-10 17:09:44] [WARN] Desktop export skipped (no Playnite match): nameId=10000301 exe=launcher.exe
+[2026-07-10 17:09:44] [INFO] Found 4 desktop app(s) from allowlist: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\config\playnite\desktop-apps.allowlist.json
+[2026-07-10 17:09:44] [INFO] Sunshine apps.json: C:\Program Files\Sunshine\config\apps.json
+[2026-07-10 17:09:44] [INFO] Exported Steam: 6, Epic: 0, Desktop: 4, processed: 10
+[2026-07-10 17:09:44] [INFO] Wrote: C:\Program Files\Sunshine\config\apps.json
+[2026-07-10 17:09:44] [INFO] Wrote: C:\Program Files\Sunshine\config\resolved-appids.json
+[2026-07-10 17:09:44] [INFO] Wrote: C:\Program Files\Sunshine\config\resolved-appids.txt
+[2026-07-10 17:09:44] [INFO] === Export finished ===

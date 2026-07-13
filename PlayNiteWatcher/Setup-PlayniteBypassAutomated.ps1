@@ -76,9 +76,15 @@ if (-not $folder) {
 
 Write-BypassSetupLog "Game Shortcuts folder: $($folder.BypassesPath)"
 
-$copyStats = Copy-BypassGameShortcutsSeed `
+$syncList = Get-BypassSyncList -RepoRoot $script:ModuleRoot
+if ($syncList.Count -eq 0) {
+    throw "Bypass sync list is empty. Add entries on the Bypass Sync tab before running Setup Bypass."
+}
+
+$copyStats = Copy-BypassGameShortcutsForSyncList `
     -ShortcutsSeedPath $ShortcutsSeedPath `
     -BypassesPath $folder.BypassesPath `
+    -RepoRoot $script:ModuleRoot `
     -NoPrompt:$NoPrompt `
     -LogAction { param($m, $l = 'INFO') Write-BypassSetupLog $m $l }
 
@@ -102,6 +108,9 @@ if (-not (Test-Path -LiteralPath $RntPath)) {
     throw "RunAsTool seed file not found: $RntPath"
 }
 
+$filteredRnt = New-FilteredRunAsToolRnt -RntPath $RntPath -SyncListEntries $syncList
+Write-BypassSetupLog ("RunAsTool RNT filtered: included={0} of {1} -> {2}" -f $filteredRnt.IncludedCount, $filteredRnt.TotalCount, $filteredRnt.Path)
+
 $cred = Get-Credential -UserName $AdminUser -Message "RunAsTool import requires the admin password for $AdminUser (one prompt for this setup)"
 if (-not $cred) {
     throw "Admin password is required for RunAsTool import. Folder and shortcuts may already be in place at $($folder.BypassesPath); retry this setup to complete import."
@@ -109,7 +118,7 @@ if (-not $cred) {
 
 try {
     Invoke-RunAsToolRntImport `
-        -RntPath $RntPath `
+        -RntPath $filteredRnt.Path `
         -RunAsToolExe $runAs `
         -AdminUser $AdminUser `
         -AdminPassword $cred.Password `
@@ -121,6 +130,11 @@ catch {
     Write-BypassSetupLog $_.Exception.Message "ERROR"
     throw
 }
+finally {
+    if ($filteredRnt.Path -and (Test-Path -LiteralPath $filteredRnt.Path)) {
+        Remove-Item -LiteralPath $filteredRnt.Path -Force -ErrorAction SilentlyContinue
+    }
+}
 
 $null = Save-BypassShortcutsConfig -RepoRoot $script:ModuleRoot -Config $config
 Write-BypassSetupLog "Saved bypass-shortcuts.json"
@@ -129,6 +143,6 @@ Write-BypassSetupLog "=== Setup-PlayniteBypassAutomated complete ==="
 Write-Host ""
 Write-Host "Automated bypass setup complete." -ForegroundColor Green
 Write-Host "  Game Shortcuts: $($folder.BypassesPath)"
-Write-Host "  RunAsTool list imported from: $RntPath"
+Write-Host "  RunAsTool list imported (filtered by sync list): $RntPath"
 Write-Host ""
-Write-Host "Next step: run '3. Review and Sync' in the NextGPU Playnite page to bind shortcuts to Playnite." -ForegroundColor Cyan
+Write-Host "Next step: run '3. Review and Sync' on the Bypass tab to update Playnite launch paths." -ForegroundColor Cyan

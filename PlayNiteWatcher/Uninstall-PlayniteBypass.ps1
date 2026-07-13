@@ -107,10 +107,12 @@ try {
         -SkipFolders:$SkipFolders `
         -SkipAllowlist:$SkipAllowlist `
         -RemovePlayniteInstall:$removePlayniteInstall `
-        -LogAction $logAction
+        -LogAction $logAction `
+        -LogFile $script:LogFile `
+        -CallerProcessId $PID
 
-    Write-UninstallLog ("Done. folders={0} storeReverted={1} manualRemoved={2} allowlistRemoved={3} missing={4} playniteRemoved={5}" -f `
-            $stats.FoldersRemoved, $stats.StoreReverted, $stats.ManualRemoved, $stats.AllowlistRemoved, $stats.Missing, $stats.PlayniteRemoved)
+    Write-UninstallLog ("Done. folders={0} storeReverted={1} manualRemoved={2} allowlistRemoved={3} missing={4} playniteRemoved={5} playniteRemovalDeferred={6}" -f `
+            $stats.FoldersRemoved, $stats.StoreReverted, $stats.ManualRemoved, $stats.AllowlistRemoved, $stats.Missing, $stats.PlayniteRemoved, $stats.PlayniteRemovalDeferred)
     if (-not $removePlayniteInstall) {
         Write-UninstallLog "Playnite install kept. Run Update-PlayniteLibraries.ps1 and Import-PlayniteDesktopApps.ps1 to restore library entries if needed."
     }

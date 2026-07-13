@@ -7,6 +7,7 @@
     .\Sync-PlayniteBypassShortcuts.ps1 -Interactive
     .\Sync-PlayniteBypassShortcuts.ps1 -PickParentFolder
     .\Sync-PlayniteBypassShortcuts.ps1 -SyncOnly
+    .\Sync-PlayniteBypassShortcuts.ps1 -ExportSunshine
 #>
 [CmdletBinding(DefaultParameterSetName = "Interactive")]
 param(
@@ -125,11 +126,29 @@ function Invoke-BypassReviewWizard {
         throw "Game Shortcuts folder is not configured. Run Setup Bypass Folder first."
     }
 
-    $lnkCount = @(Get-ChildItem -LiteralPath $bypassesPath -Filter "*.lnk" -File -ErrorAction SilentlyContinue).Count
-    if ($lnkCount -eq 0) {
+    $syncList = Get-BypassSyncList -RepoRoot $script:ModuleRoot
+    if ($syncList.Count -eq 0) {
         Add-Type -AssemblyName System.Windows.Forms | Out-Null
         [System.Windows.Forms.MessageBox]::Show(
-            "No .lnk shortcuts found in:`n$bypassesPath`n`nCreate shortcuts in RunAsTool first (`-RunAsToolOnly`), then run `-Interactive` again.",
+            "Bypass sync list is empty.`n`nAdd entries on the Bypass Sync tab (or PlayNite library -> Add to Bypass Sync) before running review.",
+            "Bypass review",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+        $stats.Cancelled = 1
+        return $stats
+    }
+
+    $missingLnks = @()
+    foreach ($entry in $syncList) {
+        $lnk = Join-Path $bypassesPath "$($entry.shortcutName).lnk"
+        if (-not (Test-Path -LiteralPath $lnk)) {
+            $missingLnks += $entry.shortcutName
+        }
+    }
+    if ($missingLnks.Count -eq $syncList.Count) {
+        Add-Type -AssemblyName System.Windows.Forms | Out-Null
+        [System.Windows.Forms.MessageBox]::Show(
+            "No sync-list shortcuts found in:`n$bypassesPath`n`nRun Setup Bypass first, or create shortcuts in RunAsTool (`-RunAsToolOnly`).",
             "Bypass review",
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
@@ -144,11 +163,10 @@ function Invoke-BypassReviewWizard {
         [System.Windows.Forms.MessageBoxButtons]::OK,
         [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
 
-    $rows = Get-BypassShortcutReviewRowsFromFolder `
+    $rows = Get-BypassShortcutReviewRowsFromSyncList `
         -BypassesPath $bypassesPath `
         -RepoRoot $script:ModuleRoot `
         -InstallDir $InstallDir `
-        -Config $Config `
         -LogAction { param($m, $l = 'INFO') Write-BypassSyncLog $m $l }
 
     $reviewed = Show-BypassShortcutReviewDialog -Rows $rows -BypassesPath $bypassesPath
@@ -188,7 +206,6 @@ try {
 
     $wrapper = Get-BypassShortcutsConfig -RepoRoot $script:ModuleRoot
     $config = $wrapper.Config
-    $ranReview = $false
 
     if ($SyncOnly.IsPresent) {
         if ([string]::IsNullOrWhiteSpace($config.bypassesPath)) {
@@ -227,14 +244,9 @@ try {
         $stats = Invoke-BypassReviewWizard -InstallDir $installDir -Config $config
         Write-BypassSyncLog ("Interactive done: added={0} updated={1} skipped={2} renamed={3} errors={4} cancelled={5}" -f `
             $stats.Added, $stats.Updated, $stats.Skipped, $stats.Renamed, $stats.Errors, $stats.Cancelled)
-        $ranReview = ($stats.Cancelled -eq 0)
     }
 
-    $promptExport = $ExportSunshine.IsPresent
-    if (-not $promptExport -and $ranReview) {
-        $promptExport = (Show-BypassExportSunshineDialog -eq [System.Windows.Forms.DialogResult]::Yes)
-    }
-    if ($promptExport) {
+    if ($ExportSunshine.IsPresent) {
         $exportScript = Join-Path $script:WatcherRoot "Export-SunshineFromPlaynite.ps1"
         if (Test-Path -LiteralPath $exportScript) {
             Write-BypassSyncLog "Running Sunshine export..."

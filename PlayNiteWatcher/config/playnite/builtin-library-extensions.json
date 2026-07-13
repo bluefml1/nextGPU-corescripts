@@ -1,6 +1,13 @@
 {
   "extensions": [
     {
+      "name": "Steam",
+      "extensionId": "SteamLibrary_Builtin",
+      "pluginId": "CB91DFC9-B977-43BF-8E70-55F46E410FAB",
+      "manifestUrl": "https://raw.githubusercontent.com/JosefNemec/PlayniteExtensions/master/manifests/SteamLibrary_Builtin.yaml",
+      "packageUrl": "https://github.com/JosefNemec/PlayniteExtensions/releases/download/2.2/SteamLibrary_Builtin_2_40.pext"
+    },
+    {
       "name": "Epic",
       "extensionId": "EpicGamesLibrary_Builtin",
       "pluginId": "00000002-DBD1-46C6-B5D0-B1BA559D10E4",

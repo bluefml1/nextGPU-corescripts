@@ -1,0 +1,16 @@
+﻿[2026-07-10 17:11:11] [INFO] === Sync-PlayniteBypassShortcuts started ===
+[2026-07-10 17:11:13] [INFO] Stopping Playnite so games.db can be updated...
+[2026-07-10 17:11:13] [INFO] Reading games with play actions from: Z:\Playnite\library\games.db
+[2026-07-10 17:11:20] [INFO] Wrote launcher wrapper: Z:\Game Shortcuts\Garena FC Online.cmd
+[2026-07-10 17:11:20] [INFO] Wrote multi-launch script: Z:\Game Shortcuts\Garena FC Online.ps1 -> Z:\Game Shortcuts\Garena FC Online.cmd
+[2026-07-10 17:11:20] [INFO] Stopping Playnite so games.db can be updated...
+[2026-07-10 17:11:20] [INFO] Reading games with play actions from: Z:\Playnite\library\games.db
+[2026-07-10 17:11:20] [INFO] Stopping Playnite so games.db can be updated...
+[2026-07-10 17:11:20] [INFO] Playnite bypass updated: Garena FC Online -> Z:\Game Shortcuts\Garena FC Online.cmd
+[2026-07-10 17:11:20] [INFO] Wrote shortcut launcher wrapper: Z:\Game Shortcuts\Wuthering Waves.cmd -> Z:\Game Shortcuts\Wuthering Waves.lnk
+[2026-07-10 17:11:20] [INFO] Stopping Playnite so games.db can be updated...
+[2026-07-10 17:11:20] [INFO] Reading games with play actions from: Z:\Playnite\library\games.db
+[2026-07-10 17:11:20] [INFO] Stopping Playnite so games.db can be updated...
+[2026-07-10 17:11:20] [INFO] Playnite bypass updated: Wuthering Waves -> Z:\Game Shortcuts\Wuthering Waves.cmd
+[2026-07-10 17:11:20] [INFO] Interactive done: added=0 updated=2 skipped=0 renamed=0 errors=0 cancelled=0
+[2026-07-10 17:11:20] [INFO] === Sync-PlayniteBypassShortcuts finished ===

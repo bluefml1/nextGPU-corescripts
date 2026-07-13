@@ -175,7 +175,7 @@ The root launcher delegates to `scripts/provisioning/RegisterMachine_Beta.bat`. 
 
 22. **Wallpaper** — `scripts/desktop/Setup-Wallpaper.bat inline` -> `scripts/desktop/Set-DesktopWallpaper-Gpo.ps1` (Fit desktop, lock/sign-in, **`nextGPU-WallpaperFitLogon`**; runs **before** account changes).
 23. **Rename admin** — Renames `{ADMIN_ACCOUNT_NAME}` → **`NextGPU-Authority`** (username + full name).
-24. **Create user** — creates local group **`NextGPURestricted`**, then `net user nextGPU /add`, then adds **nextGPU** to **NextGPURestricted** (standard user for rental sessions; remains in **BUILTIN\Users**). Registers **`nextGPU-DesktopCleanupLogon`**: at every **nextGPU** logon, `Clear-NextGpuUserDesktop.ps1` removes all items from that user’s Desktop folder (and runs once from setup if the profile folder already exists). Does **not** clear **`C:\Users\Public\Desktop`** (those shortcuts still appear for every user unless removed separately).
+24. **Create user** — `net user nextGPU /add` (standard user for rental sessions). Registers **`nextGPU-DesktopCleanupLogon`**: at every **nextGPU** logon, `Clear-NextGpuUserDesktop.ps1` removes all items from that user’s Desktop folder (and runs once from setup if the profile folder already exists). Does **not** clear **`C:\Users\Public\Desktop`** (those shortcuts still appear for every user unless removed separately).
 25. **Shutdown lock** — `Setup-Shutdown-Policy.bat` / `Set-ShutdownPolicy.ps1`: only **`NextGPU-Authority`** may shut down or restart; `nextGPU` and all other users are blocked (user rights + Start menu policy + logon task).
 26. **Completion message** — Prompts for **manual reboot** (drivers, display paths, accounts).
 
@@ -247,7 +247,7 @@ On full repair, runs `scripts/runtime/Run-StreamingStackUpdate.bat ForceReinstal
 After Sunshine install/reinstall, the stack runs `Invoke-PostSunshineSetup.ps1`:
 
 1. `Install-SunshineScripts.ps1` — repo `sunshine.conf` → `config/`, `dd_*` settings, support scripts
-2. `Set-SunshineVddOutput.ps1` — up to 6 retries with Sunshine restart; resolves VDD `device_id` from sunshine.log (scored complete entry: `display_name` + `info`) when usable, otherwise from `Get-DisplayDeviceId.ps1`; writes `output_name` to `sunshine.conf` (logs to `logs/sunshine-vdd-setup.log`; WARN only if not resolved)
+2. `Set-SunshineVddOutput.ps1` — up to 6 retries with Sunshine restart; resolves VDD `device_id` from display paths and/or `sunshine.log` (log wins when present); writes `output_name` to `sunshine.conf` (logs to `logs/sunshine-vdd-setup.log`; WARN only if not resolved)
 3. PlayNite export when `PlayNiteWatcher\PlayniteInstall.path` exists
 
 `RegisterMachine_Beta.bat` `:setup_sunshine_device_id` is unchanged (writes `dd_*` only; does not set `output_name` automatically).
@@ -349,17 +349,6 @@ This is separate from R2 games sync (`Sync-GamesApps-Official.ps1`). Uninstall r
 - Default Sunshine and Moonlight test credentials are embedded for automated pairing — change for production hardening if needed.
 - Tunnel token is stored in the **machine** environment variable `CLOUDFLARE_TUNNEL_TOKEN`.
 - After setup, the former admin account is renamed to **`NextGPU-Authority`**; a separate **`nextGPU`** user is created for non-admin sessions.
-
----
-
-## Setup guides
-
-| Guide | Audience |
-| ----- | -------- |
-| [setup-beginer.md](setup-beginer.md) | Visual walkthrough with screenshots (start here if you want pictures) |
-| [machine-setup-beginer.md](machine-setup-beginer.md) | Full beginner guide with troubleshooting and glossary |
-| [machine-setup-guide.md](machine-setup-guide.md) | Technical end-to-end reference |
-| [started.md](started.md) | Short repo orientation |
 
 ---
 

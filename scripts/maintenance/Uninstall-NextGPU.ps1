@@ -200,8 +200,9 @@ function Remove-AllNextGpuScheduledTasks {
         'EndSession', 'auto game launch',
             'nextGPU-Heartbeat', 'nextGPU-AutoRepair', 'nextGPU-AutoUpdate', 'nextGPU-NvidiaLogon',
             'nextGPU-ShutdownPolicyLogon', 'nextGPU-SunshineLogon',
-        'nextGPU-DesktopCleanupLogon', 'nextGPU-WallpaperFitLogon',
-        'nextGPU-UserStorageMount', 'nextGPU-UserStorageUnmount', 'nextGPU-UserStorageEnsureBindings'
+            'nextGPU-DesktopCleanupLogon', 'nextGPU-WallpaperFitLogon',
+        'nextGPU-UserStorageMount', 'nextGPU-UserStorageUnmount', 'nextGPU-UserStorageEnsureBindings',
+        'nextGPU-SessionFolderRulesLogoff', 'nextGPU-SessionFolderRulesLogon'
     )
     foreach ($name in $known) {
         Remove-ScheduledTaskSafe -TaskName $name

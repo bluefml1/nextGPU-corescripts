@@ -1,0 +1,19 @@
+{
+  "_comment": "gameId OR nameId (not both). shortcutName = final RunAsTool .lnk launch. launches[] = optional pre-launch exe paths (run in order, then shortcut).",
+  "apps": [
+    {
+      "title": "Garena FC Online",
+      "nameId": "10000304",
+      "shortcutName": "Garena FC Online",
+      "launches": [
+        { "path": "Z:\\Garena\\Garena\\gxxapphelper.exe", "delaySec": 2 }
+      ]
+    },
+    {
+      "title": "Wuthering Waves",
+      "gameId": "2807950",
+      "shortcutName": "Wuthering Waves",
+      "launches": []
+    }
+  ]
+}

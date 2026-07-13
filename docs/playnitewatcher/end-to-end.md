@@ -28,7 +28,7 @@ The batch file runs **`Setup-PlayniteSteam.ps1 -PickInstallFolder -WithSunshine`
 8. When prompted, choose a **drive or folder** for desktop app search (e.g. `Z:\` or `Z:\Adobe`), or **all non-system drives**.
 9. Wait until the window finishes. Check **`Setup-PlayniteSteam.log`** in the repo if anything fails.
 
-**Done.** Playnite is installed, Steam/Epic libraries are updated, desktop apps are synced into `library\games.db`, Sunshine export runs when `-WithSunshine` is used, and the Moonlight app list is pushed to AWS from `domain.txt`. Path is saved in **`PlayniteInstall.path`** in this repo.
+**Done.** Playnite is installed, Steam/Epic libraries are updated, desktop apps are synced into `library\games.db`, and Sunshine export runs when `-WithSunshine` is used. Path is saved in **`PlayniteInstall.path`** in this repo.
 
 ### Playnite-only (no desktop import / Sunshine)
 
@@ -72,7 +72,7 @@ flowchart TD
   PICK --> DL["Download portable .7z from GitHub\n(or -PortablePackagePath)"]
   DL --> EXT["Extract to parent\\Playnite"]
   EXT --> CFG["Set-PlayniteBootstrapConfig\nconfig + ExtensionsData"]
-  CFG --> PLUG["Install-NextGpuSteamExtensions + Epic .pext"]
+  CFG --> PLUG["Install-PlayniteBuiltinLibraryExtensions\nSteam + Epic .pext"]
   PLUG --> INIT["Initialize-PlayniteUserData\n--safestartup --nolibupdate"]
   INIT --> UPD["Start-PlayniteLibraryUpdate\n--updatelibraries"]
   UPD --> STOP1["Stop-PlayniteApplication"]
@@ -90,16 +90,15 @@ Step numbers in **`Setup-PlayniteSteam.log`** depend on flags (`-FullSetup`, `-S
 |------|----------------|
 | 1 | **Resolve install folder** — folder picker; writes **`PlayniteInstall.path`** (parent or `...\Playnite`). |
 | 2 | **Install portable** — download latest release from [Playnite GitHub](https://github.com/JosefNemec/Playnite/releases) into `<install>\Download`, extract to `<parent>\Playnite`. Optional **legacy cleanup** (junctions, `unins000.*`). |
-| 3 | **Grant rental access** — on the resolved install folder only, break inherited data-volume ACLs and grant `BUILTIN\Users` **Modify** so `nextGPU` can run Playnite; sibling folders (e.g. `Steam`) keep read-only rental lockdown. Repair: `Grant-PlayniteRentalAccess.ps1`. |
-| 4 | **Disk-scan config** — merge templates into `config.json` and Steam/Epic **`ExtensionsData`** configs (`ImportInstalledGames: true`, `ConnectAccount: false`). Sets `FirstTimeWizardComplete: true` (skips wizard UI). |
-| 5 | **Install library extensions** — copy **NextGPU Steam** from repo `SteamExtensions/build/` (`SteamLibrary_NextGPU` + `NextGPUBypassGuard`); download official Epic **`.pext`** only (see `config/playnite/builtin-library-extensions.json`). Removes legacy `SteamLibrary_Builtin` if present. |
-| 6 | **Bootstrap library DB** — short launch with `--safestartup --nolibupdate` to create `library\games.db` (no Steam/Epic import yet). |
-| 7 | **Update libraries** — launch `--updatelibraries`, poll **`playnite.log`** until import completes (typically **10–30 s** for a few games; **up to 15 min** cap via `-MaxWaitMinutes`). |
-| 8 | **Stop Playnite** — graceful `--shutdown` if running, then wait for exit (does **not** launch Playnite when already stopped). |
-| 9 | **Import desktop apps** — scan drive/folder or all non-system drives; **`es.exe`** finds allowlisted `.exe` names; writes launch paths into **`library\games.db`**. Skipped with `-SkipDesktopImport` or without `-WithSunshine`. |
-| 10 | **SunshineAppExport** — copy `SunshineAppExport/` into `<install>\Extensions\SunshineAppExport` (`-SkipSunshineExtension` to skip). |
-| 11 | **Sunshine export + watcher** — `Export-SunshineFromPlaynite.ps1` + `Install-PlayniteWatcher.ps1` (`-SkipSunshineExport` / `-SkipWatcherInstall` to skip parts). |
-| 12 | **Stop Playnite** — final cleanup in `finally` so `games.db` is not locked. |
+| 3 | **Disk-scan config** — merge templates into `config.json` and Steam/Epic **`ExtensionsData`** configs (`ImportInstalledGames: true`, `ConnectAccount: false`). Sets `FirstTimeWizardComplete: true` (skips wizard UI). |
+| 4 | **Install library extensions** — download official Steam/Epic **`.pext`** packages (see `config/playnite/builtin-library-extensions.json`) into `<install>\Extensions\SteamLibrary_Builtin` and `\EpicGamesLibrary_Builtin`. |
+| 5 | **Bootstrap library DB** — short launch with `--safestartup --nolibupdate` to create `library\games.db` (no Steam/Epic import yet). |
+| 6 | **Update libraries** — launch `--updatelibraries`, poll **`playnite.log`** until import completes (typically **10–30 s** for a few games; **up to 15 min** cap via `-MaxWaitMinutes`). |
+| 7 | **Stop Playnite** — graceful `--shutdown` if running, then wait for exit (does **not** launch Playnite when already stopped). |
+| 8 | **Import desktop apps** — scan drive/folder or all non-system drives; **`es.exe`** finds allowlisted `.exe` names; writes launch paths into **`library\games.db`**. Skipped with `-SkipDesktopImport` or without `-WithSunshine`. |
+| 9 | **SunshineAppExport** — copy `SunshineAppExport/` into `<install>\Extensions\SunshineAppExport` (`-SkipSunshineExtension` to skip). |
+| 10 | **Sunshine export + watcher** — `Export-SunshineFromPlaynite.ps1` + `Install-PlayniteWatcher.ps1` (`-SkipSunshineExport` / `-SkipWatcherInstall` to skip parts). |
+| 11 | **Stop Playnite** — final cleanup in `finally` so `games.db` is not locked. |
 
 Playnite is **not** left open at the end unless you pass **`-LaunchPlaynite`**.
 
@@ -162,8 +161,6 @@ PlayNiteWatcher\
   Playnite-Common.ps1
   Import-PlayniteDesktopApps.ps1
   Update-PlayniteLibraries.ps1
-  Install-SteamExtensions.ps1
-  SteamExtensions\build\              ← prebuilt SteamLibrary_NextGPU + NextGPUBypassGuard
   PlayniteInstall.path             ← created by setup (your path)
   config\playnite\
     config.template.json
@@ -192,12 +189,10 @@ PlayNiteWatcher\
   playnite.log
   Download\                        ← setup downloads .7z here
   Extensions\
-    SteamLibrary_NextGPU\            ← NextGPU fork (same Steam PluginId as official)
-    NextGPUBypassGuard\              ← restores bypass .lnk paths after library import
+    SteamLibrary_Builtin\
     EpicGamesLibrary_Builtin\
     SunshineAppExport\
   ExtensionsData\
-    NextGPU\bypass-bindings.json     ← published by bypass sync (read by NextGPUBypassGuard)
     CB91DFC9-B977-43BF-8E70-55F46E410FAB\config.json   ← Steam plugin settings
     00000002-DBD1-46C6-B5D0-B1BA559D10E4\config.json   ← Epic plugin settings
 ```
@@ -215,9 +210,8 @@ Portable data lives **inside** the install folder (not `%AppData%\Playnite`), so
 | **`Setup-PlayniteSteam.bat`** | Entry point: `-PickInstallFolder -WithSunshine` (+ any extra args you pass) |
 | **`Setup-PlayniteSteam.ps1`** | Main orchestrator: download, extract, config, `.pext` install, bootstrap, library update, desktop import, Sunshine |
 | **`Playnite-Common.ps1`** | Shared helpers: paths, extension install, `playnite.log` wait, LiteDB desktop sync, Everything |
-| **`Update-PlayniteLibraries.ps1`** | Ensure NextGPU Steam + Epic extensions, re-run `--updatelibraries`, re-apply bypass shortcuts in `finally` |
+| **`Update-PlayniteLibraries.ps1`** | Ensure Steam/Epic extensions, re-run `--updatelibraries`, same log wait |
 | **`Update-PlayniteLibraries.bat`** | Same as above via batch wrapper |
-| **`Install-SteamExtensions.ps1`** | Manual repair: copy `SteamExtensions/build/` into `<install>\Extensions\` |
 | **`Import-PlayniteDesktopApps.ps1`** | Desktop allowlist import only (interactive or `-Headless`) |
 | **`config/playnite/*.template.json`** | Defaults merged into Playnite/Steam/Epic configs during setup |
 
@@ -227,8 +221,7 @@ Portable data lives **inside** the install folder (not `%AppData%\Playnite`), so
 - `Resolve-PlayniteInstallDir` — uses only the saved/override path (no `%LocalAppData%\Playnite` fallback)
 - `Expand-PlayniteInstallDirectory` — parent folder → `...\Playnite`
 - `Get-PlayniteDesktopExe`, `Get-PlayniteDataDirectory`, `Get-PlayniteLibraryGamesDbPath`
-- `Install-NextGpuSteamExtensions` — copy repo `SteamLibrary_NextGPU` + `NextGPUBypassGuard` (no official Steam download)
-- `Install-PlayniteBuiltinLibraryExtensions` — calls NextGPU Steam install, then downloads/installs Epic `.pext` only
+- `Install-PlayniteBuiltinLibraryExtensions` — download/install Steam + Epic `.pext`
 - `Wait-PlayniteLibraryImportInLog` — poll **`playnite.log`** for import completion
 - `Stop-PlayniteApplication` — graceful shutdown when running; never starts Playnite just to send `--shutdown`
 - `Invoke-HeadlessDesktopAppImport` / `Sync-PlayniteDesktopAppsToAllowlist` — find exes, write **`games.db`**
@@ -354,86 +347,6 @@ Skip desktop export: `.\Export-SunshineFromPlaynite.ps1 -SkipDesktopApps`
 
 Everything details: [`tools/everything/README.md`](../tools/everything/README.md).
 
-### Bypass shortcuts (RunAsTool + Playnite)
-
-Admin-only setup for elevated launches via **RunAsTool** shortcuts in a **Game Shortcuts** folder. Playnite `games.db` stores the `.lnk` path; Moonlight still uses Playnite `--start <guid>`.
-
-Seed assets live in [`templates/bypass/`](../templates/bypass/) (`RunAsTool.rnt` + `Game Shortcuts/*.lnk`). Refresh that folder from a reference machine when games change (see README there).
-
-1. RunAsTool is **auto-downloaded and installed** during bypass setup (`Install-RunAsTool.ps1`). Maintenance launch: `.\Launch-RunAsTool.ps1`.
-
-2. **Setup Bypass (Automated)** — primary path (NextGPU Playnite page or):
-
-   ```powershell
-   .\Setup-PlayniteBypassAutomated.ps1
-   ```
-
-   - Folder picker for parent → `{parent}\Game Shortcuts`
-   - Copies bundled `.lnk` shortcuts from `templates/bypass/Game Shortcuts`
-   - **One** `Get-Credential` prompt for `NextGPU-Authority`, then silent CLI import of `templates/bypass/RunAsTool.rnt` (`/R` reset + `/I=`)
-   - Saves `bypass-shortcuts.json`
-   - Does **not** open RunAsTool GUI during import
-
-3. **Launch RunAsTool** (optional — verify imported apps):
-
-   ```powershell
-   .\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly
-   ```
-
-4. **Review and sync** (scan Game Shortcuts folder):
-
-   ```powershell
-   .\Sync-PlayniteBypassShortcuts.ps1 -Interactive
-   ```
-
-   Scans all `.lnk` files in Game Shortcuts, opens a review grid (display name, **Launch** mode, helper/game/script paths, **In allowlist** vs **Outside allowlist**, auto-match hints), then updates Playnite `games.db` and the desktop allowlist as needed. **Outside allowlist** is for Steam/Epic games (play path only). **In allowlist** is for desktop/manual apps (allowlist + Sunshine `nameId`). New desktop apps prompt for allowlist slot details.
-
-   **Helper column:** If a title needs an extra executable alongside the RunAsTool `.lnk` (e.g. Garena), enter the path in **Helper** and sync. Review and Sync auto-generates `{DisplayName}.ps1` + `{DisplayName}.cmd`. Empty **Helper** still gets a thin `{DisplayName}.cmd` that launches the `.lnk` via `start` (Playnite cannot run `.lnk` paths directly).
-
-5. **Re-sync only** (existing shortcuts and launcher bindings with known Playnite/allowlist matches, no UI):
-
-   ```powershell
-   .\Sync-PlayniteBypassShortcuts.ps1 -SyncOnly
-   ```
-
-6. Legacy manual folder-only setup (no seed copy / no `.rnt` import):
-
-   ```powershell
-   .\Sync-PlayniteBypassShortcuts.ps1 -PickParentFolder
-   ```
-
-7. Standalone bulk RunAsTool import: `.\Invoke-RunAsToolImportRnt.ps1 -RntPath path\to\backup.rnt -ResetList`
-
-8. Export to Sunshine when prompted after review/sync so new `nameId` entries appear in Moonlight.
-
-Advanced/unsupported: `Invoke-RunAsToolGuiAutomation.ps1` and `Invoke-RunAsToolBypassShortcut.ps1` remain in the repo but are not used by the default workflow.
-
-Desktop import **does not overwrite** games with active bypass bindings; bypass sync re-applies after desktop import and after **`Update-PlayniteLibraries.ps1`**.
-
-**Steam library games (Outside allowlist):** Playnite’s Steam plugin can revert play paths on `--updatelibraries`. NextGPU mitigates this with:
-
-1. **`NextGPUBypassGuard`** — reads `<install>\ExtensionsData\NextGPU\bypass-bindings.json` and restores play actions (`.lnk` or `.cmd` launcher paths) on startup and after library import.
-2. **PowerShell fallback** — `Update-PlayniteLibraries.ps1` calls `Invoke-ReapplyPlayniteBypassShortcuts` in its `finally` block.
-3. **`-SyncOnly`** — uses stored `syncType` on each binding so Outside-allowlist games (e.g. Wuthering Waves) target the Steam row, not a manual duplicate.
-
-After interactive sync, bindings are published to `bypass-bindings.json` automatically. Existing hosts: run `.\Sync-PlayniteBypassShortcuts.ps1 -SyncOnly` once to publish.
-
-**Uninstall:** `.\Uninstall-PlayniteBypass.ps1` removes RunAsTool and Game Shortcuts bypass config; **keeps** the portable Playnite folder and `games.db` by default. Use `-RemovePlayniteInstall` to also delete Playnite (full machine uninstall via `Uninstall-NextGPU.ps1` passes this flag).
-
-Repair Steam extensions manually: `.\Install-SteamExtensions.ps1`
-
-### Bypass vs Steam conflict matrix
-
-| ID | Symptom | Fix |
-|----|---------|-----|
-| **C1** | Steam `--updatelibraries` reverts bypass `.lnk` | `NextGPUBypassGuard` + PS re-apply after `Update-PlayniteLibraries.ps1` |
-| **C2** | Setup downloads official `SteamLibrary_Builtin_2_40.pext` | Repo ships `SteamLibrary_NextGPU` only; Epic still from JosefNemec |
-| **C3** | Library re-scan does not re-apply bypass | `Update-PlayniteLibraries.ps1` `finally` → `Invoke-ReapplyPlayniteBypassShortcuts` |
-| **C4** | `-SyncOnly` updates wrong Playnite row | Bindings store `syncType`; Outside allowlist passes `-OutsideAllowlist` |
-| **C7** | Sunshine export skips Genshin/Naraka after bypass | Export matches allowlist games via bypass binding `playniteId` / `launchPath` before exe leaf |
-
-Details: [`SteamExtensions/README.md`](../SteamExtensions/README.md), [`tools/runastool/README.md`](../tools/runastool/README.md). Log: `Sync-PlayniteBypassShortcuts.log`.
-
 ### games.db recovery
 
 Setup stops Playnite after library update and desktop import. If Playnite shows **“Failed to open library database”** or **“DB file … is most likely damaged”**:
@@ -465,7 +378,7 @@ If Playnite still cannot open the DB, restore **`library\games.db`** from **`lib
 - **7-Zip** or **WinRAR/UnRAR** (for Playnite portable `.7z` extraction).
 - **Steam** and/or **Epic** with games installed on disk (for import without login).
 - **Everything** (recommended for desktop allowlist import on deep paths like `Z:\Adobe\...`).
-- Internet on first setup (Playnite portable `.7z` + Epic library `.pext` unless cached under `<install>\Download`). **Steam** is shipped in-repo (`SteamExtensions/build/`); setup does **not** download `SteamLibrary_Builtin_2_40.pext`.
+- Internet on first setup (Playnite portable `.7z` + Steam/Epic library `.pext` packages unless cached under `<install>\Download`).
 - This repository in a **stable path** (do not move after install).
 
 ---
@@ -520,7 +433,7 @@ Setup already imports once. When you install more Steam/Epic games on disk:
 .\Update-PlayniteLibraries.ps1
 ```
 
-Uses **`PlayniteInstall.path`** automatically. Ensures **NextGPU Steam** + Epic extensions are present, runs `--updatelibraries`, re-applies bypass shortcuts, and uses the same **`playnite.log`** wait (default cap **20** minutes). Pass **`-SkipMetadata`** to avoid a long metadata pass on large libraries. Or use **Update Game Library → Update all** in Playnite.
+Uses **`PlayniteInstall.path`** automatically. Ensures Steam/Epic **`.pext`** extensions are present, runs `--updatelibraries`, and uses the same **`playnite.log`** wait (default cap **20** minutes). Pass **`-SkipMetadata`** to avoid a long metadata pass on large libraries. Or use **Update Game Library → Update all** in Playnite.
 
 Steam/Epic **login** is optional — only needed for games you own but have not installed on this PC.
 
@@ -552,11 +465,9 @@ Unless **`-SkipLegacyCleanup`**:
 - [ ] `<install>\config.json` exists
 - [ ] `<install>\library\games.db` exists and has games after import
 - [ ] `PlayniteInstall.path` in repo matches your install folder
-- [ ] `<install>\Extensions\SteamLibrary_NextGPU`, `\NextGPUBypassGuard`, and `\EpicGamesLibrary_Builtin` exist
-- [ ] `<install>\Extensions\SteamLibrary_Builtin` is **not** present (migrated away on setup/update)
+- [ ] `<install>\Extensions\SteamLibrary_Builtin` and `\EpicGamesLibrary_Builtin` exist
 - [ ] `config\playnite\desktop-apps.allowlist.json` exists (if using desktop import)
 - [ ] `Setup-PlayniteSteam.log` shows `Library import complete` and `added N` for desktop import (N > 0 when apps are indexed)
-- [ ] `Test-PlayniteHostStatus.ps1` check **P7 Rental write access** passes (or `Grant-PlayniteRentalAccess.ps1` run once on existing hosts)
 - [ ] Launching Playnite shows Steam/Epic games plus allowlisted desktop titles (no “damaged database” error)
 
 ---
@@ -567,16 +478,13 @@ Unless **`-SkipLegacyCleanup`**:
 |---------|----------------|
 | Picker then immediate failure | Target drive not mounted / no permission |
 | Extraction fails | Install 7-Zip or WinRAR/UnRAR |
-| No games in library | Steam/Epic not installed, **`Extensions\SteamLibrary_NextGPU`** / **`EpicGamesLibrary_Builtin`** missing, or no `appmanifest` / `LauncherInstalled.dat` on disk; re-run setup or `Update-PlayniteLibraries.ps1` |
-| Steam bypass reverts after library update | Run `Sync-PlayniteBypassShortcuts.ps1 -SyncOnly`; confirm `ExtensionsData\NextGPU\bypass-bindings.json` exists and `NextGPUBypassGuard` is installed |
-| Setup log still downloads Steam `.pext` | Update repo; Steam was removed from `builtin-library-extensions.json` |
+| No games in library | Steam/Epic not installed, **`Extensions\SteamLibrary_Builtin`** / **`EpicGamesLibrary_Builtin`** missing, or no `appmanifest` / `LauncherInstalled.dat` on disk; re-run setup or `Update-PlayniteLibraries.ps1` |
 | Import works but setup waits ~15 min | Old build ignored `playnite.log` milliseconds; update repo. Success lines: `Importing games from Steam plugin`, `Setting Sorting Name for N new games` |
 | Timeout on import | Check `playnite.log` for import errors; increase `-MaxWaitMinutes`; confirm extensions loaded (`ExtensionFactory:Loaded plugin: Steam library integration`) |
 | Many `--shutdown` lines in `playnite.log` | Fixed in current scripts — old `Stop-PlayniteApplication` launched Playnite when already stopped; update repo |
 | DB damaged / InvalidCastException | [games.db recovery](#gamesdb-recovery) |
 | DB locked on launch | `Stop-Process -Name Playnite.DesktopApp -Force`; ensure setup finished (final stop in log) |
 | Another user sees empty library | Wrong exe path — must use path in `PlayniteInstall.path` |
-| `UnauthorizedAccessException` on `Backup\`, `safestart.flag`, or Startup Error for `nextGPU` | Data volume rental ACLs block writes; run elevated `Grant-PlayniteRentalAccess.ps1` or re-run setup (step **Grant Playnite rental access**). Only `<install>` gets `BUILTIN\Users` Modify; `Steam` etc. stay read-only. |
 | Missing template / extension config | Ensure `config\playnite\` has the three `*.template.json` files and **`builtin-library-extensions.json`** |
 
 ---

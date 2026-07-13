@@ -593,7 +593,8 @@ function Write-PlayniteRentalAccessLog {
 function Grant-PlayniteRentalAccess {
     <#
         Grant BUILTIN\Users Modify on the portable Playnite install folder only.
-        Breaks inherited rental volume ACLs (RX + deny delete) so nextGPU can run Playnite.
+        Admin Full Control is applied first so existing children inherit it; then inheritance
+        is broken on the Playnite root and Users Modify is granted for rental (nextGPU) launches.
         Requires an elevated session (icacls).
     #>
     [CmdletBinding()]
@@ -604,7 +605,17 @@ function Grant-PlayniteRentalAccess {
     )
 
     $normalized = Expand-PlayniteInstallDirectory -Path $InstallDir
-    if ([string]::IsNullOrWhiteSpace($normalized) -or -not (Test-Path -LiteralPath $normalized)) {
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        Write-PlayniteRentalAccessLog "Playnite install path is empty: $InstallDir" 'ERROR' $LogAction
+        return $false
+    }
+
+    if ($normalized -match '^[A-Za-z]:\\?$') {
+        Write-PlayniteRentalAccessLog "Rejecting bare drive root as install path: $normalized. Supply the Playnite subfolder path (e.g. Z:\Playnite)." 'ERROR' $LogAction
+        return $false
+    }
+
+    if (-not (Test-Path -LiteralPath $normalized)) {
         Write-PlayniteRentalAccessLog "Playnite install folder not found: $InstallDir" 'ERROR' $LogAction
         return $false
     }
@@ -621,6 +632,9 @@ function Grant-PlayniteRentalAccess {
     $ok = $true
     $usersGrant = "${script:PlayniteRentalAccessGroup}:(OI)(CI)M"
     $adminGrant = "${script:PlayniteRentalAdminGroup}:(OI)(CI)F"
+
+    & icacls.exe $normalized /grant:r $adminGrant 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { $ok = $false }
 
     & icacls.exe $normalized /inheritance:r 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { $ok = $false }
@@ -639,6 +653,97 @@ function Grant-PlayniteRentalAccess {
     }
 
     return $ok
+}
+
+function Get-PlayniteUsersAceFromIcacls {
+    param([string]$IcaclsText)
+
+    if ([string]::IsNullOrWhiteSpace($IcaclsText)) {
+        return $null
+    }
+
+    foreach ($line in ($IcaclsText -split "`r?`n")) {
+        $trimmed = $line.Trim()
+        if ([string]::IsNullOrWhiteSpace($trimmed)) { continue }
+
+        if ($trimmed -match '(?i)BUILTIN\\Users:(\([^)]*\))+') {
+            return $Matches[0]
+        }
+        if ($trimmed -match '(?i)(?:^|\s)Users:(\([^)]*\))+') {
+            return "BUILTIN\$($Matches[0].Trim())"
+        }
+    }
+
+    return $null
+}
+
+function Test-PlayniteUsersAceAllowsRentalWrite {
+    param([string]$UsersAce)
+
+    if ([string]::IsNullOrWhiteSpace($UsersAce)) {
+        return $false
+    }
+
+    return ($UsersAce -match '\(M\)' -or $UsersAce -match '\(W\)' -or $UsersAce -match '\(F\)')
+}
+
+function Get-PlayniteRentalAclStatus {
+    <#
+        Inspect icacls on the portable Playnite folder for BUILTIN\Users Modify (rental launch).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InstallDir
+    )
+
+    $normalized = Expand-PlayniteInstallDirectory -Path $InstallDir
+    if ([string]::IsNullOrWhiteSpace($normalized) -or -not (Test-Path -LiteralPath $normalized)) {
+        return [PSCustomObject]@{
+            InstallDir   = $normalized
+            UsersAce     = $null
+            Granted      = $false
+            Detail       = 'Playnite install folder not found'
+            CurrentWrite = $false
+        }
+    }
+
+    $icaclsOut = @(& icacls.exe $normalized 2>&1)
+    $text = ($icaclsOut | Out-String).Trim()
+    $usersAce = Get-PlayniteUsersAceFromIcacls -IcaclsText $text
+    $granted = Test-PlayniteUsersAceAllowsRentalWrite -UsersAce $usersAce
+    $currentWrite = Test-PlayniteRentalAccess -InstallDir $normalized
+
+    $detail = if ($granted) {
+        if ($usersAce) { "BUILTIN\Users has Modify on $normalized ($usersAce)" } else { "BUILTIN\Users can write portable Playnite data" }
+    }
+    elseif ($usersAce) {
+        "BUILTIN\Users lacks Modify on Playnite folder ($usersAce). Grant Playnite rental access (elevated)."
+    }
+    else {
+        "BUILTIN\Users ACE not found on $normalized. Grant Playnite rental access (elevated)."
+    }
+
+    return [PSCustomObject]@{
+        InstallDir   = $normalized
+        UsersAce     = $usersAce
+        Granted      = $granted
+        Detail       = $detail
+        CurrentWrite = $currentWrite
+    }
+}
+
+function Test-PlayniteRentalAclGranted {
+    <#
+        True when BUILTIN\Users has Modify (or better) on the portable Playnite install folder.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InstallDir
+    )
+
+    return (Get-PlayniteRentalAclStatus -InstallDir $InstallDir).Granted
 }
 
 function Test-PlayniteRentalAccess {

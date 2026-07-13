@@ -308,7 +308,7 @@ function Invoke-RunAsToolBypassShortcutAutomation {
         [string]$ExePath,
         [Parameter(Mandatory)]
         [string]$DestLnk,
-        [string]$AdminUser = "NextGPU-Authority",
+        [string]$AdminUser = "NextGPU-Admin",
         [securestring]$AdminPassword,
         [string]$TileDisplayName = "",
         [int]$TimeoutSec = 120,

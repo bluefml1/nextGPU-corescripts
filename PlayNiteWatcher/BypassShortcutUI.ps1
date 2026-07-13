@@ -323,7 +323,7 @@ function Show-BypassShortcutReviewDialog {
     $header.Size = New-Object System.Drawing.Size(920, 48)
     $count = @($Rows).Count
     $folderLine = if ($BypassesPath) { "`nFolder: $BypassesPath" } else { "" }
-    $header.Text = "$count shortcut(s) found. Optional Helper path generates a launcher script (helper + .lnk). Leave Helper empty for .lnk only. Double-click Helper to browse.$folderLine"
+    $header.Text = "$count sync-list entry(ies). Pre-launches from bypass-sync-list.json run before the shortcut .lnk. Shortcut names are fixed. Pre-launches column is read-only for sync-list rows.$folderLine"
     $form.Controls.Add($header)
 
     $grid = New-Object System.Windows.Forms.DataGridView
@@ -347,35 +347,29 @@ function Show-BypassShortcutReviewDialog {
 
     $colName = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
     $colName.Name = "DisplayName"
-    $colName.HeaderText = "Display name"
+    $colName.HeaderText = "Shortcut name"
+    $colName.ReadOnly = $true
     $colName.FillWeight = 18
     [void]$grid.Columns.Add($colName)
 
-    $colHelper = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
-    $colHelper.Name = "Helper"
-    $colHelper.HeaderText = "Helper"
-    $colHelper.FillWeight = 22
-    [void]$grid.Columns.Add($colHelper)
-
-    $colType = New-Object System.Windows.Forms.DataGridViewComboBoxColumn
-    $colType.Name = "SyncType"
-    $colType.HeaderText = "Type"
-    $colType.FillWeight = 12
-    [void]$colType.Items.Add("In allowlist")
-    [void]$colType.Items.Add("Outside allowlist")
-    [void]$grid.Columns.Add($colType)
+    $colPre = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+    $colPre.Name = "PreLaunches"
+    $colPre.HeaderText = "Pre-launches"
+    $colPre.ReadOnly = $true
+    $colPre.FillWeight = 22
+    [void]$grid.Columns.Add($colPre)
 
     $colHint = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
     $colHint.Name = "Hint"
     $colHint.HeaderText = "Hint"
     $colHint.ReadOnly = $true
-    $colHint.FillWeight = 34
+    $colHint.FillWeight = 46
     [void]$grid.Columns.Add($colHint)
 
     $rowIndex = 0
     foreach ($r in @($Rows)) {
-        $typeDisplay = ConvertTo-BypassSyncTypeDisplayName -SyncType $r.SyncType
-        [void]$grid.Rows.Add($r.FileName, $r.DisplayName, $r.HelperPath, $typeDisplay, $r.Hint)
+        $preSummary = if ($r.PreLaunchesSummary) { $r.PreLaunchesSummary } elseif ($r.HelperPath) { $r.HelperPath } else { "" }
+        [void]$grid.Rows.Add($r.FileName, $r.DisplayName, $preSummary, $r.Hint)
         $grid.Rows[$rowIndex].Tag = $r
         $rowIndex++
     }
@@ -383,11 +377,6 @@ function Show-BypassShortcutReviewDialog {
     $grid.Add_CellDoubleClick({
         param($sender, $e)
         if ($e.RowIndex -lt 0) { return }
-        $colName = $sender.Columns[$e.ColumnIndex].Name
-        if ($colName -ne 'Helper') { return }
-        $row = $sender.Rows[$e.RowIndex]
-        $picked = Show-BypassHelperPathDialog -InitialPath ([string]$row.Cells["Helper"].Value)
-        if ($picked) { $row.Cells["Helper"].Value = $picked }
     })
 
     $ok = New-Object System.Windows.Forms.Button
@@ -422,29 +411,29 @@ function Show-BypassShortcutReviewDialog {
         $displayName = Sanitize-BypassShortcutFileName -Name ([string]$gridRow.Cells["DisplayName"].Value)
         if ([string]::IsNullOrWhiteSpace($displayName)) {
             [System.Windows.Forms.MessageBox]::Show(
-                "Display name is required for: $($original.FileName)",
+                "Shortcut name is required for: $($original.FileName)",
                 "Bypass review",
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
             return $null
         }
 
-        $typeDisplay = [string]$gridRow.Cells["SyncType"].Value
-        $syncType = ConvertFrom-BypassSyncTypeDisplayName -DisplayName $typeDisplay
-        $helperPath = [string]$gridRow.Cells["Helper"].Value
+        $helperPath = [string]$gridRow.Cells["PreLaunches"].Value
 
         $results += [PSCustomObject]@{
             OriginalLnkPath     = $original.OriginalLnkPath
             FileName            = $original.FileName
             DisplayName         = $displayName
-            SyncType            = $syncType
+            SyncListEntry       = $original.SyncListEntry
+            PreLaunches         = $original.PreLaunches
+            PreLaunchesSummary  = if ($original.PreLaunchesSummary) { $original.PreLaunchesSummary } else { $helperPath }
             SuggestedPlayniteId = $original.SuggestedPlayniteId
             SuggestedNameId     = $original.SuggestedNameId
             SuggestedExe        = $original.SuggestedExe
             SuggestedType       = $original.SuggestedType
             Hint                = $original.Hint
             IsNewDesktopApp     = $original.IsNewDesktopApp
-            HelperPath          = $helperPath.Trim()
+            HelperPath          = $original.HelperPath
             HelperDelaySec      = $original.HelperDelaySec
         }
     }

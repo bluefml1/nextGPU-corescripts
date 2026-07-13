@@ -34,12 +34,10 @@ function Get-ResolvedPlayniteInstallDir {
 }
 
 $script:UpdatePlayniteExe = $null
-$script:UpdatePlayniteInstallDir = $null
 
 try {
     Write-MigrationLog "=== Update-PlayniteLibraries started ==="
     $installDir = Get-ResolvedPlayniteInstallDir
-    $script:UpdatePlayniteInstallDir = $installDir
     if (-not $installDir) {
         throw "Playnite install folder is not set. Run Setup-PlayniteSteam.bat and choose a folder, or pass -PlayniteInstallDir."
     }
@@ -51,13 +49,7 @@ try {
     $extLogAction = { param($Message, $Level) Write-MigrationLog $Message $Level }
     Install-PlayniteBuiltinLibraryExtensions -InstallDir $installDir -RepoRoot $PSScriptRoot -LogAction $extLogAction
 
-    $steamLog = { param($Message, $Level) Write-MigrationLog $Message $Level }
-    $steamResolved = Ensure-PlayniteSteamForLibraryScan -WatcherRoot $PSScriptRoot -LogAction $steamLog
-    if ($steamResolved) {
-        Write-MigrationLog "Steam ready for library scan ($($steamResolved.Source)): $($steamResolved.Path)"
-    }
-
-    Stop-PlayniteApplication -PlayniteExe $playniteExe -InstallDir $installDir -WaitSeconds 30 -Force
+    Stop-PlayniteApplication -PlayniteExe $playniteExe
 
     $playniteLog = Join-Path $script:PlayniteAppData "playnite.log"
     $startedAfter = Get-Date
@@ -76,7 +68,7 @@ try {
         Write-MigrationLog "Playnite may still be open - check for first-run wizard dialogs." "WARN"
     }
 
-    Stop-PlayniteApplication -PlayniteExe $playniteExe -InstallDir $installDir -WaitSeconds 30 -Force
+    Stop-PlayniteApplication -PlayniteExe $playniteExe
 
     if ($ok) {
         Write-MigrationLog "Done. Library update finished. Re-run Setup-PlayniteSteam.ps1 -WithSunshine or run Export/Install scripts if you use Sunshine/Moonlight." "INFO"
@@ -91,17 +83,6 @@ catch {
 }
 finally {
     if ($script:UpdatePlayniteExe) {
-        $installDirFromExe = Split-Path -Path $script:UpdatePlayniteExe -Parent
-        Stop-PlayniteApplication -PlayniteExe $script:UpdatePlayniteExe -InstallDir $installDirFromExe -WaitSeconds 30 -Force
-    }
-
-    if ($script:UpdatePlayniteInstallDir) {
-        try {
-            $reapplyLog = { param($Message, $Level) Write-MigrationLog $Message $Level }
-            Invoke-ReapplyPlayniteBypassShortcuts -InstallDir $script:UpdatePlayniteInstallDir -RepoRoot $PSScriptRoot -LogAction $reapplyLog
-        }
-        catch {
-            Write-MigrationLog "Bypass re-apply after library update failed: $($_.Exception.Message)" "WARN"
-        }
+        Stop-PlayniteApplication -PlayniteExe $script:UpdatePlayniteExe
     }
 }

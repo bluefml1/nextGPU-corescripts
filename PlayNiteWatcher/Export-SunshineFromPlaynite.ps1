@@ -2,7 +2,6 @@
 <#
 .SYNOPSIS
     Headless export of Playnite Steam/Epic library to Sunshine apps.json (no Playnite UI).
-    By default also installs PlayNiteWatcher after export. Use -SkipWatcherInstall to export only.
 .EXAMPLE
     .\Export-SunshineFromPlaynite.ps1
     .\Export-SunshineFromPlaynite.ps1 -PlayniteInstallDir "D:\Games\Playnite"
@@ -14,8 +13,7 @@ param(
     [string]$SunshineConfigDir = "",
     [string]$SunshineAppsPath = "",
     [string]$AllowlistPath = "",
-    [switch]$SkipDesktopApps,
-    [switch]$SkipWatcherInstall
+    [switch]$SkipDesktopApps
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,8 +37,7 @@ function Invoke-SunshineExportFromPlaynite {
         [string]$SunshineConfigDir = "",
         [string]$SunshineAppsPath = "",
         [string]$AllowlistPath = "",
-        [switch]$SkipDesktopApps,
-        [switch]$SkipWatcherInstall
+        [switch]$SkipDesktopApps
     )
 
     if (Test-Path -LiteralPath $script:ExportLogFile) {
@@ -58,15 +55,6 @@ function Invoke-SunshineExportFromPlaynite {
     }
 
     $playniteExe = Get-PlayniteDesktopExe -InstallDir $installDir
-
-    $repair = Repair-PlayniteLibraryDatabaseIfNeeded -InstallDir $installDir -LogAction $logAction
-    if (-not $repair.Success) {
-        throw "Playnite library database could not be repaired ($($repair.DatabasePath)). Run PlayNiteWatcher\Setup-PlayniteSteam.bat -SkipInstall or Update-PlayniteLibraries.ps1."
-    }
-    if ($repair.Repaired) {
-        Write-ExportLog "Library database repaired ($($repair.InvalidReason)). Run Update-PlayniteLibraries.ps1 if Steam/Epic games are missing from export." "WARN"
-    }
-
     $games = New-Object System.Collections.Generic.List[object]
     $steamEpic = Get-ExportablePlayniteGames -InstallDir $installDir -LogAction $logAction
     foreach ($g in $steamEpic) { [void]$games.Add($g) }
@@ -116,30 +104,6 @@ function Invoke-SunshineExportFromPlaynite {
     Write-ExportLog "Wrote: $($exportResult.ResolvedJsonPath)"
     Write-ExportLog "Wrote: $($exportResult.ResolvedTxtPath)"
     Write-ExportLog "=== Export finished ==="
-
-    if (-not $SkipWatcherInstall) {
-        Write-ExportLog "=== Installing PlayNiteWatcher (post-export) ==="
-        $installScript = Join-Path $script:ExportModuleRoot "Install-PlayniteWatcher.ps1"
-        if (-not (Test-Path -LiteralPath $installScript)) {
-            Write-ExportLog "Install script not found: $installScript" "WARN"
-            return
-        }
-        if (-not (Get-Command Invoke-PlayniteWatcherInstall -ErrorAction SilentlyContinue)) {
-            . $installScript
-        }
-        $installParams = @{ SkipExport = $true }
-        if (-not [string]::IsNullOrWhiteSpace($PlayniteInstallDir)) {
-            $installParams.PlayniteInstallDir = $PlayniteInstallDir
-        }
-        if (-not [string]::IsNullOrWhiteSpace($SunshineConfigDir)) {
-            $installParams.SunshineConfigDir = $SunshineConfigDir
-        }
-        if (-not [string]::IsNullOrWhiteSpace($AllowlistPath)) {
-            $installParams.AllowlistPath = $AllowlistPath
-        }
-        Invoke-PlayniteWatcherInstall @installParams
-        Write-ExportLog "=== PlayNiteWatcher install finished ==="
-    }
 }
 
 if ($MyInvocation.InvocationName -ne '.') {

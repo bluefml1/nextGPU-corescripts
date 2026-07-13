@@ -8,7 +8,7 @@ param(
     [Parameter(Mandatory)]
     [string]$RntPath,
     [string]$RunAsToolExe = "",
-    [string]$AdminUser = "NextGPU-Authority",
+    [string]$AdminUser = "NextGPU-Admin",
     [securestring]$AdminPassword,
     [switch]$ResetList,
     [string]$RepoRoot = ""

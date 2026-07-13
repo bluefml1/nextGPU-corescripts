@@ -24,8 +24,10 @@ public partial class PlaynitePage : Page
     ];
 
     private readonly List<PlayniteAllowlistEntry> _allAllowlistEntries = [];
+    private readonly List<PlayniteLibraryEntry> _allLibraryEntries = [];
     private bool _allowlistViewerVisible;
     private bool _allowlistAddFormVisible;
+    private bool _libraryViewerVisible;
     private Button? _viewAllowlistBtn;
 
     public PlaynitePage()
@@ -37,8 +39,10 @@ public partial class PlaynitePage : Page
     private void OnLoaded()
     {
         PopulateAllowlistTypeCombos();
+        PopulateLibrarySourceFilter();
         BuildButtons();
         BuildAllowlistActionButtons();
+        BuildLibraryActionButtons();
         BuildVerifyActionButtons();
         ApplyAllowlistAddFormVisibility();
         LoadAllowlistSummary();
@@ -68,19 +72,20 @@ public partial class PlaynitePage : Page
     private void BuildButtons()
     {
         SetupPanel.Children.Clear();
-        UninstallPanel.Children.Clear();
-        BypassPanel.Children.Clear();
         ExportPanel.Children.Clear();
 
         ActionPageTools.AddPrimaryBatchButton(SetupPanel, "Run Full PlayNite Setup",
             @"PlayNiteWatcher\Setup-PlayniteSteam.bat", keepConsoleOpen: true,
-            helpText: "End-to-end first-time setup: installs portable Playnite, configures Steam/Epic disk scan, updates libraries, exports to Sunshine, installs PlayNiteWatcher, and pushes Moonlight games to AWS from domain.txt. Run after RegisterMachine when Sunshine is already present.");
+            helpText: "End-to-end first-time setup: installs portable Playnite, grants BUILTIN\\Users Modify on the Playnite folder (rental ACL), configures Steam/Epic disk scan, updates libraries, exports to Sunshine, installs PlayNiteWatcher, and pushes Moonlight games to AWS. Run elevated after RegisterMachine when Sunshine is present.");
+        ActionPageTools.AddPowerShellButton(SetupPanel, "Grant Playnite Rental Access",
+            @"PlayNiteWatcher\Grant-PlayniteRentalAccess.ps1", "", keepConsoleOpen: true,
+            helpText: "Grants BUILTIN\\Users Modify on the portable Playnite install folder so the nextGPU rental user can write games.db and config. Run elevated after setup or when Verify shows P7 Rental write access failed.");
         ActionPageTools.AddPowerShellButton(SetupPanel, "Setup Playnite Only",
             @"PlayNiteWatcher\Setup-PlayniteSteam.ps1", "-PickInstallFolder", keepConsoleOpen: true,
-            helpText: "Installs or configures portable Playnite only. Prompts for install folder. Does not run the full Sunshine export + watcher pipeline.");
+            helpText: "Installs or configures portable Playnite only (includes rental ACL grant). Prompts for install folder. Does not run the full Sunshine export + watcher pipeline.");
         ActionPageTools.AddPowerShellButton(SetupPanel, "Re-run Setup (Skip Install)",
             @"PlayNiteWatcher\Setup-PlayniteSteam.ps1", "-PickInstallFolder -WithSunshine -SkipInstall", keepConsoleOpen: true,
-            helpText: "Re-applies Playnite configuration and Sunshine integration without re-downloading Playnite. Use when extensions, library config, or games.db need repair.");
+            helpText: "Re-applies Playnite configuration, rental ACL, and Sunshine integration without re-downloading Playnite. Use when extensions, library config, games.db, or rental ACL need repair.");
         ActionPageTools.AddBatchButton(SetupPanel, "Update Libraries",
             @"PlayNiteWatcher\Update-PlayniteLibraries.bat", keepConsoleOpen: true,
             helpText: "Scans installed Steam and Epic games on disk and imports them into Playnite's games.db. Run after new games are installed or when library is empty.");
@@ -96,8 +101,6 @@ public partial class PlaynitePage : Page
             elevated: false,
             helpText: "Imports allowlisted desktop apps without Everything by walking install directories. Slower but works when es.exe is unavailable.");
 
-        BuildBypassButtons();
-
         AddSetupActionButton(SetupPanel, "Launch Playnite", (_, _) => LaunchPlaynite(),
             "Opens Playnite.DesktopApp.exe from the saved portable install path for manual inspection or troubleshooting.");
         ActionPageTools.AddOpenExplorerButton(SetupPanel, "Open Playnite Install Folder", GetPlayniteInstallFolder,
@@ -105,8 +108,6 @@ public partial class PlaynitePage : Page
         ActionPageTools.AddOpenExplorerButton(SetupPanel, "Open PlayNiteWatcher Folder",
             () => Path.Combine(App.Session.RepoRoot ?? "", RepoCatalog.PlayNiteWatcherRelativeDir),
             helpText: "Opens the PlayNiteWatcher scripts folder in the repo for logs, config, and manual script runs.");
-
-        BuildUninstallButtons();
 
         AddConfirmedPowerShellButton(ExportPanel, "Export to Sunshine",
             @"PlayNiteWatcher\Export-SunshineFromPlaynite.ps1", "",
@@ -139,93 +140,8 @@ public partial class PlaynitePage : Page
             "Opens PlayNiteWatcher runtime log — session start/stop and cleanup events during Moonlight streaming.");
     }
 
-    private void BuildBypassButtons()
-    {
-        ActionPageTools.AddPowerShellButton(BypassPanel, "1. Setup Bypass (Automated)",
-            @"PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1", keepConsoleOpen: true,
-            helpText: "Pick parent folder, deploy bundled shortcuts, import RunAsTool app list. You will be prompted for the NextGPU-Authority password once during import.");
-        ActionPageTools.AddPowerShellButton(BypassPanel, "2. Launch RunAsTool",
-            @"PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1", "-RunAsToolOnly", keepConsoleOpen: true,
-            helpText: "Optional — open RunAsTool to verify which games/apps were imported.");
-        ActionPageTools.AddPowerShellButton(BypassPanel, "3. Review and Sync",
-            @"PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1", "-Interactive", keepConsoleOpen: true,
-            helpText: "Scans Game Shortcuts .lnk files, review In allowlist vs Outside allowlist, then updates Playnite games.db and allowlist. Admin only.");
-        ActionPageTools.AddPowerShellButton(BypassPanel, "Re-sync Shortcuts",
-            @"PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1", "-SyncOnly", keepConsoleOpen: true,
-            helpText: "Re-bind existing .lnk files to Playnite without UI. Use after library update or manual shortcut edits.");
-        ActionPageTools.AddPowerShellButton(BypassPanel, "Install Steam Extensions",
-            @"PlayNiteWatcher\Install-SteamExtensions.ps1", keepConsoleOpen: true,
-            helpText: "Install or repair SteamLibrary_NextGPU + NextGPUBypassGuard from repo build output.");
-        ActionPageTools.AddPowerShellButton(BypassPanel, "Launch RunAsTool (Maintenance)",
-            @"PlayNiteWatcher\Launch-RunAsTool.ps1", keepConsoleOpen: true,
-            helpText: "Download/install RunAsTool if missing and open it for troubleshooting.");
-        ActionPageTools.AddOpenExplorerButton(BypassPanel, "Open Game Shortcuts Folder", GetGameShortcutsFolder,
-            helpText: "Opens the configured Game Shortcuts folder in Explorer (from bypass-shortcuts.json).");
-        AddOpenPlayniteLogButton(BypassPanel, "Open Bypass Sync Log", RepoCatalog.PlayniteBypassSyncLog,
-            "Opens Sync-PlayniteBypassShortcuts.log — shortcut scan, Playnite binding, and export steps.");
-    }
-
-    private void BuildUninstallButtons()
-    {
-        AddConfirmedPowerShellButton(UninstallPanel, "Uninstall Game Shortcuts + RunAsTool",
-            @"PlayNiteWatcher\Uninstall-PlayniteBypass.ps1", "-Force",
-            "Remove RunAsTool, delete Game Shortcuts folders, clear bypass config, and revert bypass play paths in Playnite. The Playnite install folder is kept. Continue?",
-            "Removes bypass/RunAsTool only — does not delete the portable Playnite folder.");
-        AddConfirmedPowerShellButton(UninstallPanel, "Uninstall Portable Playnite",
-            @"PlayNiteWatcher\Uninstall-PlayniteBypass.ps1", "-Force -RemovePlayniteInstall",
-            "Remove RunAsTool, bypass config, AND delete the entire portable Playnite install folder (games.db, extensions, config). Continue?",
-            "Full Playnite removal. Use only when you want to delete the portable install entirely. Re-run setup afterward to reinstall.");
-    }
-
-    private void BypassHelp_Click(object sender, RoutedEventArgs e) =>
-        MessageBox.Show(BypassSectionHelpText, "Bypass Shortcuts", MessageBoxButton.OK, MessageBoxImage.Information);
-
     private const string ImportDesktopAppsHeadlessArgs = "-Headless -DesktopImportScanMode AllDrives";
     private const string ImportDesktopAppsDirectoryWalkArgs = "-Headless -DesktopImportScanMode AllDrives -SkipEverythingInstall";
-
-    private const string BypassSectionHelpText =
-        """
-        Bypass shortcuts let Playnite launch elevated games through RunAsTool .lnk files (e.g. Genshin, Wuthering Waves).
-
-        Typical workflow:
-        1. Setup Bypass (Automated) — pick parent folder; copies bundled shortcuts and imports RunAsTool app list (one password prompt)
-        2. Launch RunAsTool — optional; verify imported games/apps in RunAsTool
-        3. Review and Sync — match each shortcut to Playnite (In allowlist for desktop apps, Outside allowlist for Steam/Epic games)
-
-        After Steam library updates, run Re-sync Shortcuts so play paths stay on the .lnk files.
-
-        NextGPUBypassGuard (installed with Steam extensions) and Re-sync publish bypass-bindings.json so paths survive --updatelibraries.
-
-        Uninstall: use the Uninstall section above to remove RunAsTool and bypass config while keeping Playnite, or remove the portable Playnite folder entirely.
-        """;
-
-    private string GetGameShortcutsFolder()
-    {
-        var repo = App.Session.RepoRoot;
-        if (string.IsNullOrWhiteSpace(repo))
-            return "";
-
-        var configPath = Path.Combine(repo, RepoCatalog.PlayNiteWatcherRelativeDir, @"config\playnite\bypass-shortcuts.json");
-        if (!File.Exists(configPath))
-            return "";
-
-        try
-        {
-            using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
-            if (!doc.RootElement.TryGetProperty("bypassesPath", out var pathEl))
-                return "";
-
-            var path = pathEl.GetString()?.Trim();
-            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
-                return "";
-
-            return path.TrimEnd('\\', '/');
-        }
-        catch
-        {
-            return "";
-        }
-    }
 
     private void BuildAllowlistActionButtons()
     {
@@ -259,7 +175,7 @@ public partial class PlaynitePage : Page
     {
         VerifyActionsPanel.Children.Clear();
         AddInlineActionButton(VerifyActionsPanel, "Verify PlayNite Status", VerifyStatus_Click, "PrimaryButton",
-            "Runs Test-PlayniteHostStatus.ps1 and shows a checklist: Playnite install, Steam/Epic library, allowlist, Sunshine export, and watcher hooks. Failed rows include fix actions.");
+            "Runs Test-PlayniteHostStatus.ps1 and shows a checklist: Playnite install, rental ACL (P7), Steam/Epic library, allowlist, Sunshine export, and watcher hooks. Failed rows include fix actions.");
         AddInlineActionButton(VerifyActionsPanel, "Re-verify", VerifyStatus_Click, "GhostButton",
             "Runs the same host status check again after you apply fixes.");
     }
@@ -1104,5 +1020,205 @@ public partial class PlaynitePage : Page
         {
             MessageBox.Show(ex.Message, "NextGPU");
         }
+    }
+
+    private void PopulateLibrarySourceFilter()
+    {
+        LibrarySourceFilterCombo.Items.Clear();
+        LibrarySourceFilterCombo.Items.Add("All");
+        foreach (var source in new[] { "Steam", "Epic", "Manual" })
+            LibrarySourceFilterCombo.Items.Add(source);
+        LibrarySourceFilterCombo.SelectedIndex = 0;
+    }
+
+    private void BuildLibraryActionButtons()
+    {
+        LibraryActionsPanel.Children.Clear();
+        LibraryGridActionsPanel.Children.Clear();
+
+        LibraryGridActionsPanel.Children.Add(LibraryFilterBox);
+        LibraryGridActionsPanel.Children.Add(LibrarySourceFilterCombo);
+        AddPlainInlineActionButton(LibraryGridActionsPanel, "Refresh Library", RefreshLibraryGrid_Click, "GhostButton");
+        AddPlainInlineActionButton(LibraryActionsPanel, "Add to Bypass Sync", AddSelectedToBypassSync_Click, "PrimaryButton");
+    }
+
+    private void LibraryHelp_Click(object sender, RoutedEventArgs e) =>
+        MessageBox.Show(LibraryHelpText, "Playnite Library", MessageBoxButton.OK, MessageBoxImage.Information);
+
+    private const string LibraryHelpText =
+        """
+        Browse all games in Playnite games.db (Steam, Epic, Manual).
+
+        If Playnite is open, Refresh Library closes it briefly to read games.db, then you can reopen Playnite.
+
+        Source is read-only. gameId is set for store games; nameId is resolved from the desktop allowlist for Manual entries.
+
+        Select a row and click Add to Bypass Sync to pre-fill the Bypass tab sync-list form. You still set shortcutName there.
+        """;
+
+    private void ToggleLibraryViewer_Click(object sender, RoutedEventArgs e)
+    {
+        _libraryViewerVisible = !_libraryViewerVisible;
+        LibraryViewerPanel.Visibility = _libraryViewerVisible ? Visibility.Visible : Visibility.Collapsed;
+        ToggleLibraryViewerBtn.Content = _libraryViewerVisible ? "Hide Library" : "View Library";
+        if (_libraryViewerVisible)
+            LoadLibrarySummary();
+    }
+
+    private void LoadLibrarySummary()
+    {
+        ReloadLibraryEntries();
+        LibraryCountText.Text = _allLibraryEntries.Count == 0
+            ? (_libraryLoadError ?? "Library not loaded or Playnite install missing.")
+            : $"{_allLibraryEntries.Count} games in Playnite library";
+        ApplyLibraryFilter();
+    }
+
+    private string? _libraryLoadError;
+
+    private void ReloadLibraryEntries()
+    {
+        _allLibraryEntries.Clear();
+        _libraryLoadError = null;
+        if (App.Session.Scripts is null)
+        {
+            _libraryLoadError = "Repo not configured.";
+            return;
+        }
+
+        var r = App.Session.Scripts.RunPowerShellCapture(@"PlayNiteWatcher\Get-PlayniteLibraryCatalog.ps1", "");
+        if (!r.Success)
+        {
+            _libraryLoadError = string.IsNullOrWhiteSpace(r.Message)
+                ? "Failed to read Playnite library."
+                : r.Message.Trim();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(r.Message))
+        {
+            _libraryLoadError = "Library catalog returned no data.";
+            return;
+        }
+
+        try
+        {
+            var json = ExtractJsonPayload(r.Message);
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                _libraryLoadError = "Library catalog returned no JSON payload.";
+                return;
+            }
+
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("games", out var games) || games.ValueKind != JsonValueKind.Array)
+            {
+                _libraryLoadError = "Library catalog JSON is missing a games array.";
+                return;
+            }
+
+            foreach (var game in games.EnumerateArray())
+            {
+                _allLibraryEntries.Add(new PlayniteLibraryEntry
+                {
+                    Name = game.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "",
+                    Source = game.TryGetProperty("source", out var s) ? s.GetString() ?? "" : "",
+                    GameId = game.TryGetProperty("gameId", out var g) ? g.GetString() ?? "" : "",
+                    NameId = game.TryGetProperty("nameId", out var id) ? id.GetString() ?? "" : "",
+                    PlayniteId = game.TryGetProperty("playniteId", out var p) ? p.GetString() ?? "" : "",
+                    PlayPath = game.TryGetProperty("playPath", out var pp) ? pp.GetString() ?? "" : "",
+                    Exe = game.TryGetProperty("exe", out var e) ? e.GetString() ?? "" : ""
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _libraryLoadError = $"Could not parse library catalog: {ex.Message}";
+        }
+    }
+
+    private static string? ExtractJsonPayload(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var trimmed = text.Trim();
+        if (trimmed.StartsWith('{') || trimmed.StartsWith('['))
+            return trimmed;
+
+        var start = trimmed.IndexOf('{');
+        var end = trimmed.LastIndexOf('}');
+        if (start < 0 || end <= start)
+            return null;
+
+        return trimmed[start..(end + 1)];
+    }
+
+    private void ApplyLibraryFilter()
+    {
+        var query = (LibraryFilterBox.Text ?? "").Trim();
+        var sourceFilter = LibrarySourceFilterCombo.SelectedItem as string ?? "All";
+
+        IEnumerable<PlayniteLibraryEntry> filtered = _allLibraryEntries;
+        if (!string.Equals(sourceFilter, "All", StringComparison.OrdinalIgnoreCase))
+            filtered = filtered.Where(e => string.Equals(e.Source, sourceFilter, StringComparison.OrdinalIgnoreCase));
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            filtered = filtered.Where(e =>
+                e.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                e.GameId.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                e.NameId.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                e.Source.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                e.Exe.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                e.PlayPath.Contains(query, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var list = filtered.ToList();
+        LibraryGrid.ItemsSource = new ObservableCollection<PlayniteLibraryEntry>(list);
+        LibraryGridFooter.Text = list.Count == _allLibraryEntries.Count
+            ? $"{_allLibraryEntries.Count} games"
+            : $"Showing {list.Count} of {_allLibraryEntries.Count} games";
+    }
+
+    private void LibraryFilter_Changed(object sender, RoutedEventArgs e) => ApplyLibraryFilter();
+
+    private void RefreshLibraryGrid_Click(object sender, RoutedEventArgs e) => LoadLibrarySummary();
+
+    private void AddSelectedToBypassSync_Click(object sender, RoutedEventArgs e)
+    {
+        if (LibraryGrid.ItemsSource is not IEnumerable<PlayniteLibraryEntry> visible)
+        {
+            MessageBox.Show("Open the library viewer and refresh first.", "Playnite Library");
+            return;
+        }
+
+        var selected = visible.Where(entry => entry.IsSelected).ToList();
+        if (selected.Count == 0)
+        {
+            var current = LibraryGrid.SelectedItem as PlayniteLibraryEntry;
+            if (current is not null)
+                selected = [current];
+        }
+
+        if (selected.Count != 1)
+        {
+            MessageBox.Show("Select exactly one library row to add to bypass sync.", "Playnite Library");
+            return;
+        }
+
+        var game = selected[0];
+        var draft = BypassPage.PendingDraft;
+        draft.Title = game.Name;
+        draft.GameId = game.GameId;
+        draft.NameId = game.NameId;
+        draft.SuggestedShortcutName = game.Name;
+
+        if (Application.Current.MainWindow is MainWindow mw)
+            mw.NavigateTo(new BypassPage());
+
+        MessageBox.Show(
+            $"Pre-filled Bypass sync list for '{game.Name}'. Set Shortcut Name on the Bypass tab, then Add / Update Entry.",
+            "Playnite Library", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 }

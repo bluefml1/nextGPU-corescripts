@@ -59,6 +59,25 @@ public static class RepoCatalog
             Description = "Runs endSession.ps1 when LogoffManager event 2002 fires.",
             IntervalSummary = "On logoff event",
             RegisterScriptRelativePath = @"scripts\tasks\Register-EndSessionTask.ps1"
+        },
+        new()
+        {
+            TaskName = "nextGPU-SessionFolderRulesLogoff",
+            DisplayName = "Session Folder Rules (Logoff)",
+            Description = "Runs delete/replace session folder rules when nextGPU logs off.",
+            IntervalSummary = "At nextGPU logoff",
+            RegisterScriptRelativePath = @"scripts\runtime\Register-SessionFolderRulesTasks.ps1",
+            StdoutLogFileName = "session-folder-rules.log"
+        },
+        new()
+        {
+            TaskName = "nextGPU-SessionFolderRulesLogon",
+            DisplayName = "Session Folder Rules (Logon)",
+            Description = "Verifies logoff rules completed; re-runs failed rules with logonFallback.",
+            IntervalSummary = "At user logon",
+            RegisterScriptRelativePath = @"scripts\runtime\Register-SessionFolderRulesTasks.ps1",
+            ManualRunScriptRelativePath = @"scripts\runtime\Invoke-SessionFolderRules.ps1",
+            StdoutLogFileName = "session-folder-rules.log"
         }
     ];
 
@@ -85,6 +104,7 @@ public static class RepoCatalog
         "sunshine.log",
         "sunshine-error.log",
         "network_copy.log",
+        "session-folder-rules.log",
         "uninstall-nextgpu.log",
     ];
 
@@ -94,6 +114,7 @@ public static class RepoCatalog
     public const string PlayNiteWatcherRelativeDir = "PlayNiteWatcher";
     public const string PlayniteInstallPathFile = "PlayniteInstall.path";
     public const string PlayniteAllowlistRelativePath = @"PlayNiteWatcher\config\playnite\desktop-apps.allowlist.json";
+    public const string PlayniteBypassSyncListRelativePath = @"PlayNiteWatcher\config\playnite\bypass-sync-list.json";
 
     public const string PlayniteSetupLog = "Setup-PlayniteSteam.log";
     public const string PlayniteExportLog = "Export-SunshineFromPlaynite.log";
@@ -102,4 +123,7 @@ public static class RepoCatalog
     public const string PlayniteDesktopImportLog = "Import-PlayniteDesktopApps.log";
     public const string PlayniteBypassSyncLog = "Sync-PlayniteBypassShortcuts.log";
     public const string PlayniteWatcherRuntimeLog = "log.txt";
+
+    public const string SessionFolderRulesLog = "session-folder-rules.log";
+    public const string SessionFolderRulesTemplateRelativePath = @"config\session-folder-rules.json.template";
 }

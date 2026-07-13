@@ -56,7 +56,9 @@
                             <TextBlock Text="HOST" Style="{StaticResource NavSectionLabel}"/>
                             <Button x:Name="NavTaskSchedulerBtn" Style="{StaticResource NavButton}" Content="Task Scheduler" Click="NavTaskScheduler_Click"/>
                             <Button x:Name="NavUserStorageBtn" Style="{StaticResource NavButton}" Content="User Storage (U:)" Click="NavUserStorage_Click"/>
+                            <Button x:Name="NavSetupGamesAppsBtn" Style="{StaticResource NavButton}" Content="Setup Games &amp; Apps" Click="NavSetupGamesApps_Click"/>
                             <Button x:Name="NavUserExperienceBtn" Style="{StaticResource NavButton}" Content="User Experience" Click="NavUserExperience_Click"/>
+                            <Button x:Name="NavBypassBtn" Style="{StaticResource NavButton}" Content="Bypass" Click="NavBypass_Click"/>
                             <Button x:Name="NavDiskMgmtBtn" Style="{StaticResource NavButton}" Content="Disk Management" Click="NavDiskMgmt_Click"/>
                             <Button x:Name="NavLogsBtn" Style="{StaticResource NavButton}" Content="Logs" Click="NavLogs_Click"/>
                             <Button x:Name="NavSettingsBtn" Style="{StaticResource NavButton}" Content="Settings" Click="NavSettings_Click"/>

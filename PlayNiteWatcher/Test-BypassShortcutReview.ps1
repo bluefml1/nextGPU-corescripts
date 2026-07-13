@@ -80,6 +80,7 @@ try {
     $wrapperPath = New-BypassShortcutCmdWrapper -BypassesPath $tempBypass -DisplayName "Test Game" -ShortcutLnkPath $shortcutPath
     $cmdText = Get-Content -LiteralPath $wrapperPath -Raw -Encoding ASCII
     if ($cmdText -notmatch 'start') { throw "Shortcut wrapper must use start" }
+    if ($cmdText -notmatch 'Sysnative') { throw "Shortcut wrapper must prefer Sysnative cmd for Wow64 Playnite" }
     if ($cmdText -notmatch [regex]::Escape($shortcutPath)) { throw "Shortcut wrapper must reference full .lnk path" }
 
     $paths = New-BypassCompositeLauncherScript `
@@ -93,6 +94,8 @@ try {
     $ps1Text = Get-Content -LiteralPath $paths.Ps1Path -Raw -Encoding UTF8
     if ($ps1Text -notmatch [regex]::Escape($helperPath)) { throw "Composite .ps1 missing helper path" }
     if ($ps1Text -notmatch [regex]::Escape($shortcutPath)) { throw "Composite .ps1 missing shortcut path" }
+    if ($ps1Text -notmatch 'Sysnative') { throw "Composite .ps1 must prefer Sysnative cmd for Wow64 Playnite" }
+    if ($ps1Text -notmatch "ArgumentList \('/c start") { throw "Composite .ps1 must pass start args as one quoted string" }
 
     $helperLaunch = Resolve-BypassPlayniteLaunchPath -LauncherMode HelperAndApp -BypassesPath $tempBypass -DisplayName "Garena Test" -OriginalLnkPath $shortcutPath
     if ($helperLaunch -notmatch '\.cmd$') { throw "Helper composite play path must be .cmd: $helperLaunch" }
@@ -122,6 +125,25 @@ $games = @(
 $store = Find-PlayniteStoreGameForBypassShortcut -Games $games -Title "Wuthering Waves" -PreferredId "aaaa"
 if (-not $store -or $store.Id -ne "bbbb") {
     throw "Store game preference failed: $($store.Id)"
+}
+
+# Sync list: gameId entry falls back to title when Playnite has no matching store GameId (e.g. manual import)
+$wuwaEntry = [PSCustomObject]@{
+    title        = 'Wuthering Waves'
+    gameId       = '2807950'
+    shortcutName = 'Wuthering Waves'
+    appExe       = 'Wuthering Waves.exe'
+    launches     = @()
+}
+$manualWuwa = [PSCustomObject]@{ Id = 'cccc'; Name = 'Wuthering Waves'; PluginId = $manualId; GameId = '' }
+$syncMatch = Find-PlayniteGameForSyncEntry -Entry $wuwaEntry -Games @($manualWuwa) -RepoRoot $env:TEMP
+if (-not $syncMatch -or $syncMatch.Id -ne 'cccc') {
+    throw "Sync entry gameId should fall back to title match: $($syncMatch.Id)"
+}
+$steamWuwa = [PSCustomObject]@{ Id = 'dddd'; Name = 'Wuthering Waves'; PluginId = $steamId; GameId = '2807950' }
+$dupMatch = Find-PlayniteGameForSyncEntry -Entry $wuwaEntry -Games @($manualWuwa, $steamWuwa) -RepoRoot $env:TEMP
+if (-not $dupMatch -or $dupMatch.Id -ne 'dddd') {
+    throw "Sync entry should prefer store game when gameId matches: $($dupMatch.Id)"
 }
 
 # Nested games array (from @(Get-PlayniteGamesWithPlayActions)) must not concatenate all .Name values in hints.
@@ -194,6 +216,147 @@ $exportBinding = @($exportBindings) | Where-Object {
 $exportMatch = Get-SinglePlayniteGameRecord -Game ($exportGames | Where-Object { $_.Id -ieq $exportBinding.playniteId } | Select-Object -First 1)
 if (-not $exportMatch -or $exportMatch.PrimaryPlayPath -notmatch '\.lnk$') {
     throw "Export bypass binding match failed (C7)"
+}
+
+# Sync list: filtered seed copy (2 listed, 5 in seed -> 2 copied)
+$tempRepo = Join-Path $env:TEMP ("nextgpu-sync-list-" + [guid]::NewGuid().ToString("N"))
+$seedDir = Join-Path $tempRepo "templates\bypass\Game Shortcuts"
+$destDir = Join-Path $tempRepo "host\Game Shortcuts"
+$configDir = Join-Path $tempRepo "config\playnite"
+New-Item -ItemType Directory -Path $seedDir -Force | Out-Null
+New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+foreach ($name in @('A', 'B', 'C', 'D', 'E')) {
+    Set-Content -LiteralPath (Join-Path $seedDir "$name.lnk") -Value '' -Encoding ASCII
+}
+Copy-Item -LiteralPath (Join-Path $scriptRoot "config\playnite\bypass-sync-list.json.template") `
+    -Destination (Join-Path $configDir "bypass-sync-list.json") -Force
+$syncDoc = Get-Content -LiteralPath (Join-Path $configDir "bypass-sync-list.json") -Raw | ConvertFrom-Json
+$syncDoc.apps = @(
+    [PSCustomObject]@{ title = 'Game A'; gameId = '1'; appExe = 'a.exe'; shortcutName = 'A'; launches = @() },
+    [PSCustomObject]@{ title = 'Game B'; gameId = '2'; appExe = 'b.exe'; shortcutName = 'B'; launches = @() }
+)
+$syncDoc | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $configDir "bypass-sync-list.json") -Encoding UTF8
+try {
+    $copyResult = Copy-BypassGameShortcutsForSyncList -ShortcutsSeedPath $seedDir -BypassesPath $destDir -RepoRoot $tempRepo
+    if ($copyResult.Copied -ne 2) { throw "Expected 2 copied, got $($copyResult.Copied)" }
+    $destLnks = @(Get-ChildItem -LiteralPath $destDir -Filter '*.lnk' -File)
+    if ($destLnks.Count -ne 2) { throw "Expected 2 dest lnks, got $($destLnks.Count)" }
+}
+finally {
+    if (Test-Path -LiteralPath $tempRepo) {
+        Remove-Item -LiteralPath $tempRepo -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# Sync list: filtered RNT import subset
+$tempRnt = Join-Path $env:TEMP ("nextgpu-rnt-" + [guid]::NewGuid().ToString("N") + ".rnt")
+@'
+[RunAsTool_Item]
+FileName=Wuthering Waves
+FilePath=Z:\Games\Wuthering Waves.exe
+
+[RunAsTool_Item]
+FileName=Other Game
+FilePath=Z:\Games\Other.exe
+'@ | Set-Content -LiteralPath $tempRnt -Encoding UTF8
+$entries = @(
+    [PSCustomObject]@{ title = 'Wuthering Waves'; gameId = '2807950'; appExe = 'Wuthering Waves.exe'; shortcutName = 'Wuthering Waves'; launches = @() }
+)
+$filtered = New-FilteredRunAsToolRnt -RntPath $tempRnt -SyncListEntries $entries
+if ($filtered.IncludedCount -ne 1) { throw "Filtered RNT expected 1 item, got $($filtered.IncludedCount)" }
+Remove-Item -LiteralPath $tempRnt -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $filtered.Path -Force -ErrorAction SilentlyContinue
+
+# Sync list review rows ignore extra .lnk in folder
+$tempBypass = Join-Path $env:TEMP ("nextgpu-review-sync-" + [guid]::NewGuid().ToString("N"))
+$tempRepo2 = Join-Path $env:TEMP ("nextgpu-review-repo-" + [guid]::NewGuid().ToString("N"))
+$configDir2 = Join-Path $tempRepo2 "config\playnite"
+New-Item -ItemType Directory -Path $tempBypass -Force | Out-Null
+New-Item -ItemType Directory -Path $configDir2 -Force | Out-Null
+Set-Content -LiteralPath (Join-Path $tempBypass "Listed.lnk") -Value '' -Encoding ASCII
+Set-Content -LiteralPath (Join-Path $tempBypass "Extra.lnk") -Value '' -Encoding ASCII
+@{
+    _comment = 'test'
+    apps     = @(
+        @{ title = 'Listed Game'; gameId = '99'; appExe = 'listed.exe'; shortcutName = 'Listed'; launches = @() }
+    )
+} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $configDir2 "bypass-sync-list.json") -Encoding UTF8
+try {
+    $rows = Get-BypassShortcutReviewRowsFromSyncList -BypassesPath $tempBypass -RepoRoot $tempRepo2 -InstallDir $env:TEMP
+    if (@($rows).Count -ne 1) { throw "Sync list review rows expected 1, got $(@($rows).Count)" }
+    if ($rows[0].DisplayName -ne 'Listed') { throw "Unexpected review row name: $($rows[0].DisplayName)" }
+}
+catch {
+    if ($_.Exception.Message -notmatch 'Playnite library database not found|games\.db') {
+        throw
+    }
+}
+finally {
+    Remove-Item -LiteralPath $tempBypass -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $tempRepo2 -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# Sync list: helperPath migrates to launches[] on normalize
+$legacyEntry = [PSCustomObject]@{
+    title        = 'Legacy Garena'
+    nameId       = '10000304'
+    shortcutName = 'Garena FC Online'
+    exe          = 'Garena.exe'
+    helperPath   = 'Z:\Garena\Garena\gxxapphelper.exe'
+}
+$normLegacy = Normalize-BypassSyncListEntry -Entry $legacyEntry
+if (@($normLegacy.launches).Count -ne 1) { throw "Expected helperPath -> 1 launch, got $(@($normLegacy.launches).Count)" }
+if ((Get-BypassSyncListAppExe -Entry $legacyEntry) -ne 'Garena.exe') { throw "Expected exe -> appExe migration on read" }
+
+$garenaEntry = [PSCustomObject]@{
+    title        = 'Garena FC Online'
+    nameId       = '10000304'
+    shortcutName = 'Garena FC Online'
+    launches     = @([PSCustomObject]@{ path = 'Z:\Garena\Garena\gxxapphelper.exe'; delaySec = 2 })
+}
+if ((Get-BypassSyncListBindingExe -Entry $garenaEntry) -ne 'gxxapphelper.exe') {
+    throw "Binding exe should derive from first pre-launch path"
+}
+$normGarena = Normalize-BypassSyncListEntry -Entry $garenaEntry
+if ($normGarena.PSObject.Properties.Name -contains 'appExe') {
+    throw "Normalized entry should not emit appExe when unset"
+}
+
+# Multi-launch script: 3 pre-launches + shortcut
+$tempBypass2 = Join-Path $env:TEMP ("nextgpu-multilaunch-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $tempBypass2 -Force | Out-Null
+$pre1 = Join-Path $env:TEMP ("pre1-" + [guid]::NewGuid().ToString("N") + ".exe")
+$pre2 = Join-Path $env:TEMP ("pre2-" + [guid]::NewGuid().ToString("N") + ".exe")
+$pre3 = Join-Path $env:TEMP ("pre3-" + [guid]::NewGuid().ToString("N") + ".exe")
+$shortcutPath2 = Join-Path $tempBypass2 "Multi Test.lnk"
+try {
+    Set-Content -LiteralPath $pre1 -Value '' -Encoding ASCII
+    Set-Content -LiteralPath $pre2 -Value '' -Encoding ASCII
+    Set-Content -LiteralPath $pre3 -Value '' -Encoding ASCII
+    Set-Content -LiteralPath $shortcutPath2 -Value '' -Encoding ASCII
+    $preLaunches = @(
+        [PSCustomObject]@{ path = $pre1; delaySec = 1 },
+        [PSCustomObject]@{ path = $pre2; delaySec = 2 },
+        [PSCustomObject]@{ path = $pre3; delaySec = 1 }
+    )
+    $paths = New-BypassMultiLaunchScript -BypassesPath $tempBypass2 -DisplayName "Multi Test" -PreLaunches $preLaunches -ShortcutLnkPath $shortcutPath2
+    $ps1Text = Get-Content -LiteralPath $paths.Ps1Path -Raw -Encoding UTF8
+    if ($ps1Text -notmatch [regex]::Escape($pre1)) { throw "Multi-launch .ps1 missing pre1" }
+    if ($ps1Text -notmatch [regex]::Escape($pre2)) { throw "Multi-launch .ps1 missing pre2" }
+    if ($ps1Text -notmatch [regex]::Escape($pre3)) { throw "Multi-launch .ps1 missing pre3" }
+    if ($ps1Text -notmatch [regex]::Escape($shortcutPath2)) { throw "Multi-launch .ps1 missing shortcut" }
+
+    $emptyRow = [PSCustomObject]@{ PreLaunches = @(); SuggestedExe = "game.exe" }
+    $appOnly = Resolve-BypassReviewedRowLauncher -Row $emptyRow -BypassesPath $tempBypass2 -DisplayName "Plain" -ShortcutLnkPath $shortcutPath2
+    if ($appOnly.LauncherMode -ne 'AppOnly' -or $appOnly.PlayLaunchPath -notmatch '\.cmd$') { throw "Empty launches must use AppOnly .cmd wrapper" }
+}
+finally {
+    if (Test-Path -LiteralPath $tempBypass2) {
+        Remove-Item -LiteralPath $tempBypass2 -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Remove-Item -LiteralPath $pre1 -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $pre2 -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $pre3 -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host "Test-BypassShortcutReview: all passed."

@@ -974,6 +974,16 @@ if exist "%NEXTGPU_DESKTOP_REG%" (
 if exist "%NEXTGPU_DESKTOP_CLR%" (
     powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%NEXTGPU_DESKTOP_CLR%"
 )
+set "SESSION_RULES_REG=%RUNTIME_DIR%\Register-SessionFolderRulesTasks.ps1"
+if exist "%SESSION_RULES_REG%" (
+    echo [*] Registering session folder rules tasks...
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%SESSION_RULES_REG%"
+    if !errorlevel! neq 0 (
+        echo [!] WARNING: Register-SessionFolderRulesTasks.ps1 failed ^(exit !errorlevel!^).
+    )
+) else (
+    echo [!] WARNING: Register-SessionFolderRulesTasks.ps1 not found.
+)
 if exist "%ProgramData%\nextGPU\rclone\rclone.conf" (
     set "US_SYNC_PS1=%ProgramData%\nextGPU\scripts\runtime\Sync-NextGpuUserStorageForLocalUser.ps1"
     if not exist "%US_SYNC_PS1%" set "US_SYNC_PS1=%RUNTIME_DIR%\Sync-NextGpuUserStorageForLocalUser.ps1"

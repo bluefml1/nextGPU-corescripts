@@ -1,0 +1,15 @@
+{
+  "_comment": "Logoff runs all rules. Logon re-runs rules with logonFallback when verification fails. Replace sources default under ProgramData\\nextGPU\\session-templates\\{id}.",
+  "rules": [
+    {
+      "id": "garena-gxx",
+      "title": "Garena gxx reset",
+      "action": "replace",
+      "target": "C:\\ProgramData\\Garena\\gxx",
+      "source": "C:\\ProgramData\\nextGPU\\session-templates\\garena-gxx",
+      "preserve": [],
+      "stopProcesses": ["gxxapphelper.exe", "Garena.exe"],
+      "logonFallback": true
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+﻿[2026-07-10 17:09:44] [INFO] === Install-PlayniteWatcher started (Uninstall=False) ===
+[2026-07-10 17:09:44] [INFO] Playnite install path saved to PlayniteInstall.path
+[2026-07-10 17:09:44] [WARN] PlayNiteWatcherExt folder not found; skipping extension copy.
+[2026-07-10 17:09:45] [INFO] Installed PlayNiteWatcher hooks for 11 app(s).
+[2026-07-10 17:09:45] [INFO] === Install finished ===

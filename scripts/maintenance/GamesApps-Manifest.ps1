@@ -808,6 +808,11 @@ if (Test-Path -LiteralPath $script:InstallGarenaClientScriptPath) {
     . $script:InstallGarenaClientScriptPath
 }
 
+$script:InstallHoYoPlayClientScriptPath = Join-Path $PSScriptRoot 'Install-HoYoPlayClient.ps1'
+if (Test-Path -LiteralPath $script:InstallHoYoPlayClientScriptPath) {
+    . $script:InstallHoYoPlayClientScriptPath
+}
+
 function Ensure-GarenaForArrange {
     param(
         [Parameter(Mandatory)][object[]]$Entries,
@@ -895,5 +900,50 @@ function Ensure-LevelUpForArrange {
 
     $manifestPath = Get-ResolvedDownloadManifestPath
     $installedPath = Install-LevelUpClientSilent -TargetFolder $targetFolder -LogPath $LogPath -ManifestPath $manifestPath
+    return (Resolve-ManifestExtractPathString -Path $installedPath)
+}
+
+function Ensure-HoYoPlayForArrange {
+    param(
+        [Parameter(Mandatory)][object[]]$Entries,
+        [string]$LogPath = '',
+        [bool]$UseGui = $true
+    )
+
+    $existing = Find-ExistingHoYoPlaySyncPath -Entries $Entries
+    if ($existing) {
+        $line = "HoYoPlay already synced: $existing"
+        if ($LogPath) {
+            Add-Content -LiteralPath $LogPath -Value ('[{0}] {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $line) -Encoding UTF8 -ErrorAction SilentlyContinue
+        }
+        Write-Host "[OK] $line" -ForegroundColor Green
+        return (Resolve-ManifestExtractPathString -Path $existing)
+    }
+
+    if ([string]::IsNullOrWhiteSpace($LogPath)) {
+        $LogPath = Get-ArrangeGamesAppsLogPath
+    }
+
+    $targetFolder = Resolve-HoYoPlaySyncTargetFolder -Entries $Entries
+    $bundleArchive = Get-HoYoPlayBundleArchiveName
+    Write-Host "[*] HoYoPlay not synced. Downloading $bundleArchive to $targetFolder ..." -ForegroundColor Cyan
+    if ($LogPath) {
+        Add-Content -LiteralPath $LogPath -Value ('[{0}] Auto-sync HoYoPlay ({1}) to {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $bundleArchive, $targetFolder) -Encoding UTF8 -ErrorAction SilentlyContinue
+    }
+
+    if ($UseGui) {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+        $confirm = [System.Windows.Forms.MessageBox]::Show(
+            "HoYoPlay was not found on this machine.`n`nDownload and extract $bundleArchive to:`n$targetFolder`n`nContinue?",
+            'Install HoYoPlay',
+            'YesNo',
+            'Question')
+        if ($confirm -ne 'Yes') {
+            throw 'HoYoPlay auto-install cancelled.'
+        }
+    }
+
+    $manifestPath = Get-ResolvedDownloadManifestPath
+    $installedPath = Install-HoYoPlayClientSilent -TargetFolder $targetFolder -LogPath $LogPath -ManifestPath $manifestPath
     return (Resolve-ManifestExtractPathString -Path $installedPath)
 }

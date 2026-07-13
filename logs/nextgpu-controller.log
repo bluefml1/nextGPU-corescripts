@@ -1,28 +1,623 @@
-[2026-06-01 01:00:39] NextGPU Controller session started
-[2026-06-01 01:08:38] NextGPU Controller session started
-[2026-06-01 01:09:32] PowerShell capture exit=0
-[2026-06-06 02:02:59] NextGPU Controller session started
-[2026-06-06 02:11:24] NextGPU Controller session started
-[2026-06-06 02:36:03] NextGPU Controller session started
-[2026-06-06 02:37:46] PowerShell capture exit=0
-[2026-06-06 02:47:12] NextGPU Controller session started
-[2026-06-06 02:49:58] Run PowerShell: PlayNiteWatcher\Import-PlayniteDesktopApps.ps1  keepConsole=True
-[2026-06-06 02:50:00] Started: powershell.exe
-[2026-06-06 02:50:42] Run PowerShell: PlayNiteWatcher\Import-PlayniteDesktopApps.ps1  keepConsole=True
-[2026-06-06 02:50:43] Started: powershell.exe
-[2026-06-06 02:50:50] Run PowerShell: PlayNiteWatcher\Import-PlayniteDesktopApps.ps1 -SkipEverythingInstall keepConsole=True
-[2026-06-06 02:50:51] Started: powershell.exe
-[2026-06-06 03:04:30] NextGPU Controller session started
-[2026-06-06 03:11:46] NextGPU Controller session started
-[2026-06-06 03:12:13] Run batch: scripts\maintenance\updateGames.bat elevated=True args= keepConsole=True
-[2026-06-06 03:12:15] Started: C:\Users\tuanv\Downloads\AUtomate 100%\RegisterMachineEZC\nextGPU-corescripts\scripts\maintenance\updateGames.bat
-[2026-06-06 03:13:04] PowerShell capture exit=0
-[2026-06-06 03:13:21] PowerShell capture exit=0
-[2026-06-06 03:17:18] PowerShell capture exit=0
-[2026-06-06 11:53:58] NextGPU Controller session started
-[2026-07-01 15:41:35] NextGPU Controller session started
-[2026-07-01 17:55:45] Run PowerShell: PlayNiteWatcher\Import-PlayniteDesktopApps.ps1  keepConsole=True
-[2026-07-01 17:55:47] Started: powershell.exe
-[2026-07-02 14:44:24] NextGPU Controller session started
-[2026-07-02 14:44:29] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
-[2026-07-02 14:44:31] Started: C:\Users\tuanv\Downloads\AUtomate 100%\RegisterMachineEZC\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-01 16:27:31] NextGPU Controller session started
+[2026-07-01 16:27:48] PowerShell capture exit=0
+[2026-07-01 16:27:55] Run PowerShell: scripts\maintenance\Run-ChkDsk-Repair.ps1  keepConsole=True
+[2026-07-01 16:27:55] Started: powershell.exe
+[2026-07-01 16:28:07] Run PowerShell: scripts\maintenance\Create-Z-Partition.ps1  keepConsole=True
+[2026-07-01 16:28:07] Started: powershell.exe
+[2026-07-01 16:28:52] Run PowerShell: scripts\maintenance\Create-Z-Partition.ps1  keepConsole=True
+[2026-07-01 16:28:52] Started: powershell.exe
+[2026-07-01 16:34:00] Run PowerShell: scripts\maintenance\Run-ChkDsk-Repair.ps1  keepConsole=True
+[2026-07-01 16:34:00] Started: powershell.exe
+[2026-07-01 16:36:04] NextGPU Controller session started
+[2026-07-01 16:37:21] Run batch: scripts\maintenance\sync-games-apps-official.bat elevated=True args= keepConsole=True
+[2026-07-01 16:37:21] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\sync-games-apps-official.bat
+[2026-07-01 16:50:04] Run batch: scripts\maintenance\arrange-games-apps.bat elevated=True args= keepConsole=True
+[2026-07-01 16:50:04] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\arrange-games-apps.bat
+[2026-07-01 16:59:10] Run batch: RegisterMachine_Beta.bat elevated=True args=/UiConfig keepConsole=True
+[2026-07-01 16:59:10] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\RegisterMachine_Beta.bat
+[2026-07-01 17:06:53] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-01 17:06:53] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-01 17:07:44] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-01 17:07:44] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-01 17:07:58] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-01 17:07:58] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-01 17:08:12] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-01 17:08:12] Started: powershell.exe
+[2026-07-01 17:08:46] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-01 17:08:46] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-01 17:19:57] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-01 17:19:57] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-01 17:20:17] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-01 17:20:17] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-01 17:21:59] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-01 17:21:59] Started: powershell.exe
+[2026-07-01 17:22:33] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-01 17:22:33] Started: powershell.exe
+[2026-07-01 17:22:42] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-01 17:22:42] Started: powershell.exe
+[2026-07-01 17:24:15] PowerShell capture exit=0
+[2026-07-01 17:24:44] Run PowerShell: PlayNiteWatcher\Import-PlayniteDesktopApps.ps1  keepConsole=True
+[2026-07-01 17:24:44] Started: powershell.exe
+[2026-07-01 17:41:11] NextGPU Controller session started
+[2026-07-01 17:41:19] Run batch: PlayNiteWatcher\Import-PlayniteDesktopApps.bat elevated=True args=-Headless -DesktopImportScanMode Prompt keepConsole=True
+[2026-07-01 17:41:19] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Import-PlayniteDesktopApps.bat
+[2026-07-01 17:42:20] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-01 17:42:20] Started: cmd.exe
+[2026-07-01 17:49:02] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-01 17:49:02] Started: cmd.exe
+[2026-07-01 17:49:16] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-01 17:49:16] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-01 17:50:59] Run batch: PlayNiteWatcher\Import-PlayniteDesktopApps.bat elevated=True args=-Headless -DesktopImportScanMode Prompt keepConsole=True
+[2026-07-01 17:50:59] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Import-PlayniteDesktopApps.bat
+[2026-07-01 18:34:12] NextGPU Controller session started
+[2026-07-01 18:34:17] Run batch: PlayNiteWatcher\Import-PlayniteDesktopApps.bat elevated=False args=-Headless -DesktopImportScanMode AllDrives keepConsole=True
+[2026-07-01 18:34:17] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Import-PlayniteDesktopApps.bat
+[2026-07-01 18:35:55] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-01 18:35:55] Started: cmd.exe
+[2026-07-01 18:36:48] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-01 18:36:48] Started: cmd.exe
+[2026-07-01 18:37:12] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-01 18:37:12] Started: cmd.exe
+[2026-07-01 19:03:59] NextGPU Controller session started
+[2026-07-01 19:04:25] Run PowerShell: scripts\drivers\Install-VAD-Fallback.ps1  keepConsole=True
+[2026-07-01 19:04:25] Started: cmd.exe
+[2026-07-01 20:21:33] NextGPU Controller session started
+[2026-07-01 20:22:07] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-01 20:22:07] Started: cmd.exe
+[2026-07-01 20:22:17] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-01 20:22:17] Started: cmd.exe
+[2026-07-01 20:22:42] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-01 20:22:42] Started: cmd.exe
+[2026-07-01 20:23:43] PowerShell capture exit=0
+[2026-07-01 20:23:47] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-01 20:23:47] Started: cmd.exe
+[2026-07-01 23:51:49] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-01 23:51:49] Started: cmd.exe
+[2026-07-01 23:52:21] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-01 23:52:21] Started: cmd.exe
+[2026-07-02 10:29:10] NextGPU Controller session started
+[2026-07-02 10:29:20] Run batch: scripts\maintenance\sync-games-apps-official.bat elevated=True args= keepConsole=True
+[2026-07-02 10:29:20] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\sync-games-apps-official.bat
+[2026-07-02 10:47:47] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-02 10:47:47] Started: cmd.exe
+[2026-07-02 10:48:18] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-02 10:48:18] Started: cmd.exe
+[2026-07-02 11:26:54] NextGPU Controller session started
+[2026-07-02 11:28:38] Run batch: scripts\maintenance\arrange-games-apps.bat elevated=True args= keepConsole=True
+[2026-07-02 11:28:38] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\arrange-games-apps.bat
+[2026-07-02 11:31:06] Run batch: scripts\maintenance\sync-games-apps-official.bat elevated=True args= keepConsole=True
+[2026-07-02 11:31:06] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\sync-games-apps-official.bat
+[2026-07-02 11:31:41] Run batch: scripts\maintenance\sync-games-apps-official.bat elevated=True args= keepConsole=True
+[2026-07-02 11:31:41] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\sync-games-apps-official.bat
+[2026-07-02 14:27:09] Run batch: scripts\maintenance\arrange-games-apps.bat elevated=True args= keepConsole=True
+[2026-07-02 14:27:09] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\arrange-games-apps.bat
+[2026-07-02 14:28:41] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-02 14:28:41] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-02 14:33:14] Run batch: scripts\maintenance\updateGames.bat elevated=True args=/UseDomainTxt keepConsole=True
+[2026-07-02 14:33:14] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\updateGames.bat
+[2026-07-02 14:34:08] Run batch: scripts\maintenance\updateGames.bat elevated=True args=/UseDomainTxt keepConsole=True
+[2026-07-02 14:34:08] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\updateGames.bat
+[2026-07-02 14:53:55] NextGPU Controller session started
+[2026-07-02 15:09:48] NextGPU Controller session started
+[2026-07-02 15:09:54] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-02 15:09:54] Started: cmd.exe
+[2026-07-02 15:10:15] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-02 15:10:15] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-02 15:10:36] PowerShell capture exit=0
+[2026-07-02 16:56:21] NextGPU Controller session started
+[2026-07-02 16:56:50] Run batch: scripts\drivers\InstallVDD-VAD.bat elevated=True args= keepConsole=False
+[2026-07-02 16:56:50] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\drivers\InstallVDD-VAD.bat
+[2026-07-02 16:58:09] Run batch: scripts\drivers\InstallVDD-VAD.bat elevated=True args= keepConsole=False
+[2026-07-02 16:58:09] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\drivers\InstallVDD-VAD.bat
+[2026-07-02 17:06:00] NextGPU Controller session started
+[2026-07-02 17:06:11] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-02 17:06:11] Started: cmd.exe
+[2026-07-02 17:07:55] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-02 17:07:55] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-02 17:10:53] Run batch: scripts\maintenance\arrange-games-apps.bat elevated=True args= keepConsole=True
+[2026-07-02 17:10:53] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\arrange-games-apps.bat
+[2026-07-02 17:11:03] Run batch: scripts\maintenance\arrange-games-apps.bat elevated=True args= keepConsole=True
+[2026-07-02 17:11:03] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\arrange-games-apps.bat
+[2026-07-02 17:14:19] Run batch: scripts\maintenance\arrange-games-apps.bat elevated=True args= keepConsole=True
+[2026-07-02 17:14:19] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\arrange-games-apps.bat
+[2026-07-02 17:22:39] Run batch: scripts\maintenance\arrange-games-apps.bat elevated=True args= keepConsole=True
+[2026-07-02 17:22:39] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\arrange-games-apps.bat
+[2026-07-02 17:23:10] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-02 17:23:10] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-02 17:23:50] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-02 17:23:50] Started: cmd.exe
+[2026-07-02 17:25:15] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-02 17:25:15] Started: cmd.exe
+[2026-07-02 17:26:11] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-02 17:26:11] Started: cmd.exe
+[2026-07-02 17:26:29] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-02 17:26:29] Started: cmd.exe
+[2026-07-02 17:26:38] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-02 17:26:38] Started: cmd.exe
+[2026-07-02 17:31:37] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-02 17:31:37] Started: cmd.exe
+[2026-07-02 17:31:56] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-02 17:31:56] Started: cmd.exe
+[2026-07-02 17:35:35] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-02 17:35:35] Started: cmd.exe
+[2026-07-02 22:09:07] NextGPU Controller session started
+[2026-07-02 22:09:14] Run batch: scripts\maintenance\sync-games-apps-official.bat elevated=True args= keepConsole=True
+[2026-07-02 22:09:14] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\sync-games-apps-official.bat
+[2026-07-03 07:54:22] NextGPU Controller session started
+[2026-07-03 07:55:09] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-03 07:55:09] Started: cmd.exe
+[2026-07-03 07:55:36] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-03 07:55:36] Started: cmd.exe
+[2026-07-03 07:55:49] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-03 07:55:49] Started: cmd.exe
+[2026-07-04 11:21:40] NextGPU Controller session started
+[2026-07-04 11:21:57] Run batch: scripts\maintenance\sync-games-apps-official.bat elevated=True args= keepConsole=True
+[2026-07-04 11:21:57] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\sync-games-apps-official.bat
+[2026-07-04 11:42:49] Run PowerShell: scripts\maintenance\Run-ChkDsk-Repair.ps1  keepConsole=True
+[2026-07-04 11:42:49] Started: cmd.exe
+[2026-07-04 11:45:26] NextGPU Controller session started
+[2026-07-04 11:45:34] Run batch: scripts\maintenance\sync-games-apps-official.bat elevated=True args= keepConsole=True
+[2026-07-04 11:45:34] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\sync-games-apps-official.bat
+[2026-07-04 15:08:18] NextGPU Controller session started
+[2026-07-04 15:09:32] Run batch: scripts\maintenance\arrange-games-apps.bat elevated=True args= keepConsole=True
+[2026-07-04 15:09:32] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\arrange-games-apps.bat
+[2026-07-04 19:48:44] NextGPU Controller session started
+[2026-07-04 19:48:49] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-04 19:48:49] Started: cmd.exe
+[2026-07-04 19:49:25] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-04 19:49:25] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-04 19:54:53] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-04 19:54:53] Started: cmd.exe
+[2026-07-04 19:56:55] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-04 19:56:55] Started: cmd.exe
+[2026-07-04 19:57:08] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-04 19:57:08] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-04 20:07:53] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-04 20:07:53] Started: cmd.exe
+[2026-07-04 20:09:55] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-04 20:09:55] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-04 22:24:02] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-04 22:24:02] Started: cmd.exe
+[2026-07-04 22:30:41] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-04 22:30:41] Started: cmd.exe
+[2026-07-04 22:31:17] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-04 22:31:17] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-04 22:38:13] Run batch: scripts\maintenance\updateGames.bat elevated=True args=/UseDomainTxt keepConsole=True
+[2026-07-04 22:38:13] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\updateGames.bat
+[2026-07-05 22:28:37] NextGPU Controller session started
+[2026-07-05 22:28:43] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-05 22:28:43] Started: cmd.exe
+[2026-07-05 22:28:58] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-05 22:28:58] Started: cmd.exe
+[2026-07-05 22:29:31] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-05 22:29:31] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-05 22:29:43] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-05 22:29:43] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-05 22:30:44] NextGPU Controller session started
+[2026-07-05 22:30:51] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-05 22:30:51] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-05 22:46:20] NextGPU Controller session started
+[2026-07-05 22:46:23] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-05 22:46:23] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-05 22:46:38] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-05 22:46:38] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-05 22:54:33] NextGPU Controller session started
+[2026-07-05 22:54:40] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-05 22:54:40] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-05 23:21:54] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-05 23:21:54] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-05 23:32:54] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-05 23:32:54] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-05 23:48:01] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-05 23:48:01] Started: cmd.exe
+[2026-07-05 23:48:57] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-05 23:48:57] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-06 00:09:54] NextGPU Controller session started
+[2026-07-06 00:10:06] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-06 00:10:06] Started: cmd.exe
+[2026-07-06 00:10:13] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-06 00:10:13] Started: cmd.exe
+[2026-07-06 00:10:33] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-06 00:10:34] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-06 00:21:54] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-06 00:21:54] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-06 00:28:06] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-06 00:28:06] Started: cmd.exe
+[2026-07-06 00:28:46] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-06 00:28:46] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-06 00:51:41] Scheduled task disable: nextGPU-AutoRepair
+[2026-07-06 12:22:56] NextGPU Controller session started
+[2026-07-06 12:23:09] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-06 12:23:09] Started: cmd.exe
+[2026-07-06 12:38:16] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-06 12:38:16] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-06 13:14:14] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-06 13:14:14] Started: cmd.exe
+[2026-07-06 13:14:29] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-06 13:14:29] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-06 13:19:09] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-06 13:19:09] Started: cmd.exe
+[2026-07-06 13:22:02] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-06 13:22:02] Started: cmd.exe
+[2026-07-06 13:39:47] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-06 13:39:47] Started: cmd.exe
+[2026-07-06 13:43:13] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-06 13:43:13] Started: cmd.exe
+[2026-07-06 13:44:04] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-06 13:44:04] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-06 13:45:42] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-06 13:45:42] Started: cmd.exe
+[2026-07-06 13:46:03] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-06 13:46:03] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-06 13:48:18] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-06 13:48:18] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-06 13:48:55] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-06 13:48:55] Started: cmd.exe
+[2026-07-06 13:50:11] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-06 13:50:11] Started: cmd.exe
+[2026-07-06 14:02:05] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-06 14:02:05] Started: cmd.exe
+[2026-07-06 14:15:07] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-06 14:15:07] Started: cmd.exe
+[2026-07-06 14:16:11] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-06 14:16:11] Started: cmd.exe
+[2026-07-06 14:16:25] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-06 14:16:25] Started: cmd.exe
+[2026-07-06 14:19:51] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-06 14:19:51] Started: cmd.exe
+[2026-07-06 14:20:05] Run PowerShell: scripts\maintenance\Run-ChkDsk-Repair.ps1  keepConsole=True
+[2026-07-06 14:20:05] Started: cmd.exe
+[2026-07-06 18:01:41] NextGPU Controller session started
+[2026-07-06 18:01:46] Scheduled task run: nextGPU-AutoRepair elevated=True
+[2026-07-06 18:01:50] Scheduled task enable: nextGPU-AutoRepair
+[2026-07-06 18:02:33] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-06 18:02:33] Started: cmd.exe
+[2026-07-06 18:02:42] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-06 18:02:42] Started: cmd.exe
+[2026-07-06 22:37:09] NextGPU Controller session started
+[2026-07-07 14:37:37] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-07 14:37:37] Started: cmd.exe
+[2026-07-07 14:38:19] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-07 14:38:19] Started: cmd.exe
+[2026-07-07 14:38:28] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-07 14:38:28] Started: cmd.exe
+[2026-07-08 13:01:36] NextGPU Controller session started
+[2026-07-08 13:02:08] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-08 13:02:08] Started: cmd.exe
+[2026-07-08 13:06:31] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-08 13:06:31] Started: cmd.exe
+[2026-07-08 13:06:45] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-08 13:06:45] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-08 13:10:38] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-08 13:10:38] Started: cmd.exe
+[2026-07-08 13:11:33] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-08 13:11:33] Started: cmd.exe
+[2026-07-08 13:30:02] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-08 13:30:02] Started: cmd.exe
+[2026-07-08 13:31:03] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-08 13:31:03] Started: cmd.exe
+[2026-07-08 15:58:03] NextGPU Controller session started
+[2026-07-08 15:58:09] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-08 15:58:09] Started: cmd.exe
+[2026-07-08 15:58:22] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-08 15:58:22] Started: cmd.exe
+[2026-07-08 15:59:32] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-08 15:59:32] Started: cmd.exe
+[2026-07-08 16:07:20] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-08 16:07:20] Started: cmd.exe
+[2026-07-08 16:07:30] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-08 16:07:30] Started: cmd.exe
+[2026-07-08 16:07:51] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-08 16:07:51] Started: cmd.exe
+[2026-07-08 16:08:54] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-08 16:08:54] Started: cmd.exe
+[2026-07-08 16:13:48] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-08 16:13:48] Started: cmd.exe
+[2026-07-08 16:15:37] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-08 16:15:37] Started: cmd.exe
+[2026-07-08 16:15:55] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-08 16:15:55] Started: cmd.exe
+[2026-07-08 16:16:33] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-08 16:16:33] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-08 16:19:45] Run batch: PlayNiteWatcher\Import-PlayniteDesktopApps.bat elevated=False args=-Headless -DesktopImportScanMode AllDrives keepConsole=True
+[2026-07-08 16:19:45] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Import-PlayniteDesktopApps.bat
+[2026-07-08 16:20:38] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-08 16:20:38] Started: cmd.exe
+[2026-07-08 16:26:34] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-08 16:26:34] Started: cmd.exe
+[2026-07-08 16:34:24] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-08 16:34:24] Started: cmd.exe
+[2026-07-08 16:34:58] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-08 16:34:58] Started: cmd.exe
+[2026-07-08 16:37:45] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-08 16:37:45] Started: cmd.exe
+[2026-07-08 16:37:54] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-08 16:37:54] Started: cmd.exe
+[2026-07-08 16:38:03] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-08 16:38:03] Started: cmd.exe
+[2026-07-08 16:38:21] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-08 16:38:21] Started: cmd.exe
+[2026-07-08 16:38:33] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-08 16:38:33] Started: cmd.exe
+[2026-07-08 17:04:28] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-08 17:04:28] Started: cmd.exe
+[2026-07-08 20:57:34] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-08 20:57:34] Started: cmd.exe
+[2026-07-08 20:58:26] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-08 20:58:26] Started: cmd.exe
+[2026-07-08 21:02:03] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-08 21:02:03] Started: cmd.exe
+[2026-07-08 21:04:10] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-08 21:04:10] Started: cmd.exe
+[2026-07-08 21:04:55] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-08 21:04:55] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-08 21:07:19] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-08 21:07:19] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-08 21:08:56] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-08 21:08:56] Started: cmd.exe
+[2026-07-08 21:10:55] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-08 21:10:55] Started: cmd.exe
+[2026-07-08 21:11:17] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-08 21:11:17] Started: cmd.exe
+[2026-07-08 21:18:35] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-08 21:18:35] Started: cmd.exe
+[2026-07-08 21:18:47] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-08 21:18:47] Started: cmd.exe
+[2026-07-08 21:18:55] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-08 21:18:55] Started: cmd.exe
+[2026-07-08 21:19:15] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-08 21:19:15] Started: cmd.exe
+[2026-07-08 21:20:57] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-08 21:20:57] Started: cmd.exe
+[2026-07-08 21:21:15] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-08 21:21:15] Started: cmd.exe
+[2026-07-08 21:21:36] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-08 21:21:36] Started: cmd.exe
+[2026-07-08 21:24:33] Run batch: scripts\maintenance\arrange-games-apps.bat elevated=True args= keepConsole=True
+[2026-07-08 21:24:33] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\arrange-games-apps.bat
+[2026-07-08 22:46:09] Run PowerShell: scripts\maintenance\Run-ChkDsk-Repair.ps1  keepConsole=True
+[2026-07-08 22:46:09] Started: cmd.exe
+[2026-07-08 23:12:19] NextGPU Controller session started
+[2026-07-08 23:22:23] NextGPU Controller session started
+[2026-07-09 00:21:27] NextGPU Controller session started
+[2026-07-09 00:23:02] PowerShell capture exit=0
+[2026-07-09 00:23:13] PowerShell capture exit=0
+[2026-07-09 00:23:24] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-09 00:23:24] Started: cmd.exe
+[2026-07-09 00:23:57] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-09 00:23:57] Started: cmd.exe
+[2026-07-09 00:24:49] PowerShell capture exit=0
+[2026-07-09 00:49:20] NextGPU Controller session started
+[2026-07-09 10:08:39] NextGPU Controller session started
+[2026-07-09 10:09:01] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-09 10:09:01] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-09 10:14:19] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-09 10:14:19] Started: cmd.exe
+[2026-07-09 10:15:14] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-09 10:15:14] Started: cmd.exe
+[2026-07-09 10:16:40] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-09 10:16:40] Started: cmd.exe
+[2026-07-09 10:17:48] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-09 10:17:48] Started: cmd.exe
+[2026-07-09 10:24:13] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-09 10:24:13] Started: cmd.exe
+[2026-07-09 10:25:29] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -SyncOnly keepConsole=True
+[2026-07-09 10:25:29] Started: cmd.exe
+[2026-07-09 10:25:41] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-09 10:25:41] Started: cmd.exe
+[2026-07-09 10:26:06] PowerShell capture exit=0
+[2026-07-09 10:26:57] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-09 10:26:57] Started: cmd.exe
+[2026-07-09 10:27:09] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-09 10:27:09] Started: cmd.exe
+[2026-07-09 10:27:16] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-09 10:27:16] Started: cmd.exe
+[2026-07-09 10:27:43] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-09 10:27:43] Started: cmd.exe
+[2026-07-09 10:28:15] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-09 10:28:15] Started: cmd.exe
+[2026-07-09 10:34:15] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-09 10:34:15] Started: cmd.exe
+[2026-07-09 10:35:06] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-09 10:35:06] Started: cmd.exe
+[2026-07-09 10:44:46] NextGPU Controller session started
+[2026-07-09 10:45:59] NextGPU Controller session started
+[2026-07-09 10:46:38] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-09 10:46:38] Started: cmd.exe
+[2026-07-09 15:10:01] NextGPU Controller session started
+[2026-07-09 15:18:25] NextGPU Controller session started
+[2026-07-09 15:18:34] PowerShell capture exit=1
+[2026-07-09 15:18:41] PowerShell capture exit=1
+[2026-07-09 15:18:48] PowerShell capture exit=1
+[2026-07-09 15:18:51] PowerShell capture exit=1
+[2026-07-09 15:18:59] PowerShell capture exit=1
+[2026-07-09 15:19:14] PowerShell capture exit=1
+[2026-07-09 16:10:32] NextGPU Controller session started
+[2026-07-09 17:15:31] NextGPU Controller session started
+[2026-07-09 17:16:34] Run batch: scripts\maintenance\arrange-games-apps.bat elevated=True args= keepConsole=True
+[2026-07-09 17:16:34] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\arrange-games-apps.bat
+[2026-07-09 17:16:42] Run batch: scripts\maintenance\copy.bat elevated=True args= keepConsole=False
+[2026-07-09 17:16:42] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\copy.bat
+[2026-07-09 17:16:53] Run batch: scripts\maintenance\extract.bat elevated=True args= keepConsole=False
+[2026-07-09 17:16:53] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\extract.bat
+[2026-07-09 17:23:55] Run batch: scripts\maintenance\arrange-games-apps.bat elevated=True args= keepConsole=True
+[2026-07-09 17:23:55] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\arrange-games-apps.bat
+[2026-07-09 17:43:46] Run batch: scripts\maintenance\push-games-apps-to-r2.bat elevated=True args= keepConsole=True
+[2026-07-09 17:43:46] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\push-games-apps-to-r2.bat
+[2026-07-09 17:53:30] NextGPU Controller session started
+[2026-07-09 17:55:18] Run batch: scripts\maintenance\arrange-games-apps.bat elevated=True args= keepConsole=True
+[2026-07-09 17:55:18] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\arrange-games-apps.bat
+[2026-07-09 18:03:19] PowerShell capture exit=1
+[2026-07-09 18:11:39] Run batch: PlayNiteWatcher\Import-PlayniteDesktopApps.bat elevated=False args=-Headless -DesktopImportScanMode AllDrives keepConsole=True
+[2026-07-09 18:11:39] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Import-PlayniteDesktopApps.bat
+[2026-07-09 18:12:29] Run batch: PlayNiteWatcher\Import-PlayniteDesktopApps.bat elevated=False args=-Headless -DesktopImportScanMode AllDrives keepConsole=True
+[2026-07-09 18:12:29] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Import-PlayniteDesktopApps.bat
+[2026-07-09 18:12:46] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-09 18:12:46] Started: cmd.exe
+[2026-07-09 18:12:55] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-09 18:12:55] Started: cmd.exe
+[2026-07-09 18:14:33] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-09 18:14:33] Started: cmd.exe
+[2026-07-09 18:14:56] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-09 18:14:56] Started: cmd.exe
+[2026-07-09 18:15:14] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-09 18:15:14] Started: cmd.exe
+[2026-07-09 18:15:26] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-09 18:15:26] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-09 18:17:19] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-09 18:17:19] Started: cmd.exe
+[2026-07-09 18:21:51] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-09 18:21:51] Started: cmd.exe
+[2026-07-09 18:24:52] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-09 18:24:52] Started: cmd.exe
+[2026-07-09 18:25:46] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-09 18:25:46] Started: cmd.exe
+[2026-07-09 18:26:26] NextGPU Controller session started
+[2026-07-09 18:28:23] PowerShell capture exit=1
+[2026-07-09 18:28:38] PowerShell capture exit=1
+[2026-07-09 18:30:31] PowerShell capture exit=1
+[2026-07-09 18:52:05] PowerShell capture exit=0
+[2026-07-09 18:53:07] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-09 18:53:07] Started: cmd.exe
+[2026-07-09 18:53:22] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-09 18:53:22] Started: cmd.exe
+[2026-07-09 18:53:39] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-09 18:53:39] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-09 18:54:45] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-09 18:54:45] Started: cmd.exe
+[2026-07-09 18:55:02] PowerShell capture exit=1
+[2026-07-09 18:55:08] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-09 18:55:08] Started: cmd.exe
+[2026-07-09 18:58:46] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-09 18:58:46] Started: cmd.exe
+[2026-07-09 18:59:20] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-09 18:59:20] Started: cmd.exe
+[2026-07-09 19:00:38] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-09 19:00:38] Started: cmd.exe
+[2026-07-10 02:04:25] Run batch: scripts\maintenance\push-games-apps-to-r2.bat elevated=True args= keepConsole=True
+[2026-07-10 02:04:25] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\scripts\maintenance\push-games-apps-to-r2.bat
+[2026-07-10 12:52:12] NextGPU Controller session started
+[2026-07-10 12:52:21] Run PowerShell: scripts\maintenance\Run-ChkDsk-Repair.ps1  keepConsole=True
+[2026-07-10 12:52:21] Started: cmd.exe
+[2026-07-10 13:49:45] NextGPU Controller session started
+[2026-07-10 13:52:08] PowerShell capture exit=1
+[2026-07-10 13:52:56] PowerShell capture exit=1
+[2026-07-10 13:52:56] PowerShell capture exit=1
+[2026-07-10 13:52:57] PowerShell capture exit=1
+[2026-07-10 13:52:58] PowerShell capture exit=1
+[2026-07-10 13:52:59] PowerShell capture exit=1
+[2026-07-10 13:58:27] NextGPU Controller session started
+[2026-07-10 13:58:56] PowerShell capture exit=0
+[2026-07-10 14:01:28] NextGPU Controller session started
+[2026-07-10 14:01:34] PowerShell capture exit=0
+[2026-07-10 14:08:33] PowerShell capture exit=1
+[2026-07-10 14:13:55] PowerShell capture exit=1
+[2026-07-10 14:14:32] NextGPU Controller session started
+[2026-07-10 14:14:43] PowerShell capture exit=0
+[2026-07-10 14:14:47] PowerShell capture exit=0
+[2026-07-10 14:15:03] PowerShell capture exit=0
+[2026-07-10 14:18:35] NextGPU Controller session started
+[2026-07-10 14:19:05] PowerShell capture exit=0
+[2026-07-10 14:19:14] PowerShell capture exit=0
+[2026-07-10 14:26:57] NextGPU Controller session started
+[2026-07-10 14:28:30] PowerShell capture exit=1
+[2026-07-10 14:28:39] PowerShell capture exit=1
+[2026-07-10 14:34:11] PowerShell capture exit=1
+[2026-07-10 14:34:49] NextGPU Controller session started
+[2026-07-10 14:35:02] PowerShell capture exit=0
+[2026-07-10 14:35:04] PowerShell capture exit=0
+[2026-07-10 14:47:20] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-10 14:47:21] Started: cmd.exe
+[2026-07-10 14:47:48] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-10 14:47:48] Started: cmd.exe
+[2026-07-10 14:47:55] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-10 14:47:55] Started: cmd.exe
+[2026-07-10 14:48:01] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-10 14:48:01] Started: cmd.exe
+[2026-07-10 14:50:33] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-10 14:50:33] Started: cmd.exe
+[2026-07-10 14:50:51] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-10 14:50:51] Started: cmd.exe
+[2026-07-10 14:51:24] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-10 14:51:24] Started: cmd.exe
+[2026-07-10 14:51:53] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-10 14:51:53] Started: cmd.exe
+[2026-07-10 14:52:01] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-10 14:52:01] Started: cmd.exe
+[2026-07-10 15:12:33] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-10 15:12:33] Started: cmd.exe
+[2026-07-10 15:15:02] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-10 15:15:02] Started: cmd.exe
+[2026-07-10 15:23:44] NextGPU Controller session started
+[2026-07-10 15:23:52] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-10 15:23:52] Started: cmd.exe
+[2026-07-10 15:24:15] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-10 15:24:15] Started: cmd.exe
+[2026-07-10 15:25:11] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-10 15:25:11] Started: cmd.exe
+[2026-07-10 15:25:25] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-10 15:25:25] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-10 15:27:07] PowerShell capture exit=0
+[2026-07-10 15:27:18] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-10 15:27:18] Started: cmd.exe
+[2026-07-10 15:27:36] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-10 15:27:36] Started: cmd.exe
+[2026-07-10 15:29:33] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-10 15:29:33] Started: cmd.exe
+[2026-07-10 15:29:40] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-10 15:29:40] Started: cmd.exe
+[2026-07-10 15:29:55] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-10 15:29:55] Started: cmd.exe
+[2026-07-10 15:30:40] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-10 15:30:40] Started: cmd.exe
+[2026-07-10 15:36:34] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-10 15:36:34] Started: cmd.exe
+[2026-07-10 15:38:48] Run PowerShell: scripts\runtime\Seed-SessionFolderTemplates.ps1 -SeedGarena keepConsole=True
+[2026-07-10 15:38:48] Started: cmd.exe
+[2026-07-10 15:38:58] Run PowerShell: scripts\runtime\Register-SessionFolderRulesTasks.ps1  keepConsole=True
+[2026-07-10 15:38:58] Started: cmd.exe
+[2026-07-10 15:44:27] Run PowerShell: scripts\runtime\Register-SessionFolderRulesTasks.ps1  keepConsole=True
+[2026-07-10 15:44:27] Started: cmd.exe
+[2026-07-10 15:44:42] Run PowerShell: scripts\runtime\Invoke-SessionFolderRules.ps1 -Phase Logoff keepConsole=True
+[2026-07-10 15:44:42] Started: cmd.exe
+[2026-07-10 15:46:59] PowerShell capture exit=0
+[2026-07-10 16:29:27] NextGPU Controller session started
+[2026-07-10 16:29:31] PowerShell capture stderr: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Test-PlayniteHostStatus.ps1 : 
+The term 'Resolve-PlayniteSteamInstallPath' is not recognized as the name of a cmdlet, function, script file, or 
+operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try 
+again.
+    + CategoryInfo          : ObjectNotFound: (Resolve-PlayniteSteamInstallPath:String) [Test-PlayniteHostStatus.ps1], 
+    CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException,Test-PlayniteHostStatus.ps1
+[2026-07-10 16:29:31] PowerShell capture exit=1
+[2026-07-10 16:34:31] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-10 16:34:31] Started: cmd.exe
+[2026-07-10 16:35:07] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-10 16:35:07] Started: cmd.exe
+[2026-07-10 16:48:54] NextGPU Controller session started
+[2026-07-10 16:49:13] PowerShell capture exit=0
+[2026-07-10 16:49:19] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-10 16:49:19] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-10 16:51:55] PowerShell capture exit=0
+[2026-07-10 16:53:00] PowerShell capture exit=0
+[2026-07-10 16:54:21] PowerShell capture exit=0
+[2026-07-10 16:54:35] Run batch: PlayNiteWatcher\Import-PlayniteDesktopApps.bat elevated=False args=-Headless -DesktopImportScanMode AllDrives keepConsole=True
+[2026-07-10 16:54:35] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Import-PlayniteDesktopApps.bat
+[2026-07-10 17:07:05] NextGPU Controller session started
+[2026-07-10 17:08:04] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force -RemovePlayniteInstall keepConsole=True
+[2026-07-10 17:08:04] Started: cmd.exe
+[2026-07-10 17:08:22] Run PowerShell: PlayNiteWatcher\Uninstall-PlayniteBypass.ps1 -Force keepConsole=True
+[2026-07-10 17:08:22] Started: cmd.exe
+[2026-07-10 17:08:28] Run batch: PlayNiteWatcher\Setup-PlayniteSteam.bat elevated=True args= keepConsole=True
+[2026-07-10 17:08:28] Started: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\Setup-PlayniteSteam.bat
+[2026-07-10 17:09:57] PowerShell capture exit=0
+[2026-07-10 17:10:31] Run PowerShell: PlayNiteWatcher\Setup-PlayniteBypassAutomated.ps1  keepConsole=True
+[2026-07-10 17:10:31] Started: cmd.exe
+[2026-07-10 17:10:50] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -RunAsToolOnly keepConsole=True
+[2026-07-10 17:10:50] Started: cmd.exe
+[2026-07-10 17:11:11] Run PowerShell: PlayNiteWatcher\Sync-PlayniteBypassShortcuts.ps1 -Interactive keepConsole=True
+[2026-07-10 17:11:11] Started: cmd.exe
+[2026-07-13 13:28:01] NextGPU Controller session started
+[2026-07-13 13:28:23] Run PowerShell: PlayNiteWatcher\Grant-PlayniteRentalAccess.ps1  keepConsole=True
+[2026-07-13 13:28:23] Started: cmd.exe
+[2026-07-13 13:28:40] PowerShell capture exit=0

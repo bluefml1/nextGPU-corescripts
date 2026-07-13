@@ -1,6 +1,6 @@
 # RunAsTool (bypass shortcuts)
 
-Playnite bypass setup uses [Sordum RunAsTool v1.5](https://www.sordum.org/8727/runastool-v1-5/) to create elevated launch shortcuts in a `Bypasses` folder.
+Playnite bypass setup uses **Sordum RunAsTool v1.5** (CLI `.rnt` import via `/U=`, `/P=`, `/I=`, `/R`). Live sordum.org now ships v1.6, which removed Import Cmd parameters — do not use v1.6 here.
 
 ## Operator flow (NextGPU Playnite page)
 
@@ -12,7 +12,11 @@ RunAsTool does not need to be opened manually in the normal flow.
 
 ## Install / maintenance
 
-RunAsTool is auto-downloaded when missing:
+`Install-RunAsTool.ps1` always installs **v1.5**. Preferred source is the vendored zip:
+
+`PlayNiteWatcher/tools/runastool/RunAsTool-1.5.zip`
+
+(SHA256-checked, offline). Remote Internet Archive URLs are only a fallback and may hit 429 rate limits.
 
 ```powershell
 .\PlayNiteWatcher\Install-RunAsTool.ps1
@@ -25,6 +29,7 @@ Open RunAsTool manually for troubleshooting:
 ```
 
 Installed copy: `C:\ProgramData\NextGPU\RunAsTool\`.
+If ProgramData already has a newer build, it replaces it with v1.5.
 
 ## Automation details
 

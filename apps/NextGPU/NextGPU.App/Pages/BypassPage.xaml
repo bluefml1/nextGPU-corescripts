@@ -1,0 +1,138 @@
+<Page x:Class="NextGPU.App.Pages.BypassPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      Title="Bypass">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16,24,20">
+        <StackPanel MaxWidth="720" HorizontalAlignment="Left">
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,14">
+                <StackPanel>
+                    <WrapPanel Margin="0,0,0,8">
+                        <TextBlock Text="Bypass Shortcuts" Style="{StaticResource SectionTitleText}" VerticalAlignment="Center"/>
+                        <Button Content="?" Style="{StaticResource HelpIconButton}" Click="BypassHelp_Click"
+                                ToolTip="RunAsTool bypass shortcuts for elevated launches" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                    </WrapPanel>
+                    <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap"
+                               Text="Define bypass-sync-list.json first. Setup copies only listed shortcuts from the workspace seed and imports a filtered RunAsTool list."/>
+                </StackPanel>
+            </Border>
+
+            <TabControl Style="{StaticResource PageTabControl}">
+                <TabItem Header="Setup" Style="{StaticResource PageTabItem}">
+                    <Border Background="{StaticResource CardBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="0,12,12,12"
+                            Padding="16"
+                            Margin="0,-1,0,0">
+                        <StackPanel>
+                            <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12"
+                                       Text="First-time setup: copy sync-list shortcuts from workspace seed and import filtered RunAsTool apps."/>
+                            <StackPanel x:Name="SetupPanel"/>
+                        </StackPanel>
+                    </Border>
+                </TabItem>
+                <TabItem Header="Sync" Style="{StaticResource PageTabItem}">
+                    <Border Background="{StaticResource CardBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="0,12,12,12"
+                            Padding="16"
+                            Margin="0,-1,0,0">
+                        <StackPanel>
+                            <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12"
+                                       Text="Define bypass-sync-list.json first. Setup and sync only touch shortcuts named in the sync list."/>
+                            <WrapPanel Margin="0,0,0,8">
+                                <TextBlock Text="BYPASS SYNC LIST" Style="{StaticResource LabelCaptionText}" VerticalAlignment="Center"/>
+                                <Button Content="?" Style="{StaticResource HelpIconButton}" Click="SyncListHelp_Click"
+                                        ToolTip="Declarative list driving setup and Playnite launch-path sync" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                            </WrapPanel>
+                            <TextBlock x:Name="SyncListCountText" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" Margin="0,0,0,10"/>
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Title" Margin="0,0,8,4" Foreground="{StaticResource SecondaryTextBrush}"/>
+                                <TextBox x:Name="SyncListTitleBox" Grid.Row="1" Grid.Column="0" Margin="0,0,8,8"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="Shortcut Name (required — final .lnk)" Margin="0,0,0,4" Foreground="{StaticResource SecondaryTextBrush}"/>
+                                <TextBox x:Name="SyncListShortcutNameBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="GameId (Steam/Epic)" Margin="0,0,8,4" Foreground="{StaticResource SecondaryTextBrush}"/>
+                                <TextBox x:Name="SyncListGameIdBox" Grid.Row="3" Grid.Column="0" Margin="0,0,8,8"/>
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="NameId (Manual)" Margin="0,0,0,4" Foreground="{StaticResource SecondaryTextBrush}"/>
+                                <TextBox x:Name="SyncListNameIdBox" Grid.Row="3" Grid.Column="1" Margin="0,0,0,8"/>
+                            </Grid>
+                            <TextBlock Text="Pre-launches (optional — run before shortcut .lnk)" Margin="0,0,0,6" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11"/>
+                            <StackPanel x:Name="SyncListPreLaunchesPanel" Margin="0,0,0,8"/>
+                            <Button x:Name="AddPreLaunchBtn" Content="Add pre-launch" Style="{StaticResource GhostButton}" Padding="10,6" Margin="0,0,0,10" Click="AddPreLaunch_Click"/>
+                            <WrapPanel x:Name="SyncListFormActionsPanel" Margin="0,0,0,10"/>
+                            <WrapPanel x:Name="SyncListGridActionsPanel" Margin="0,0,0,8">
+                                <TextBox x:Name="SyncListFilterBox" Width="200" Margin="0,0,8,0" ToolTip="Search title, gameId, nameId, shortcut" TextChanged="SyncListFilter_Changed"/>
+                            </WrapPanel>
+                            <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"
+                                       Text="Double-click a cell to edit. Changes save when you leave the cell."/>
+                            <DataGrid x:Name="SyncListGrid" AutoGenerateColumns="False" IsReadOnly="False"
+                                      HeadersVisibility="Column" CanUserAddRows="False" CanUserDeleteRows="False"
+                                      CanUserSortColumns="False" CanUserReorderColumns="False"
+                                      MaxHeight="180" Margin="0,0,0,8"
+                                      CellEditEnding="SyncListGrid_CellEditEnding">
+                                <DataGrid.Columns>
+                                    <DataGridTemplateColumn Header="" Width="40" IsReadOnly="True">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="title" Binding="{Binding Title, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" Width="*"/>
+                                    <DataGridTextColumn Header="gameId" Binding="{Binding GameId, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" Width="80"/>
+                                    <DataGridTextColumn Header="nameId" Binding="{Binding NameId, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" Width="80"/>
+                                    <DataGridTextColumn Header="shortcut" Binding="{Binding ShortcutName, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" Width="*"/>
+                                    <DataGridTextColumn Header="preLaunches" Binding="{Binding PreLaunchesText, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" Width="*"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <TextBlock x:Name="SyncListGridFooter" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" Margin="0,0,0,14"/>
+                            <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12"
+                                       Text="Review and Sync updates Playnite launch paths for sync-list entries only. Sunshine export is separate (Playnite page)."/>
+                            <StackPanel x:Name="SyncPanel"/>
+                        </StackPanel>
+                    </Border>
+                </TabItem>
+                <TabItem Header="Tools &amp; Logs" Style="{StaticResource PageTabItem}">
+                    <Border Background="{StaticResource CardBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="0,12,12,12"
+                            Padding="16"
+                            Margin="0,-1,0,0">
+                        <StackPanel>
+                            <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12"
+                                       Text="Extensions, RunAsTool maintenance, shortcuts folder, and sync log."/>
+                            <StackPanel x:Name="ToolsPanel"/>
+                        </StackPanel>
+                    </Border>
+                </TabItem>
+                <TabItem Header="Uninstall" Style="{StaticResource PageTabItem}">
+                    <Border Background="{StaticResource CardBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="0,12,12,12"
+                            Padding="16"
+                            Margin="0,-1,0,0">
+                        <StackPanel>
+                            <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12"
+                                       Text="Remove RunAsTool and Game Shortcuts without deleting Playnite, or remove the entire portable Playnite folder."/>
+                            <StackPanel x:Name="UninstallPanel"/>
+                        </StackPanel>
+                    </Border>
+                </TabItem>
+            </TabControl>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

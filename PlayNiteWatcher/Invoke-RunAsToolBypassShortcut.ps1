@@ -12,7 +12,7 @@ param(
     [Parameter(Mandatory)]
     [string]$BypassesPath,
     [string]$RunAsToolExe = "",
-    [string]$AdminUser = "NextGPU-Authority",
+    [string]$AdminUser = "NextGPU-Admin",
     [securestring]$AdminPassword,
     [string]$TileDisplayName = "",
     [string]$RepoRoot = "",

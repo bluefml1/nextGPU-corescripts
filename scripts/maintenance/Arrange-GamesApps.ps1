@@ -8,6 +8,8 @@
     Run LevelUp deploy and games.json path arrange (skip menu).
 .PARAMETER Garena
     Run Garena client deploy, gxx to ProgramData, and user.dat install path arrange (skip menu).
+.PARAMETER HoYoPlay
+    Run HoYoPlay Cognosphere deploy to Default user Roaming (skip menu).
 .PARAMETER NoGui
     Console prompts only.
 #>
@@ -16,6 +18,7 @@ param(
     [switch]$Steam,
     [switch]$LevelUp,
     [switch]$Garena,
+    [switch]$HoYoPlay,
     [switch]$NoGui
 )
 
@@ -45,6 +48,12 @@ if (-not (Test-Path -LiteralPath $garenaArrangePath)) {
 }
 . $garenaArrangePath
 
+$hoyoPlayArrangePath = Join-Path $PSScriptRoot 'Invoke-ArrangeHoYoPlayLayout.ps1'
+if (-not (Test-Path -LiteralPath $hoyoPlayArrangePath)) {
+    throw "Required file missing: $hoyoPlayArrangePath (copy from nextGPU-corescripts\scripts\maintenance\)."
+}
+. $hoyoPlayArrangePath
+
 function Write-Step([string]$Message) { Write-Host ''; Write-Host "[*] $Message" -ForegroundColor Cyan }
 function Write-Ok([string]$Message) { Write-Host "[OK] $Message" -ForegroundColor Green }
 function Write-Warn([string]$Message) { Write-Host "[WARN] $Message" -ForegroundColor Yellow }
@@ -56,7 +65,7 @@ function Show-ArrangePlatformMenu {
         $form = New-Object System.Windows.Forms.Form
         $form.Text = 'Arrange Games/Apps'
         $form.Width = 360
-        $form.Height = 260
+        $form.Height = 300
         $form.StartPosition = 'CenterScreen'
         $form.FormBorderStyle = 'FixedDialog'
         $form.MaximizeBox = $false
@@ -98,10 +107,19 @@ function Show-ArrangePlatformMenu {
         $btnGarena.Add_Click({ $script:ArrangePlatformChoice = 'Garena'; $form.Close() })
         $form.Controls.Add($btnGarena)
 
+        $btnHoYoPlay = New-Object System.Windows.Forms.Button
+        $btnHoYoPlay.Text = 'HoYoPlay'
+        $btnHoYoPlay.Left = 16
+        $btnHoYoPlay.Top = 168
+        $btnHoYoPlay.Width = 310
+        $btnHoYoPlay.Height = 32
+        $btnHoYoPlay.Add_Click({ $script:ArrangePlatformChoice = 'HoYoPlay'; $form.Close() })
+        $form.Controls.Add($btnHoYoPlay)
+
         $btnCancel = New-Object System.Windows.Forms.Button
         $btnCancel.Text = 'Cancel'
         $btnCancel.Left = 16
-        $btnCancel.Top = 208
+        $btnCancel.Top = 248
         $btnCancel.Width = 310
         $btnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
         $form.Controls.Add($btnCancel)
@@ -114,11 +132,13 @@ function Show-ArrangePlatformMenu {
     Write-Host '  [1] Steam' -ForegroundColor Cyan
     Write-Host '  [2] LevelUp' -ForegroundColor Cyan
     Write-Host '  [3] Garena' -ForegroundColor Cyan
-    $n = Read-Host 'Choice (1-3, Enter to cancel)'
+    Write-Host '  [4] HoYoPlay' -ForegroundColor Cyan
+    $n = Read-Host 'Choice (1-4, Enter to cancel)'
     switch ($n) {
         '1' { return 'Steam' }
         '2' { return 'LevelUp' }
         '3' { return 'Garena' }
+        '4' { return 'HoYoPlay' }
         default { return $null }
     }
 }
@@ -128,11 +148,11 @@ Write-Host ' NextGPU Arrange Games/Apps'
 Write-Host '==============================================='
 
 $useGui = -not $NoGui.IsPresent
-$platformSwitches = @($Steam.IsPresent, $LevelUp.IsPresent, $Garena.IsPresent) | Where-Object { $_ }
+$platformSwitches = @($Steam.IsPresent, $LevelUp.IsPresent, $Garena.IsPresent, $HoYoPlay.IsPresent) | Where-Object { $_ }
 if ($platformSwitches.Count -gt 1) {
-    throw 'Use only one of -Steam, -LevelUp, or -Garena.'
+    throw 'Use only one of -Steam, -LevelUp, -Garena, or -HoYoPlay.'
 }
-$choice = if ($Steam.IsPresent) { 'Steam' } elseif ($LevelUp.IsPresent) { 'LevelUp' } elseif ($Garena.IsPresent) { 'Garena' } else { Show-ArrangePlatformMenu -UseGui:$useGui }
+$choice = if ($Steam.IsPresent) { 'Steam' } elseif ($LevelUp.IsPresent) { 'LevelUp' } elseif ($Garena.IsPresent) { 'Garena' } elseif ($HoYoPlay.IsPresent) { 'HoYoPlay' } else { Show-ArrangePlatformMenu -UseGui:$useGui }
 
 if (-not $choice) {
     Write-Warn 'Cancelled.'
@@ -154,6 +174,12 @@ if ($choice -eq 'LevelUp') {
 if ($choice -eq 'Garena') {
     Write-Step 'Arranging Garena layout...'
     $code = Invoke-ArrangeGarenaLayout -NoGui:$NoGui.IsPresent
+    exit $code
+}
+
+if ($choice -eq 'HoYoPlay') {
+    Write-Step 'Arranging HoYoPlay layout...'
+    $code = Invoke-ArrangeHoYoPlayLayout -NoGui:$NoGui.IsPresent
     exit $code
 }
 

@@ -66,9 +66,14 @@ public sealed class ScriptRunner
             var stdout = p.StandardOutput.ReadToEnd();
             var stderr = p.StandardError.ReadToEnd();
             p.WaitForExit(600_000);
-            var text = string.IsNullOrWhiteSpace(stdout) ? stderr : stdout + stderr;
+            if (!string.IsNullOrWhiteSpace(stderr))
+                _audit.Write($"PowerShell capture stderr: {stderr.Trim()}");
+            // JSON capture scripts write payload to stdout; stderr often has Write-Warning lines that break parsers.
+            var text = p.ExitCode == 0
+                ? stdout.Trim()
+                : (string.IsNullOrWhiteSpace(stderr) ? stdout : stderr).Trim();
             _audit.Write($"PowerShell capture exit={p.ExitCode}");
-            return (p.ExitCode == 0, text.Trim());
+            return (p.ExitCode == 0, text);
         }
         catch (Exception ex)
         {

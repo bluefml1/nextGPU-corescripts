@@ -13,28 +13,6 @@
 
                     <Border BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="0,1,0,0" Margin="0,12,0,0" Padding="0,12,0,0">
                         <StackPanel>
-                            <TextBlock Text="Uninstall" Style="{StaticResource SectionTitleText}" Margin="0,0,0,8"/>
-                            <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"
-                                       Text="Remove RunAsTool and Game Shortcuts without deleting Playnite, or remove the entire portable Playnite folder."/>
-                            <StackPanel x:Name="UninstallPanel"/>
-                        </StackPanel>
-                    </Border>
-
-                    <Border BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="0,1,0,0" Margin="0,12,0,0" Padding="0,12,0,0">
-                        <StackPanel>
-                            <WrapPanel Margin="0,0,0,8">
-                                <TextBlock Text="Bypass" Style="{StaticResource SectionTitleText}" VerticalAlignment="Center"/>
-                                <Button Content="?" Style="{StaticResource HelpIconButton}" Click="BypassHelp_Click"
-                                        ToolTip="RunAsTool bypass shortcuts for elevated launches" Margin="8,0,0,0" VerticalAlignment="Center"/>
-                            </WrapPanel>
-                            <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"
-                                       Text="Automated seed setup copies bundled Game Shortcuts and imports RunAsTool. Playnite stores the shortcut path so Moonlight launches elevated games via Playnite."/>
-                            <StackPanel x:Name="BypassPanel"/>
-                        </StackPanel>
-                    </Border>
-
-                    <Border BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="0,1,0,0" Margin="0,12,0,0" Padding="0,12,0,0">
-                        <StackPanel>
                             <WrapPanel Margin="0,0,0,8">
                                 <TextBlock Text="DESKTOP APP ALLOWLIST" Style="{StaticResource LabelCaptionText}" VerticalAlignment="Center"/>
                                 <Button Content="?" Style="{StaticResource HelpIconButton}" Click="AllowlistHelp_Click"
@@ -86,6 +64,47 @@
                                     </DataGrid.Columns>
                                 </DataGrid>
                                 <TextBlock x:Name="AllowlistGridFooter" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="0,1,0,0" Margin="0,12,0,0" Padding="0,12,0,0">
+                        <StackPanel>
+                            <WrapPanel Margin="0,0,0,8">
+                                <TextBlock Text="PLAYNITE LIBRARY" Style="{StaticResource LabelCaptionText}" VerticalAlignment="Center"/>
+                                <Button Content="?" Style="{StaticResource HelpIconButton}" Click="LibraryHelp_Click"
+                                        ToolTip="Browse games.db for bypass sync configuration" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                <Button x:Name="ToggleLibraryViewerBtn" Content="View Library" Style="{StaticResource GhostButton}"
+                                        Click="ToggleLibraryViewer_Click" Margin="8,0,0,0" Padding="10,6" VerticalAlignment="Center"/>
+                            </WrapPanel>
+                            <TextBlock x:Name="LibraryCountText" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" Margin="0,0,0,10"/>
+                            <StackPanel x:Name="LibraryViewerPanel" Visibility="Collapsed">
+                                <WrapPanel x:Name="LibraryGridActionsPanel" Margin="0,0,0,8">
+                                    <TextBox x:Name="LibraryFilterBox" Width="200" Margin="0,0,8,0" ToolTip="Search name, gameId, nameId, source" TextChanged="LibraryFilter_Changed"/>
+                                    <ComboBox x:Name="LibrarySourceFilterCombo" Width="120" Margin="0,0,8,0" SelectionChanged="LibraryFilter_Changed"/>
+                                </WrapPanel>
+                                <DataGrid x:Name="LibraryGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                                          HeadersVisibility="Column" CanUserAddRows="False" CanUserDeleteRows="False"
+                                          MaxHeight="220" Margin="0,0,0,6">
+                                    <DataGrid.Columns>
+                                        <DataGridTemplateColumn Header="" Width="40">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTextColumn Header="name" Binding="{Binding Name}" Width="*"/>
+                                        <DataGridTextColumn Header="source" Binding="{Binding Source}" Width="70"/>
+                                        <DataGridTextColumn Header="gameId" Binding="{Binding GameId}" Width="80"/>
+                                        <DataGridTextColumn Header="nameId" Binding="{Binding NameId}" Width="80"/>
+                                        <DataGridTextColumn Header="exe" Binding="{Binding Exe}" Width="*"/>
+                                        <DataGridTextColumn Header="playPath" Binding="{Binding PlayPath}" Width="*"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                                <WrapPanel x:Name="LibraryActionsPanel" Margin="0,0,0,6"/>
+                                <TextBlock x:Name="LibraryGridFooter" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11"/>
                             </StackPanel>
                         </StackPanel>
                     </Border>

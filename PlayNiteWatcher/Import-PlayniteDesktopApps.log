@@ -1,0 +1,147 @@
+﻿[2026-07-08 16:19:46] [INFO] === Import-PlayniteDesktopApps started ===
+[2026-07-08 16:19:46] [INFO] Headless import (Everything es.exe or directory walk).
+[2026-07-08 16:19:47] [INFO] Excluded system/boot drive(s): C:\
+[2026-07-08 16:19:47] [INFO] Desktop scan mode: all non-system drives (1): Z:\
+[2026-07-08 16:19:47] [INFO] Everything check: probing es.exe IPC...
+[2026-07-08 16:19:47] [INFO] Everything is ready (es.exe IPC).
+[2026-07-08 16:19:47] [] Desktop import: using es.exe only (Everything must stay running in tray/service).
+[2026-07-08 16:19:47] [] Using desktop allowlist: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\config\playnite\desktop-apps.allowlist.json
+[2026-07-08 16:19:47] [] Desktop import scanning: Z:\
+[2026-07-08 16:19:48] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:48] [] Everything search: Adobe Premiere Pro.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ Adobe Premiere Pro.exe
+[2026-07-08 16:19:48] [] Everything search: Adobe Premiere Pro.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:Adobe Premiere Pro.exe
+[2026-07-08 16:19:48] [] Everything search: Adobe Premiere Pro.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =Adobe Premiere Pro.exe
+[2026-07-08 16:19:48] [WARN] Not found: Adobe Premiere Pro.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:48] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:48] [] Everything search: AfterFX.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ AfterFX.exe
+[2026-07-08 16:19:48] [] Everything search: AfterFX.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:AfterFX.exe
+[2026-07-08 16:19:48] [] Everything search: AfterFX.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =AfterFX.exe
+[2026-07-08 16:19:48] [WARN] Not found: AfterFX.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:48] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:48] [] Everything search: Adobe Audition.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ Adobe Audition.exe
+[2026-07-08 16:19:48] [] Everything search: Adobe Audition.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:Adobe Audition.exe
+[2026-07-08 16:19:48] [] Everything search: Adobe Audition.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =Adobe Audition.exe
+[2026-07-08 16:19:48] [WARN] Not found: Adobe Audition.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:48] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:48] [] Everything search: lightroom.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ lightroom.exe
+[2026-07-08 16:19:48] [] Everything search: lightroom.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:lightroom.exe
+[2026-07-08 16:19:48] [] Everything search: lightroom.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =lightroom.exe
+[2026-07-08 16:19:48] [WARN] Not found: lightroom.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:48] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:48] [] Everything search: Adobe Media Encoder.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ Adobe Media Encoder.exe
+[2026-07-08 16:19:48] [] Everything search: Adobe Media Encoder.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:Adobe Media Encoder.exe
+[2026-07-08 16:19:48] [] Everything search: Adobe Media Encoder.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =Adobe Media Encoder.exe
+[2026-07-08 16:19:48] [WARN] Not found: Adobe Media Encoder.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:48] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:48] [] Everything search: Photoshop.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ Photoshop.exe
+[2026-07-08 16:19:48] [] Everything search: Photoshop.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:Photoshop.exe
+[2026-07-08 16:19:48] [] Everything search: Photoshop.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =Photoshop.exe
+[2026-07-08 16:19:48] [WARN] Not found: Photoshop.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:48] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:48] [] Everything search: Illustrator.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ Illustrator.exe
+[2026-07-08 16:19:48] [] Everything search: Illustrator.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:Illustrator.exe
+[2026-07-08 16:19:48] [] Everything search: Illustrator.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =Illustrator.exe
+[2026-07-08 16:19:48] [WARN] Not found: Illustrator.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:48] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:48] [] Everything search: Lightroom.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ Lightroom.exe
+[2026-07-08 16:19:48] [] Everything search: Lightroom.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:Lightroom.exe
+[2026-07-08 16:19:48] [] Everything search: Lightroom.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =Lightroom.exe
+[2026-07-08 16:19:48] [WARN] Not found: Lightroom.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:48] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:48] [] Everything search: Acrobat.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ Acrobat.exe
+[2026-07-08 16:19:48] [] Everything search: Acrobat.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:Acrobat.exe
+[2026-07-08 16:19:49] [] Everything search: Acrobat.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =Acrobat.exe
+[2026-07-08 16:19:49] [WARN] Not found: Acrobat.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:49] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:49] [] Everything search: Animate.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ Animate.exe
+[2026-07-08 16:19:49] [] Everything search: Animate.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:Animate.exe
+[2026-07-08 16:19:49] [] Everything search: Animate.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =Animate.exe
+[2026-07-08 16:19:49] [WARN] Not found: Animate.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:49] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:49] [] Everything search: Adobe Bridge.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ Adobe Bridge.exe
+[2026-07-08 16:19:49] [] Everything search: Adobe Bridge.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:Adobe Bridge.exe
+[2026-07-08 16:19:49] [] Everything search: Adobe Bridge.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =Adobe Bridge.exe
+[2026-07-08 16:19:49] [WARN] Not found: Adobe Bridge.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:49] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:49] [] Everything search: Character Animator.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ Character Animator.exe
+[2026-07-08 16:19:49] [] Everything search: Character Animator.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:Character Animator.exe
+[2026-07-08 16:19:49] [] Everything search: Character Animator.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =Character Animator.exe
+[2026-07-08 16:19:49] [WARN] Not found: Character Animator.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:49] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:49] [] Everything search: Adobe Dimension.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ Adobe Dimension.exe
+[2026-07-08 16:19:49] [] Everything search: Adobe Dimension.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:Adobe Dimension.exe
+[2026-07-08 16:19:49] [] Everything search: Adobe Dimension.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =Adobe Dimension.exe
+[2026-07-08 16:19:49] [WARN] Not found: Adobe Dimension.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:49] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:49] [] Everything search: Dreamweaver.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ Dreamweaver.exe
+[2026-07-08 16:19:49] [] Everything search: Dreamweaver.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:Dreamweaver.exe
+[2026-07-08 16:19:49] [] Everything search: Dreamweaver.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =Dreamweaver.exe
+[2026-07-08 16:19:49] [WARN] Not found: Dreamweaver.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:49] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:49] [] Everything search: InCopy.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ InCopy.exe
+[2026-07-08 16:19:49] [] Everything search: InCopy.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:InCopy.exe
+[2026-07-08 16:19:49] [] Everything search: InCopy.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =InCopy.exe
+[2026-07-08 16:19:49] [WARN] Not found: InCopy.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:49] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:49] [] Everything search: InDesign.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ InDesign.exe
+[2026-07-08 16:19:49] [] Everything search: InDesign.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:InDesign.exe
+[2026-07-08 16:19:49] [] Everything search: InDesign.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =InDesign.exe
+[2026-07-08 16:19:49] [WARN] Not found: InDesign.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:49] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:49] [] Everything search: Adobe UXP Developer Tools.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ Adobe UXP Developer Tools.exe
+[2026-07-08 16:19:49] [] Everything search: Adobe UXP Developer Tools.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:Adobe UXP Developer Tools.exe
+[2026-07-08 16:19:49] [] Everything search: Adobe UXP Developer Tools.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =Adobe UXP Developer Tools.exe
+[2026-07-08 16:19:49] [WARN] Not found: Adobe UXP Developer Tools.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:49] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:49] [] Everything search: acad.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ acad.exe
+[2026-07-08 16:19:49] [] Everything search: acad.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:acad.exe
+[2026-07-08 16:19:49] [] Everything search: acad.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =acad.exe
+[2026-07-08 16:19:49] [WARN] Not found: acad.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:49] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:50] [] Everything search: Revit.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ Revit.exe
+[2026-07-08 16:19:50] [] Everything search: Revit.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:Revit.exe
+[2026-07-08 16:19:50] [] Everything search: Revit.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =Revit.exe
+[2026-07-08 16:19:50] [WARN] Not found: Revit.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:50] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:50] [] Everything search: 3dsmax.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ 3dsmax.exe
+[2026-07-08 16:19:50] [] Everything search: 3dsmax.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:3dsmax.exe
+[2026-07-08 16:19:50] [] Everything search: 3dsmax.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =3dsmax.exe
+[2026-07-08 16:19:50] [WARN] Not found: 3dsmax.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:50] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:50] [] Everything search: maya.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ maya.exe
+[2026-07-08 16:19:50] [] Everything search: maya.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:maya.exe
+[2026-07-08 16:19:50] [] Everything search: maya.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =maya.exe
+[2026-07-08 16:19:50] [WARN] Not found: maya.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:50] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:50] [] Everything search: CapCut.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ CapCut.exe
+[2026-07-08 16:19:50] [] Everything search: CapCut.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:CapCut.exe
+[2026-07-08 16:19:50] [] Everything search: CapCut.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =CapCut.exe
+[2026-07-08 16:19:50] [WARN] Not found: CapCut.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:50] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:50] [] Everything search: SketchUp.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ SketchUp.exe
+[2026-07-08 16:19:50] [] Everything search: SketchUp.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ wfn:SketchUp.exe
+[2026-07-08 16:19:50] [] Everything search: SketchUp.exe exit=0 (OK (IPC connected)) lines=0 args: -a-d -max-results 50 -timeout 15000 -path Z:\ =SketchUp.exe
+[2026-07-08 16:19:50] [WARN] Not found: SketchUp.exe (searched under 'Z:\'; allowlist filename only, need es.exe + Everything index)
+[2026-07-08 16:19:50] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:50] [] Everything search: blender.exe exit=0 (OK (IPC connected)) lines=2 args: -a-d -max-results 50 -timeout 15000 -path Z:\ blender.exe
+[2026-07-08 16:19:50] [] Resolved: blender.exe -> Z:\blender\blender-5.1.2-windows-x64\blender.exe (written to Playnite launch path)
+[2026-07-08 16:19:50] [] Updated: Blender (Z:\blender\blender-5.1.2-windows-x64\blender.exe)
+[2026-07-08 16:19:50] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:50] [] Everything search: DeltaForceClient.exe exit=0 (OK (IPC connected)) lines=1 args: -a-d -max-results 50 -timeout 15000 -path Z:\ DeltaForceClient.exe
+[2026-07-08 16:19:50] [] Resolved: DeltaForceClient.exe -> Z:\DeltaForce\Delta Force\DeltaForceClient.exe (written to Playnite launch path)
+[2026-07-08 16:19:50] [] Updated: Delta Force (Z:\DeltaForce\Delta Force\DeltaForceClient.exe)
+[2026-07-08 16:19:50] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:50] [] Everything search: GenshinImpact.exe exit=0 (OK (IPC connected)) lines=1 args: -a-d -max-results 50 -timeout 15000 -path Z:\ GenshinImpact.exe
+[2026-07-08 16:19:50] [] Resolved: GenshinImpact.exe -> Z:\GenshinImpact\Genshin Impact game\GenshinImpact.exe (written to Playnite launch path)
+[2026-07-08 16:19:50] [] Updated: Genshin Impact (Z:\GenshinImpact\Genshin Impact game\GenshinImpact.exe)
+[2026-07-08 16:19:50] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:50] [] Everything search: Level Up.exe exit=0 (OK (IPC connected)) lines=4 args: -a-d -max-results 50 -timeout 15000 -path Z:\ Level Up.exe
+[2026-07-08 16:19:51] [] Resolved: Level Up.exe -> Z:\VNG\Level Up\Level Up.exe (written to Playnite launch path)
+[2026-07-08 16:19:51] [] Updated: Naraka Bladepoint (Z:\VNG\Level Up\Level Up.exe)
+[2026-07-08 16:19:51] [] Everything search: using C:\Program Files\Everything\es.exe
+[2026-07-08 16:19:51] [] Everything search: Garena.exe exit=0 (OK (IPC connected)) lines=4 args: -a-d -max-results 50 -timeout 15000 -path Z:\ Garena.exe
+[2026-07-08 16:19:51] [] Resolved: Garena.exe -> Z:\Garena\Garena\Garena.exe (written to Playnite launch path)
+[2026-07-08 16:19:51] [] Updated: Garena FC Online (Z:\Garena\Garena\Garena.exe)
+[2026-07-08 16:19:51] [] Desktop import done: roots=1 added=0 updated=5
+[2026-07-08 16:19:51] [INFO] Headless import: roots=1 added=0 updated=5
+[2026-07-08 16:19:51] [INFO] === Import finished ===

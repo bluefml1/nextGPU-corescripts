@@ -7,7 +7,7 @@
 $script:BypassShortcutsConfigFileName = "bypass-shortcuts.json"
 $script:BypassShortcutsTemplateFileName = "bypass-shortcuts.json.template"
 $script:DefaultRunAsToolProgramDataDir = Join-Path $env:ProgramData "NextGPU\RunAsTool"
-$script:DefaultBypassAdminUser = "NextGPU-Authority"
+$script:DefaultBypassAdminUser = "NextGPU-Admin"
 $script:DefaultGameShortcutsFolderName = 'Game Shortcuts'
 $script:LegacyGameShortcutsFolderName = 'Bypasses'
 $script:PlayNiteWatcherScriptRoot = $PSScriptRoot
@@ -690,8 +690,10 @@ function Sync-PlayniteBypassBindingToLibrary {
         [string]$LauncherMode = "",
         [string]$LauncherScript = "",
         [string]$HelperPath = "",
+        [object[]]$PreLaunches = @(),
         [string]$GamePath = "",
         [string]$ShortcutLnkPath = "",
+        [switch]$SyncListDriven,
         [scriptblock]$LogAction
     )
 
@@ -699,28 +701,30 @@ function Sync-PlayniteBypassBindingToLibrary {
         throw "Bypass shortcut not found: $LaunchPath"
     }
 
-    if ($IsNewApp -or $NameIdInput) {
-        Merge-BypassAllowlistEntry -RepoRoot $RepoRoot -Exe $Exe -Title $Title -Type $Type -NameIdInput $NameIdInput -LogAction $LogAction
-        $allowEntry = Find-AllowlistEntryByExeOrTitle -RepoRoot $RepoRoot -Exe $Exe -Title $Title
-        if ($allowEntry) {
-            $NameId = $allowEntry.NameId
-            $Title = $allowEntry.Title
+    if (-not $SyncListDriven.IsPresent) {
+        if ($IsNewApp -or $NameIdInput) {
+            Merge-BypassAllowlistEntry -RepoRoot $RepoRoot -Exe $Exe -Title $Title -Type $Type -NameIdInput $NameIdInput -LogAction $LogAction
+            $allowEntry = Find-AllowlistEntryByExeOrTitle -RepoRoot $RepoRoot -Exe $Exe -Title $Title
+            if ($allowEntry) {
+                $NameId = $allowEntry.NameId
+                $Title = $allowEntry.Title
+            }
         }
-    }
-    elseif ($NameId) {
-        $mergeType = if ($Type -in @('Adobe', 'Autodesk', 'ThirdParty', 'Games')) {
-            $Type
+        elseif ($NameId) {
+            $mergeType = if ($Type -in @('Adobe', 'Autodesk', 'ThirdParty', 'Games')) {
+                $Type
+            }
+            elseif ($NameId -match '^\d+$') {
+                Get-AllowlistTypeFromNameId -NameId $NameId
+            }
+            else {
+                'ThirdParty'
+            }
+            if ([string]::IsNullOrWhiteSpace($mergeType)) {
+                $mergeType = 'ThirdParty'
+            }
+            Merge-BypassAllowlistEntry -RepoRoot $RepoRoot -Exe $Exe -Title $Title -Type $mergeType -NameIdInput $NameId -LogAction $LogAction
         }
-        elseif ($NameId -match '^\d+$') {
-            Get-AllowlistTypeFromNameId -NameId $NameId
-        }
-        else {
-            'ThirdParty'
-        }
-        if ([string]::IsNullOrWhiteSpace($mergeType)) {
-            $mergeType = 'ThirdParty'
-        }
-        Merge-BypassAllowlistEntry -RepoRoot $RepoRoot -Exe $Exe -Title $Title -Type $mergeType -NameIdInput $NameId -LogAction $LogAction
     }
 
     $dbResult = Invoke-PlayniteLibraryDatabaseSession -InstallDir $InstallDir -LogAction $LogAction -EditAction {
@@ -736,7 +740,15 @@ function Sync-PlayniteBypassBindingToLibrary {
         $existing = $null
         $duplicateNotice = ""
 
-        if ($OutsideAllowlist.IsPresent) {
+        if ($SyncListDriven.IsPresent) {
+            if ($ExistingPlayniteId) {
+                $existing = $allGames | Where-Object { $_.Id -ieq $ExistingPlayniteId } | Select-Object -First 1
+            }
+            if (-not $existing) {
+                throw "Sync list: Playnite game not found for $Title"
+            }
+        }
+        elseif ($OutsideAllowlist.IsPresent) {
             $existing = Find-PlayniteStoreGameForBypassShortcut -Games $allGames -Title $Title -PreferredId $ExistingPlayniteId
         }
         else {
@@ -778,6 +790,10 @@ function Sync-PlayniteBypassBindingToLibrary {
             }
         }
 
+        if ($SyncListDriven.IsPresent) {
+            throw "Sync list: could not update Playnite row for $Title"
+        }
+
         $newDoc = New-PlayniteManualGameBsonDocument -Title $Title -ExePath $LaunchPath -TemplateGameDocument $templateGame
         [void]$collection.Insert($newDoc)
         $newId = Get-BsonValueAsGuid -Value $newDoc['_id']
@@ -812,9 +828,11 @@ function Sync-PlayniteBypassBindingToLibrary {
             exe           = [System.IO.Path]::GetFileName($Exe)
             nameId        = $NameId
             title         = $Title
-            syncType      = if ($OutsideAllowlist.IsPresent) { 'OutsideAllowlist' } else { 'InAllowlist' }
             updatedAt     = (Get-Date).ToString("o")
         }
+    if (-not $SyncListDriven.IsPresent) {
+        $bindingObj | Add-Member -NotePropertyName syncType -NotePropertyValue $(if ($OutsideAllowlist.IsPresent) { 'OutsideAllowlist' } else { 'InAllowlist' }) -Force
+    }
     if ($LauncherMode) {
         $bindingObj | Add-Member -NotePropertyName launcherMode -NotePropertyValue $LauncherMode -Force
     }
@@ -823,6 +841,9 @@ function Sync-PlayniteBypassBindingToLibrary {
     }
     if ($HelperPath) {
         $bindingObj | Add-Member -NotePropertyName helperPath -NotePropertyValue $HelperPath -Force
+    }
+    if ($PreLaunches -and @($PreLaunches).Count -gt 0) {
+        $bindingObj | Add-Member -NotePropertyName preLaunches -NotePropertyValue @($PreLaunches) -Force
     }
     if ($GamePath) {
         $bindingObj | Add-Member -NotePropertyName gamePath -NotePropertyValue $GamePath -Force
@@ -1047,13 +1068,76 @@ function New-BypassShortcutCmdWrapper {
     }
 
     $paths = Get-BypassLauncherPaths -BypassesPath $BypassesPath -DisplayName $DisplayName
+    # Playnite.DesktopApp is 32-bit (Wow64). Bare `start` of a .lnk that targets
+    # C:\Program Files\RunAsTool fails under SysWOW64 cmd with "path does not exist".
+    # Sysnative forces a 64-bit cmd so ShellExecute resolves Program Files correctly.
     $cmdContent = @"
 @echo off
-start "" "$resolvedLnk"
+if exist "%SystemRoot%\Sysnative\cmd.exe" (
+  "%SystemRoot%\Sysnative\cmd.exe" /c start "" "$resolvedLnk"
+) else (
+  start "" "$resolvedLnk"
+)
 "@
     Set-Content -LiteralPath $paths.CmdPath -Value $cmdContent -Encoding ASCII
     if ($LogAction) { & $LogAction "Wrote shortcut launcher wrapper: $($paths.CmdPath) -> $resolvedLnk" }
     return $paths.CmdPath
+}
+
+function New-BypassMultiLaunchScript {
+    param(
+        [string]$BypassesPath,
+        [string]$DisplayName,
+        [object[]]$PreLaunches,
+        [string]$ShortcutLnkPath,
+        [scriptblock]$LogAction
+    )
+
+    if ([string]::IsNullOrWhiteSpace($BypassesPath)) {
+        throw 'BypassesPath is required for multi-launch script generation.'
+    }
+    if (-not (Test-Path -LiteralPath $BypassesPath)) {
+        New-Item -ItemType Directory -Path $BypassesPath -Force | Out-Null
+    }
+
+    $paths = Get-BypassLauncherPaths -BypassesPath $BypassesPath -DisplayName $DisplayName
+    $launchBlocks = New-Object System.Collections.Generic.List[string]
+    foreach ($launch in @($PreLaunches)) {
+        if (-not $launch -or -not $launch.path) { continue }
+        $escaped = $launch.path.ToString().Replace("'", "''")
+        $delay = 2
+        if ($null -ne $launch.delaySec) { $delay = [int]$launch.delaySec }
+        [void]$launchBlocks.Add(@"
+`$prePath = '$escaped'
+if (`$prePath -and (Test-Path -LiteralPath `$prePath)) {
+    Start-Process -FilePath `$prePath -WindowStyle Hidden
+    Start-Sleep -Seconds $delay
+}
+"@)
+    }
+
+    $shortcutEscaped = $ShortcutLnkPath.Replace("'", "''")
+    $ps1Content = @"
+# Generated by Sync-PlayniteBypassShortcuts - do not edit by hand
+$($launchBlocks -join [Environment]::NewLine)
+`$shortcut = '$shortcutEscaped'
+if (`$shortcut -and (Test-Path -LiteralPath `$shortcut)) {
+    `$cmd64 = Join-Path `$env:SystemRoot 'Sysnative\cmd.exe'
+    if (-not (Test-Path -LiteralPath `$cmd64)) { `$cmd64 = Join-Path `$env:SystemRoot 'System32\cmd.exe' }
+    Start-Process -FilePath `$cmd64 -ArgumentList ('/c start "" "' + `$shortcut + '"')
+}
+else {
+    throw "Shortcut not found: `$shortcut"
+}
+"@
+    Set-Content -LiteralPath $paths.Ps1Path -Value $ps1Content -Encoding UTF8
+    New-BypassLauncherCmdWrapper -Ps1Path $paths.Ps1Path -LogAction $LogAction | Out-Null
+
+    if ($LogAction) {
+        & $LogAction "Wrote multi-launch script: $($paths.Ps1Path) -> $($paths.CmdPath)"
+    }
+
+    return $paths
 }
 
 function New-BypassCompositeLauncherScript {
@@ -1066,41 +1150,18 @@ function New-BypassCompositeLauncherScript {
         [scriptblock]$LogAction
     )
 
-    if ([string]::IsNullOrWhiteSpace($BypassesPath)) {
-        throw 'BypassesPath is required for composite launcher generation.'
-    }
-    if (-not (Test-Path -LiteralPath $BypassesPath)) {
-        New-Item -ItemType Directory -Path $BypassesPath -Force | Out-Null
-    }
-
-    $paths = Get-BypassLauncherPaths -BypassesPath $BypassesPath -DisplayName $DisplayName
-    $helperEscaped = $HelperPath.Replace("'", "''")
-    $shortcutEscaped = $ShortcutLnkPath.Replace("'", "''")
-
-    $ps1Content = @"
-# Generated by Sync-PlayniteBypassShortcuts - do not edit by hand
-param([int]`$HelperDelaySec = $HelperDelaySec)
-`$helper = '$helperEscaped'
-`$shortcut = '$shortcutEscaped'
-if (`$helper -and (Test-Path -LiteralPath `$helper)) {
-    Start-Process -FilePath `$helper -WindowStyle Hidden
-    Start-Sleep -Seconds `$HelperDelaySec
-}
-if (`$shortcut -and (Test-Path -LiteralPath `$shortcut)) {
-    Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', 'start', '""', `$shortcut
-}
-else {
-    throw "Shortcut not found: `$shortcut"
-}
-"@
-    Set-Content -LiteralPath $paths.Ps1Path -Value $ps1Content -Encoding UTF8
-    New-BypassLauncherCmdWrapper -Ps1Path $paths.Ps1Path -LogAction $LogAction | Out-Null
-
-    if ($LogAction) {
-        & $LogAction "Wrote composite launcher: $($paths.Ps1Path) -> $($paths.CmdPath)"
-    }
-
-    return $paths
+    $preLaunches = @(
+        [PSCustomObject]@{
+            path     = $HelperPath
+            delaySec = $HelperDelaySec
+        }
+    )
+    return New-BypassMultiLaunchScript `
+        -BypassesPath $BypassesPath `
+        -DisplayName $DisplayName `
+        -PreLaunches $preLaunches `
+        -ShortcutLnkPath $ShortcutLnkPath `
+        -LogAction $LogAction
 }
 
 function Resolve-BypassPlayniteLaunchPath {
@@ -1114,6 +1175,9 @@ function Resolve-BypassPlayniteLaunchPath {
 
     switch ($LauncherMode) {
         'HelperAndApp' {
+            return (Get-BypassLauncherPaths -BypassesPath $BypassesPath -DisplayName $DisplayName).CmdPath
+        }
+        'MultiLaunch' {
             return (Get-BypassLauncherPaths -BypassesPath $BypassesPath -DisplayName $DisplayName).CmdPath
         }
         'CustomScript' {
@@ -1149,17 +1213,56 @@ function Resolve-BypassReviewedRowLauncher {
 
     $helperPath = if ($Row.HelperPath) { $Row.HelperPath.Trim() } else { "" }
     $helperDelaySec = if ($Row.HelperDelaySec) { [int]$Row.HelperDelaySec } else { 2 }
+    $preLaunches = @()
+    if ($Row.PreLaunches) {
+        $preLaunches = @($Row.PreLaunches)
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($helperPath)) {
+        $preLaunches = @(
+            [PSCustomObject]@{
+                path     = $helperPath
+                delaySec = $helperDelaySec
+            }
+        )
+    }
     $launcherScript = ""
     $playLaunchPath = ""
     $exeLeaf = if ($Row.SuggestedExe) { $Row.SuggestedExe } else { "" }
+    if ([string]::IsNullOrWhiteSpace($exeLeaf) -and $preLaunches.Count -gt 0 -and $preLaunches[0].path) {
+        $exeLeaf = [System.IO.Path]::GetFileName($preLaunches[0].path.ToString())
+    }
     $launcherMode = 'AppOnly'
     $resolvedLnk = Resolve-BypassShortcutLnkPathOnDisk `
         -ShortcutLnkPath $ShortcutLnkPath `
         -BypassesPath $BypassesPath `
         -DisplayName $DisplayName
 
-    if (-not [string]::IsNullOrWhiteSpace($helperPath)) {
-        $launcherMode = 'HelperAndApp'
+    if ($preLaunches.Count -gt 0) {
+        foreach ($launch in $preLaunches) {
+            if (-not $launch -or -not $launch.path) { continue }
+            if (-not (Test-BypassPathLiteral -Path $launch.path)) {
+                if ($LogAction) { & $LogAction "Skip multi-launch (path not found): $($launch.path)" "WARN" }
+                return [PSCustomObject]@{ Skipped = $true }
+            }
+        }
+        if (-not (Test-BypassPathLiteral -Path $resolvedLnk)) {
+            if ($LogAction) { & $LogAction "Skip multi-launch (shortcut not found): $ShortcutLnkPath" "WARN" }
+            return [PSCustomObject]@{ Skipped = $true }
+        }
+
+        $paths = New-BypassMultiLaunchScript `
+            -BypassesPath $BypassesPath `
+            -DisplayName $DisplayName `
+            -PreLaunches $preLaunches `
+            -ShortcutLnkPath $resolvedLnk `
+            -LogAction $LogAction
+        $playLaunchPath = $paths.CmdPath
+        $launcherScript = $paths.Ps1Path
+        $ShortcutLnkPath = $resolvedLnk
+        $launcherMode = if ($preLaunches.Count -eq 1) { 'HelperAndApp' } else { 'MultiLaunch' }
+        $helperPath = $preLaunches[0].path
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($helperPath)) {
         if (-not (Test-BypassPathLiteral -Path $helperPath)) {
             if ($LogAction) { & $LogAction "Skip composite launch (helper not found): $helperPath" "WARN" }
             return [PSCustomObject]@{ Skipped = $true }
@@ -1179,6 +1282,7 @@ function Resolve-BypassReviewedRowLauncher {
         $playLaunchPath = $paths.CmdPath
         $launcherScript = $paths.Ps1Path
         $ShortcutLnkPath = $resolvedLnk
+        $launcherMode = 'HelperAndApp'
     }
     else {
         if (-not (Test-BypassPathLiteral -Path $resolvedLnk)) {
@@ -1202,6 +1306,7 @@ function Resolve-BypassReviewedRowLauncher {
         LauncherScript  = $launcherScript
         HelperPath      = $helperPath
         HelperDelaySec  = $helperDelaySec
+        PreLaunches     = $preLaunches
         ExeLeaf         = $exeLeaf
     }
 }
@@ -1357,7 +1462,13 @@ function Invoke-BypassShortcutReviewSync {
 
     foreach ($row in @($ReviewedRows)) {
         try {
-            $displayName = Sanitize-BypassShortcutFileName -Name $row.DisplayName
+            $isSyncListRow = $null -ne $row.SyncListEntry
+            $displayName = if ($isSyncListRow) {
+                Sanitize-BypassShortcutFileName -Name $row.DisplayName
+            }
+            else {
+                Sanitize-BypassShortcutFileName -Name $row.DisplayName
+            }
             if ([string]::IsNullOrWhiteSpace($displayName)) {
                 if ($LogAction) { & $LogAction "Skip (empty display name): $($row.FileName)" "WARN" }
                 $stats.Skipped++
@@ -1365,18 +1476,25 @@ function Invoke-BypassShortcutReviewSync {
             }
 
             $launchPath = $row.OriginalLnkPath
-            $targetLnk = Join-Path $BypassesPath "$displayName.lnk"
+            if (-not $isSyncListRow) {
+                $targetLnk = Join-Path $BypassesPath "$displayName.lnk"
 
-            if ($launchPath -ine $targetLnk) {
-                if (Test-Path -LiteralPath $targetLnk) {
-                    if ($LogAction) { & $LogAction "Skip rename (target exists): $displayName.lnk" "WARN" }
-                    $stats.Skipped++
-                    continue
+                if ($launchPath -ine $targetLnk) {
+                    if (Test-Path -LiteralPath $targetLnk) {
+                        if ($LogAction) { & $LogAction "Skip rename (target exists): $displayName.lnk" "WARN" }
+                        $stats.Skipped++
+                        continue
+                    }
+                    Rename-Item -LiteralPath $launchPath -NewName "$displayName.lnk" -Force
+                    $launchPath = $targetLnk
+                    $stats.Renamed++
+                    if ($LogAction) { & $LogAction "Renamed shortcut -> $displayName.lnk" }
                 }
-                Rename-Item -LiteralPath $launchPath -NewName "$displayName.lnk" -Force
-                $launchPath = $targetLnk
-                $stats.Renamed++
-                if ($LogAction) { & $LogAction "Renamed shortcut -> $displayName.lnk" }
+            }
+            elseif (-not (Test-Path -LiteralPath $launchPath)) {
+                if ($LogAction) { & $LogAction "Skip (shortcut missing): $launchPath" "WARN" }
+                $stats.Skipped++
+                continue
             }
 
             $launcherResult = Resolve-BypassReviewedRowLauncher `
@@ -1395,7 +1513,52 @@ function Invoke-BypassShortcutReviewSync {
                 LauncherMode    = $launcherResult.LauncherMode
                 LauncherScript  = $launcherResult.LauncherScript
                 HelperPath      = $launcherResult.HelperPath
+                PreLaunches     = @($launcherResult.PreLaunches)
                 ShortcutLnkPath = $launcherResult.ShortcutLnkPath
+            }
+
+            if ($isSyncListRow) {
+                $entry = $row.SyncListEntry
+                $games = Normalize-PlayniteGamesArray -Games (Get-PlayniteGamesWithPlayActions -InstallDir $InstallDir -StopPlayniteFirst -LogAction $LogAction)
+                $playniteGame = Find-PlayniteGameForSyncEntry -Entry $entry -Games $games -RepoRoot $RepoRoot
+                if (-not $playniteGame) {
+                    if ($LogAction) { & $LogAction "Skip sync list (no Playnite match): $($entry.title)" "WARN" }
+                    $stats.Skipped++
+                    continue
+                }
+
+                $nameId = if ($entry.nameId) { $entry.nameId } else { "" }
+                $type = "ThirdParty"
+                if ($nameId) {
+                    $inferred = Get-AllowlistTypeFromNameId -NameId $nameId
+                    if ($inferred) { $type = $inferred }
+                }
+
+                $entryBindingExe = Get-BypassSyncListBindingExe -Entry $entry
+                if ([string]::IsNullOrWhiteSpace($entryBindingExe)) {
+                    $entryBindingExe = 'game.exe'
+                }
+
+                $syncResult = Sync-PlayniteBypassBindingToLibrary `
+                    -InstallDir $InstallDir `
+                    -RepoRoot $RepoRoot `
+                    -LaunchPath $playLaunchPath `
+                    -Exe $(if ($launcherResult.ExeLeaf) { $launcherResult.ExeLeaf } else { $entryBindingExe }) `
+                    -Title $(if ($playniteGame.Name) { $playniteGame.Name } else { $entry.title }) `
+                    -NameId $nameId `
+                    -Type $type `
+                    -NameIdInput "" `
+                    -IsNewApp $false `
+                    -ExistingPlayniteId $playniteGame.Id `
+                    @launcherSyncParams `
+                    -SyncListDriven `
+                    -LogAction $LogAction
+
+                if ($syncResult.Action -eq 'Added') { $stats.Added++ } else { $stats.Updated++ }
+                if ($syncResult.DuplicateNotice) {
+                    $stats.DuplicateNotices += $syncResult.DuplicateNotice
+                }
+                continue
             }
 
             $syncType = $row.SyncType
@@ -1507,274 +1670,12 @@ function Invoke-PlayniteBypassShortcutsSyncFromFolder {
         [scriptblock]$LogAction
     )
 
-    $wrapper = Get-BypassShortcutsConfig -RepoRoot $RepoRoot
-    $config = $wrapper.Config
-    $bypassRoot = $BypassesPath
-    if ([string]::IsNullOrWhiteSpace($bypassRoot)) {
-        $bypassRoot = $config.bypassesPath
-    }
-    if ([string]::IsNullOrWhiteSpace($bypassRoot) -or -not (Test-Path -LiteralPath $bypassRoot)) {
-        throw "Game Shortcuts folder not found: $bypassRoot"
-    }
-
-    $lnks = @(Get-ChildItem -LiteralPath $bypassRoot -Filter "*.lnk" -File -ErrorAction SilentlyContinue)
-    $stats = @{ Updated = 0; Skipped = 0; Missing = 0 }
-    $processedShortcutLnks = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-
-    foreach ($binding in @($config.bindings)) {
-        if (-not $binding -or -not $binding.launchPath) { continue }
-
-        $bindingLaunchPath = $binding.launchPath
-        $launchExt = [System.IO.Path]::GetExtension($binding.launchPath).ToLowerInvariant()
-        if ($launchExt -eq '.lnk') {
-            $shortcutLnk = $binding.launchPath
-            if ($binding.shortcutLnkPath) {
-                $shortcutLnk = $binding.shortcutLnkPath
-            }
-            $displayName = if ($binding.title) { $binding.title } else { [System.IO.Path]::GetFileNameWithoutExtension($shortcutLnk) }
-            $displayName = Sanitize-BypassShortcutFileName -Name $displayName
-            if (-not [string]::IsNullOrWhiteSpace($displayName) -and -not $WhatIf) {
-                try {
-                    $bindingLaunchPath = New-BypassShortcutCmdWrapper `
-                        -BypassesPath $bypassRoot `
-                        -DisplayName $displayName `
-                        -ShortcutLnkPath $shortcutLnk `
-                        -LogAction $LogAction
-                }
-                catch {
-                    if ($LogAction) { & $LogAction "SyncOnly shortcut wrapper failed: $($binding.title) - $($_.Exception.Message)" "WARN" }
-                    continue
-                }
-            }
-            else {
-                $bindingLaunchPath = $binding.launchPath
-            }
-        }
-        elseif ($launchExt -notin @('.cmd', '.bat', '.ps1')) {
-            continue
-        }
-
-        if ($binding.launcherMode -eq 'HelperAndApp' -and $binding.helperPath -and $binding.shortcutLnkPath) {
-            $displayName = if ($binding.title) { $binding.title } else { [System.IO.Path]::GetFileNameWithoutExtension($binding.launchPath) }
-            $displayName = Sanitize-BypassShortcutFileName -Name $displayName
-            if (-not [string]::IsNullOrWhiteSpace($displayName)) {
-                try {
-                    if (-not $WhatIf) {
-                        $paths = New-BypassCompositeLauncherScript `
-                            -BypassesPath $bypassRoot `
-                            -DisplayName $displayName `
-                            -HelperPath $binding.helperPath `
-                            -ShortcutLnkPath $binding.shortcutLnkPath `
-                            -HelperDelaySec $(if ($binding.helperDelaySec) { [int]$binding.helperDelaySec } else { 2 }) `
-                            -LogAction $LogAction
-                        $bindingLaunchPath = $paths.CmdPath
-                    }
-                }
-                catch {
-                    if ($LogAction) { & $LogAction "SyncOnly launcher regen failed: $($binding.title) - $($_.Exception.Message)" "WARN" }
-                }
-            }
-        }
-        elseif ($launchExt -eq '.ps1') {
-            if (-not $WhatIf) {
-                $bindingLaunchPath = New-BypassLauncherCmdWrapper -Ps1Path $binding.launchPath -LogAction $LogAction
-            }
-        }
-        elseif ($binding.launcherMode -eq 'AppOnly' -and $binding.shortcutLnkPath -and $launchExt -eq '.cmd') {
-            $displayName = if ($binding.title) { $binding.title } else { [System.IO.Path]::GetFileNameWithoutExtension($binding.shortcutLnkPath) }
-            $displayName = Sanitize-BypassShortcutFileName -Name $displayName
-            if (-not [string]::IsNullOrWhiteSpace($displayName) -and -not $WhatIf) {
-                try {
-                    $bindingLaunchPath = New-BypassShortcutCmdWrapper `
-                        -BypassesPath $bypassRoot `
-                        -DisplayName $displayName `
-                        -ShortcutLnkPath $binding.shortcutLnkPath `
-                        -LogAction $LogAction
-                }
-                catch {
-                    if ($LogAction) { & $LogAction "SyncOnly shortcut wrapper regen failed: $($binding.title) - $($_.Exception.Message)" "WARN" }
-                }
-            }
-        }
-
-        $bindingLaunchPath = if ($bindingLaunchPath) { $bindingLaunchPath } else { $binding.launchPath }
-
-        if (-not $WhatIf -and -not (Test-Path -LiteralPath $bindingLaunchPath)) {
-            $stats.Missing++
-            if ($LogAction) { & $LogAction "SyncOnly skip (launcher missing): $bindingLaunchPath" "WARN" }
-            continue
-        }
-
-        $exePath = if ($binding.exe) { $binding.exe } else { "" }
-        $title = if ($binding.title) { $binding.title } else { [System.IO.Path]::GetFileNameWithoutExtension($bindingLaunchPath) }
-        $exists = Test-PlayniteOrAllowlistExistsForBypassApp -RepoRoot $RepoRoot -InstallDir $InstallDir -ExePath $exePath -Title $title
-        if (-not $exists.Exists) {
-            $stats.Missing++
-            if ($LogAction) { & $LogAction "SyncOnly skip (no Playnite/allowlist match): $title" "WARN" }
-            continue
-        }
-
-        if ($WhatIf) {
-            if ($LogAction) { & $LogAction "Would sync launcher binding: $bindingLaunchPath" }
-            continue
-        }
-
-        $allow = $exists.AllowlistMatch
-        $nameId = if ($allow) { $allow.NameId } elseif ($binding.nameId) { $binding.nameId } else { "" }
-        $type = if ($allow) { $allow.Type } else { "ThirdParty" }
-        $exeLeaf = if ($binding.exe) { $binding.exe } elseif ($exePath -match '\.exe$') { [System.IO.Path]::GetFileName($exePath) } elseif ($allow) { $allow.Exe } else { "" }
-
-        $useOutside = $false
-        if ($binding.syncType -eq 'OutsideAllowlist') {
-            $useOutside = $true
-        }
-        elseif ($exists.PlayniteMatch -and (Test-PlayniteGameIsStoreLibrary -Game $exists.PlayniteMatch)) {
-            $useOutside = $true
-        }
-
-        $launcherScriptVal = if ($binding.launcherScript) { $binding.launcherScript } else { '' }
-        $helperPathVal = if ($binding.helperPath) { $binding.helperPath } else { '' }
-        $shortcutLnkVal = if ($binding.shortcutLnkPath) { $binding.shortcutLnkPath } else { '' }
-        $launcherSyncParams = @{
-            LauncherMode    = $(if ($binding.launcherMode) { $binding.launcherMode } else { 'CustomScript' })
-            LauncherScript  = $launcherScriptVal
-            HelperPath      = $helperPathVal
-            ShortcutLnkPath = $shortcutLnkVal
-        }
-
-        $existingId = if ($binding.playniteId) { $binding.playniteId } elseif ($exists.PlayniteMatch) { $exists.PlayniteMatch.Id } else { '' }
-        $syncParams = @{
-            InstallDir           = $InstallDir
-            RepoRoot             = $RepoRoot
-            LaunchPath           = $bindingLaunchPath
-            Exe                  = $exeLeaf
-            Title                = $title
-            NameId               = $nameId
-            Type                 = $type
-            NameIdInput          = ""
-            IsNewApp             = $false
-            ExistingPlayniteId   = $existingId
-            LogAction            = $LogAction
-        }
-        $syncParams += $launcherSyncParams
-
-        if ($useOutside) {
-            Sync-PlayniteBypassBindingToLibrary @syncParams -OutsideAllowlist | Out-Null
-        }
-        else {
-            Sync-PlayniteBypassBindingToLibrary @syncParams | Out-Null
-        }
-
-        if ($binding.shortcutLnkPath) {
-            [void]$processedShortcutLnks.Add($binding.shortcutLnkPath)
-        }
-        $stats.Updated++
-    }
-
-    foreach ($lnk in $lnks) {
-        if ($processedShortcutLnks.Contains($lnk.FullName)) {
-            continue
-        }
-
-        $binding = Find-BypassBindingForShortcutRow -Bindings @($config.bindings) -LnkPath $lnk.FullName
-        if ($binding -and $binding.launcherMode -in @('HelperAndApp', 'CustomScript')) {
-            $bindingExt = [System.IO.Path]::GetExtension($binding.launchPath).ToLowerInvariant()
-            if ($bindingExt -in @('.cmd', '.bat', '.ps1')) {
-                continue
-            }
-        }
-
-        $info = Get-ShortcutLaunchInfo -LnkPath $lnk.FullName
-        $exePath = $info.TargetPath
-        if (Test-ShortcutLooksLikeRunAsTool -ShortcutInfo $info) {
-            if ($binding -and $binding.gamePath) {
-                $exePath = [System.IO.Path]::GetFileName($binding.gamePath)
-            }
-            elseif ($binding -and $binding.exe -and $binding.exe -notmatch '(?i)runastool') {
-                $exePath = $binding.exe
-            }
-        }
-
-        $title = $info.Name
-        $exists = Test-PlayniteOrAllowlistExistsForBypassApp -RepoRoot $RepoRoot -InstallDir $InstallDir -ExePath $exePath -Title $title
-        if (-not $exists.Exists) {
-            $stats.Missing++
-            if ($LogAction) { & $LogAction "SyncOnly skip (no Playnite/allowlist match): $($lnk.Name)" "WARN" }
-            continue
-        }
-
-        if ($WhatIf) {
-            if ($LogAction) { & $LogAction "Would sync: $($lnk.FullName)" }
-            continue
-        }
-
-        $allow = $exists.AllowlistMatch
-        $syncTitle = if ($binding -and $binding.title) { $binding.title } elseif ($allow) { $allow.Title } else { $info.Name }
-        $syncTitle = Sanitize-BypassShortcutFileName -Name $syncTitle
-        if ([string]::IsNullOrWhiteSpace($syncTitle)) {
-            $syncTitle = [System.IO.Path]::GetFileNameWithoutExtension($lnk.Name)
-        }
-
-        try {
-            $playLaunchPath = New-BypassShortcutCmdWrapper `
-                -BypassesPath $bypassRoot `
-                -DisplayName $syncTitle `
-                -ShortcutLnkPath $lnk.FullName `
-                -LogAction $LogAction
-        }
-        catch {
-            $stats.Missing++
-            if ($LogAction) { & $LogAction "SyncOnly skip (shortcut wrapper failed): $($lnk.Name) - $($_.Exception.Message)" "WARN" }
-            continue
-        }
-
-        $nameId = if ($allow) { $allow.NameId } else { "" }
-        $type = if ($allow) { $allow.Type } else { "ThirdParty" }
-        $exeLeaf = if ($exePath -match '\.exe$') { [System.IO.Path]::GetFileName($exePath) } elseif ($allow) { $allow.Exe } else { if ($binding) { $binding.exe } else { "" } }
-
-        $useOutside = $false
-        if ($binding -and $binding.syncType -eq 'OutsideAllowlist') {
-            $useOutside = $true
-        }
-        elseif ($exists.PlayniteMatch -and (Test-PlayniteGameIsStoreLibrary -Game $exists.PlayniteMatch)) {
-            $useOutside = $true
-        }
-
-        $launcherScriptVal = if ($binding -and $binding.launcherScript) { $binding.launcherScript } else { '' }
-        $helperPathVal = if ($binding -and $binding.helperPath) { $binding.helperPath } else { '' }
-        $launcherSyncParams = @{
-            LauncherMode    = $(if ($binding -and $binding.launcherMode) { $binding.launcherMode } else { 'AppOnly' })
-            LauncherScript  = $launcherScriptVal
-            HelperPath      = $helperPathVal
-            ShortcutLnkPath = $lnk.FullName
-        }
-
-        $existingId = if ($binding -and $binding.playniteId) { $binding.playniteId } elseif ($exists.PlayniteMatch) { $exists.PlayniteMatch.Id } else { '' }
-        $syncParams = @{
-            InstallDir           = $InstallDir
-            RepoRoot             = $RepoRoot
-            LaunchPath           = $playLaunchPath
-            Exe                  = $exeLeaf
-            Title                = $(if ($binding -and $binding.title) { $binding.title } elseif ($allow) { $allow.Title } else { $title })
-            NameId               = $nameId
-            Type                 = $type
-            NameIdInput          = ""
-            IsNewApp             = $false
-            ExistingPlayniteId   = $existingId
-            LogAction            = $LogAction
-        }
-        $syncParams += $launcherSyncParams
-
-        if ($useOutside) {
-            Sync-PlayniteBypassBindingToLibrary @syncParams -OutsideAllowlist | Out-Null
-        }
-        else {
-            Sync-PlayniteBypassBindingToLibrary @syncParams | Out-Null
-        }
-        $stats.Updated++
-    }
-
-    return $stats
+    return Invoke-PlayniteBypassSyncFromSyncList `
+        -InstallDir $InstallDir `
+        -RepoRoot $RepoRoot `
+        -BypassesPath $BypassesPath `
+        -WhatIf:$WhatIf `
+        -LogAction $LogAction
 }
 
 function Get-NextGpuBypassBindingsPlaynitePath {
@@ -2036,7 +1937,7 @@ function Invoke-RunAsToolRntImport {
 
     $proc = Start-Process -FilePath $RunAsToolExe -ArgumentList $argList.ToArray() -Wait -PassThru -Verb RunAs
     if ($proc.ExitCode -ne 0) {
-        throw "RunAsTool import failed with exit code $($proc.ExitCode). Check the NextGPU-Authority password and retry."
+        throw "RunAsTool import failed with exit code $($proc.ExitCode). Check the NextGPU-Admin password and retry."
     }
 
     if ($LogAction) { & $LogAction "RunAsTool RNT import completed: $RntPath" }
@@ -2307,6 +2208,136 @@ function Uninstall-PlayniteWatcherHooks {
     }
 }
 
+function Test-PlayniteLiteDbLoadedInSession {
+    param([string]$InstallDir = "")
+
+    if ([string]::IsNullOrWhiteSpace($script:LiteDbAssemblyLoadedFrom)) {
+        return $false
+    }
+
+    if ([string]::IsNullOrWhiteSpace($InstallDir)) {
+        return $true
+    }
+
+    $normalizedInstall = $InstallDir.TrimEnd('\')
+    return $script:LiteDbAssemblyLoadedFrom.Equals($normalizedInstall, [StringComparison]::OrdinalIgnoreCase)
+}
+
+function New-PlayniteFolderRemovalEncodedCommand {
+    param(
+        [Parameter(Mandatory)]
+        [string]$LiteralPath,
+        [int]$WaitForProcessId = 0,
+        [int]$MaxAttempts = 6,
+        [string]$LogFile = "",
+        [string]$PathFile = ""
+    )
+
+    $pathLiteral = $LiteralPath.Replace("'", "''")
+    $installPrefix = $LiteralPath.TrimEnd('\').Replace("'", "''") + '\'
+    $logFileLiteral = if ([string]::IsNullOrWhiteSpace($LogFile)) { "" } else { $LogFile.Replace("'", "''") }
+    $pathFileLiteral = if ([string]::IsNullOrWhiteSpace($PathFile)) { "" } else { $PathFile.Replace("'", "''") }
+    $waitForPid = [Math]::Max(0, $WaitForProcessId)
+
+    $innerScript = @"
+function Write-RemovalLog {
+    param([string]`$Message, [string]`$Level = 'INFO')
+    `$line = "[{0}] [{1}] {2}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), `$Level, `$Message
+    if ('$logFileLiteral') {
+        Add-Content -LiteralPath '$logFileLiteral' -Value `$line -Encoding utf8
+    }
+}
+
+if ($waitForPid -gt 0) {
+    try { Wait-Process -Id $waitForPid -Timeout 180 -ErrorAction SilentlyContinue } catch { }
+    Start-Sleep -Seconds 2
+}
+
+`$target = '$pathLiteral'
+`$installPrefix = '$installPrefix'
+`$selfPid = `$PID
+function Stop-PlayniteInstallLockingProcesses {
+    Get-Process -Name 'Playnite.DesktopApp', 'Playnite.FullscreenApp', 'RunAsTool*', 'powershell', 'pwsh' -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            if (`$_.Id -eq `$selfPid) { return }
+            `$shouldStop = `$false
+            try {
+                if (`$_.Path -and `$_.Path.StartsWith(`$installPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+                    `$shouldStop = `$true
+                }
+                elseif (`$_.Modules) {
+                    foreach (`$module in `$_.Modules) {
+                        if (`$module.FileName -and `$module.FileName.StartsWith(`$installPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+                            `$shouldStop = `$true
+                            break
+                        }
+                    }
+                }
+            }
+            catch { }
+            if (`$shouldStop) {
+                Stop-Process -Id `$_.Id -Force -ErrorAction SilentlyContinue
+            }
+        }
+    try {
+        Get-CimInstance -ClassName Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object {
+                (`$_.ExecutablePath -and `$_.ExecutablePath.StartsWith(`$installPrefix, [StringComparison]::OrdinalIgnoreCase)) -or
+                (`$_.CommandLine -and `$_.CommandLine -like "*$pathLiteral*")
+            } |
+            Where-Object { `$_.ProcessId -ne `$selfPid } |
+            ForEach-Object { Stop-Process -Id `$_.ProcessId -Force -ErrorAction SilentlyContinue }
+    }
+    catch { }
+}
+`$removed = `$false
+for (`$attempt = 1; `$attempt -le $MaxAttempts; `$attempt++) {
+    Stop-PlayniteInstallLockingProcesses
+    Start-Sleep -Seconds 2
+    if (-not (Test-Path -LiteralPath `$target)) {
+        `$removed = `$true
+        break
+    }
+    try {
+        Remove-Item -LiteralPath `$target -Recurse -Force -ErrorAction Stop
+        `$removed = `$true
+        break
+    }
+    catch {
+        `$err = `$_.Exception.Message
+        Write-RemovalLog "Playnite folder removal attempt `$attempt/$MaxAttempts failed: `$err" 'WARN'
+        try {
+            `$empty = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
+            New-Item -ItemType Directory -Path `$empty -Force | Out-Null
+            & robocopy `$empty `$target /mir /r:1 /w:1 /nfl /ndl /njh /njs /nc /ns /np 2>&1 | Out-Null
+            Remove-Item -LiteralPath `$empty -Recurse -Force -ErrorAction SilentlyContinue
+            if (Test-Path -LiteralPath `$target) {
+                Remove-Item -LiteralPath `$target -Recurse -Force -ErrorAction Stop
+            }
+            `$removed = `$true
+            break
+        }
+        catch {
+            Start-Sleep -Seconds 3
+        }
+    }
+}
+if (-not `$removed -and (Test-Path -LiteralPath `$target)) {
+    exit 1
+}
+if (`$removed -and '$logFileLiteral') {
+    Write-RemovalLog "Removed Playnite portable install: `$target"
+}
+if ('$pathFileLiteral' -and (Test-Path -LiteralPath '$pathFileLiteral')) {
+    Remove-Item -LiteralPath '$pathFileLiteral' -Force -ErrorAction SilentlyContinue
+    Write-RemovalLog 'Removed PlayniteInstall.path'
+}
+exit 0
+"@
+
+    return [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($innerScript))
+}
+
 function Remove-DirectoryInFreshProcess {
     <#
         Deletes a folder from a new PowerShell process so assemblies loaded from that
@@ -2315,45 +2346,20 @@ function Remove-DirectoryInFreshProcess {
     param(
         [Parameter(Mandatory)]
         [string]$LiteralPath,
-        [int]$MaxAttempts = 4
+        [int]$MaxAttempts = 6,
+        [string]$LogFile = "",
+        [string]$PathFile = ""
     )
 
     if (-not (Test-Path -LiteralPath $LiteralPath)) {
         return $true
     }
 
-    $pathLiteral = $LiteralPath.Replace("'", "''")
-    $installPrefix = $LiteralPath.TrimEnd('\').Replace("'", "''") + '\'
-    $innerScript = @"
-`$target = '$pathLiteral'
-`$installPrefix = '$installPrefix'
-for (`$attempt = 1; `$attempt -le $MaxAttempts; `$attempt++) {
-    Get-Process -Name 'Playnite.DesktopApp', 'Playnite.FullscreenApp' -ErrorAction SilentlyContinue |
-        Stop-Process -Force -ErrorAction SilentlyContinue
-    try {
-        Get-CimInstance -ClassName Win32_Process -ErrorAction SilentlyContinue |
-            Where-Object {
-                `$_.ExecutablePath -and
-                `$_.ExecutablePath.StartsWith(`$installPrefix, [StringComparison]::OrdinalIgnoreCase) -and
-                `$_.Name -match '^Playnite\.'
-            } |
-            ForEach-Object { Stop-Process -Id `$_.ProcessId -Force -ErrorAction SilentlyContinue }
-    }
-    catch { }
-    Start-Sleep -Seconds 2
-    if (-not (Test-Path -LiteralPath `$target)) { exit 0 }
-    try {
-        Remove-Item -LiteralPath `$target -Recurse -Force -ErrorAction Stop
-        exit 0
-    }
-    catch {
-        Start-Sleep -Seconds 3
-    }
-}
-exit 1
-"@
-
-    $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($innerScript))
+    $encoded = New-PlayniteFolderRemovalEncodedCommand `
+        -LiteralPath $LiteralPath `
+        -MaxAttempts $MaxAttempts `
+        -LogFile $LogFile `
+        -PathFile $PathFile
     $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
         '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
         '-EncodedCommand', $encoded
@@ -2361,11 +2367,36 @@ exit 1
     return ($proc.ExitCode -eq 0)
 }
 
+function Start-PlayniteFolderRemovalAfterProcessExit {
+    param(
+        [Parameter(Mandatory)]
+        [string]$LiteralPath,
+        [Parameter(Mandatory)]
+        [int]$WaitForProcessId,
+        [string]$LogFile = "",
+        [string]$PathFile = "",
+        [int]$MaxAttempts = 6
+    )
+
+    $encoded = New-PlayniteFolderRemovalEncodedCommand `
+        -LiteralPath $LiteralPath `
+        -WaitForProcessId $WaitForProcessId `
+        -MaxAttempts $MaxAttempts `
+        -LogFile $LogFile `
+        -PathFile $PathFile
+    $null = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+        '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+        '-EncodedCommand', $encoded
+    ) -WindowStyle Hidden
+}
+
 function Remove-PlaynitePortableInstall {
     param(
         [string]$RepoRoot,
         [string]$InstallDir = "",
-        [scriptblock]$LogAction
+        [scriptblock]$LogAction,
+        [string]$LogFile = "",
+        [int]$CallerProcessId = 0
     )
 
     if ([string]::IsNullOrWhiteSpace($InstallDir)) {
@@ -2375,7 +2406,7 @@ function Remove-PlaynitePortableInstall {
 
     if ([string]::IsNullOrWhiteSpace($InstallDir)) {
         if ($LogAction) { & $LogAction "Playnite install path not configured; skipping portable folder removal." "WARN" }
-        return $false
+        return @{ Removed = $false; Deferred = $false }
     }
 
     $playniteExe = Join-Path $InstallDir 'Playnite.DesktopApp.exe'
@@ -2385,27 +2416,48 @@ function Remove-PlaynitePortableInstall {
     Stop-Process -Name 'Playnite.DesktopApp', 'Playnite.FullscreenApp' -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 
+    $pathFile = Get-PlayniteInstallPathFile -RepoRoot $RepoRoot
+    $deferForLiteDbLock = Test-PlayniteLiteDbLoadedInSession -InstallDir $InstallDir
+    $waitForPid = if ($CallerProcessId -gt 0) { $CallerProcessId } else { 0 }
+    $useDeferredRemoval = $waitForPid -gt 0
+
     if (Test-Path -LiteralPath $InstallDir) {
-        if ($LogAction) { & $LogAction "Removing Playnite portable install in a separate process (avoids LiteDB.dll lock from this session)..." }
-        $removed = Remove-DirectoryInFreshProcess -LiteralPath $InstallDir
+        if ($useDeferredRemoval) {
+            if ($LogAction) {
+                if ($deferForLiteDbLock) {
+                    & $LogAction "Scheduling Playnite folder removal after this script exits (LiteDB.dll is loaded in this session)..."
+                }
+                else {
+                    & $LogAction "Scheduling Playnite folder removal after this script exits..."
+                }
+            }
+            Start-PlayniteFolderRemovalAfterProcessExit `
+                -LiteralPath $InstallDir `
+                -WaitForProcessId $waitForPid `
+                -LogFile $LogFile `
+                -PathFile $pathFile
+            return @{ Removed = $false; Deferred = $true }
+        }
+
+        if ($LogAction) { & $LogAction "Removing Playnite portable install in a separate process..." }
+        $removed = Remove-DirectoryInFreshProcess -LiteralPath $InstallDir -LogFile $LogFile -PathFile $pathFile
         if ($removed) {
             if ($LogAction) { & $LogAction "Removed Playnite portable install: $InstallDir" }
+            return @{ Removed = $true; Deferred = $false }
         }
-        else {
-            if ($LogAction) {
-                & $LogAction "Could not remove Playnite folder (files may still be locked by Playnite or another app). Bypass/RunAsTool cleanup completed; close Playnite and delete $InstallDir manually or reboot and retry." "WARN"
-            }
-            return $false
+
+        if ($LogAction) {
+            & $LogAction "Could not remove Playnite folder (files may still be locked by Playnite or another app). Bypass/RunAsTool cleanup completed; close Playnite and delete $InstallDir manually or reboot and retry." "WARN"
         }
+        return @{ Removed = $false; Deferred = $false }
     }
 
-    $pathFile = Get-PlayniteInstallPathFile -RepoRoot $RepoRoot
     if (Test-Path -LiteralPath $pathFile) {
         Remove-Item -LiteralPath $pathFile -Force -ErrorAction SilentlyContinue
         if ($LogAction) { & $LogAction "Removed PlayniteInstall.path" }
     }
 
-    return $true
+    return @{ Removed = $true; Deferred = $false }
 }
 
 function Uninstall-PlayniteBypassEnvironment {
@@ -2417,19 +2469,22 @@ function Uninstall-PlayniteBypassEnvironment {
         [switch]$SkipFolders,
         [switch]$SkipAllowlist,
         [switch]$RemovePlayniteInstall,
-        [scriptblock]$LogAction
+        [scriptblock]$LogAction,
+        [string]$LogFile = "",
+        [int]$CallerProcessId = 0
     )
 
     $wrapper = Get-BypassShortcutsConfig -RepoRoot $RepoRoot
     $config = $wrapper.Config
     $bindings = @($config.bindings)
     $stats = @{
-        StoreReverted    = 0
-        ManualRemoved    = 0
-        Missing          = 0
-        AllowlistRemoved = 0
-        FoldersRemoved   = 0
-        PlayniteRemoved  = $false
+        StoreReverted           = 0
+        ManualRemoved           = 0
+        Missing                 = 0
+        AllowlistRemoved        = 0
+        FoldersRemoved          = 0
+        PlayniteRemoved         = $false
+        PlayniteRemovalDeferred = $false
     }
 
     if ($RemovePlayniteInstall.IsPresent) {
@@ -2466,8 +2521,23 @@ function Uninstall-PlayniteBypassEnvironment {
     Reset-BypassShortcutsConfigFile -RepoRoot $RepoRoot -InstallDir $InstallDir -LogAction $LogAction
 
     if ($RemovePlayniteInstall.IsPresent) {
-        $stats.PlayniteRemoved = Remove-PlaynitePortableInstall -RepoRoot $RepoRoot -InstallDir $InstallDir -LogAction $LogAction
+        $removalResult = Remove-PlaynitePortableInstall -RepoRoot $RepoRoot -InstallDir $InstallDir -LogAction $LogAction -LogFile $LogFile -CallerProcessId $CallerProcessId
+        if ($removalResult -is [hashtable]) {
+            $stats.PlayniteRemoved = [bool]$removalResult.Removed
+            $stats.PlayniteRemovalDeferred = [bool]$removalResult.Deferred
+            if ($removalResult.Deferred -and $LogAction) {
+                & $LogAction "Playnite folder will be deleted after this script exits; check Uninstall-PlayniteBypass.log for confirmation."
+            }
+        }
+        else {
+            $stats.PlayniteRemoved = [bool]$removalResult
+        }
     }
 
     return [PSCustomObject]$stats
+}
+
+$bypassSyncListPath = Join-Path $PSScriptRoot 'Playnite-BypassSyncList.ps1'
+if (Test-Path -LiteralPath $bypassSyncListPath) {
+    . $bypassSyncListPath
 }
