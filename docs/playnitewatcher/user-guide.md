@@ -44,7 +44,7 @@ If you’d rather stick with the original Sunshine and Apollo, you can skip this
 
 Use this if Playnite is not installed yet. Setup installs the **official Playnite portable** archive from GitHub (current releases use **`.7z`**, e.g. [10.55.7z](https://github.com/JosefNemec/Playnite/releases/download/10.55/10.55.7z) — not a `.zip`; **7-Zip** must be installed on the PC).
 
-For full step-by-step host setup, see [`docs/Playnite-EndToEnd.md`](docs/Playnite-EndToEnd.md).
+For full step-by-step host setup, see [end-to-end.md](end-to-end.md).
 
 1. **Run** `Setup-PlayniteSteam.bat` — folder picker asks for a parent folder; setup always installs into **`<your-choice>\Playnite`**. Path is saved in **`PlayniteInstall.path`**. Downloads go to **`<install-folder>\Download`**.
 2. **All Windows users — one library**: Program and data live under the folder you chose. Every account should launch **`<install-folder>\Playnite.DesktopApp.exe`** (not a per-user copy under `%LocalAppData%`). Only one user should run Playnite at a time.

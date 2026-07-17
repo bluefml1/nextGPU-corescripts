@@ -133,10 +133,10 @@ public partial class SetupGamesAppsPage : Page
 
         ActionPageTools.AddPowerShellButton(CleanSessionActionsPanel, "Register Session Folder Tasks",
             @"scripts\runtime\Register-SessionFolderRulesTasks.ps1", keepConsoleOpen: true,
-            helpText: "Registers nextGPU-SessionFolderRulesLogoff and nextGPU-SessionFolderRulesLogon scheduled tasks.");
+            helpText: "Registers nextGPU-SessionFolderRulesLogoff (SYSTEM + logoff) and nextGPU-SessionFolderRulesLogon scheduled tasks.");
         ActionPageTools.AddPowerShellButton(CleanSessionActionsPanel, "Seed Garena Template",
             @"scripts\runtime\Seed-SessionFolderTemplates.ps1", "-SeedGarena", keepConsoleOpen: true,
-            helpText: "Copies gxx from the on-disk Garena bundle into ProgramData\\nextGPU\\session-templates\\garena-gxx.");
+            helpText: "Copies only Config\\<name> (not the client Garena folder) into session-templates\\<name> and registers a replace rule.");
         ActionPageTools.AddOpenExplorerButton(CleanSessionActionsPanel, "Open session-templates Folder",
             () => EnsureDirectory(SessionTemplatesPath),
             helpText: "Golden replace sources live under C:\\ProgramData\\nextGPU\\session-templates\\{rule-id}\\.");

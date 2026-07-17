@@ -403,6 +403,32 @@ else {
     [void]$checks.Add((New-StatusCheck -Id 'O1' -Name 'Everything available' -Status 'Warn' -Detail 'es.exe not reachable' -FixAction 'ImportDesktopApps' -FixLabel 'Import Desktop Apps' -Required $false))
 }
 
+# T1 — Playnite logon scheduled task
+$playniteLogonTaskName = 'nextGPU-PlayniteLogon'
+if (-not [string]::IsNullOrWhiteSpace($installDir)) {
+    $expectedExe = Join-Path $installDir 'Playnite.DesktopApp.exe'
+    $task = Get-ScheduledTask -TaskName $playniteLogonTaskName -ErrorAction SilentlyContinue
+    if (-not $task) {
+        [void]$checks.Add((New-StatusCheck -Id 'T1' -Name 'Playnite logon task' -Status 'Fail' -Detail "Scheduled task '$playniteLogonTaskName' not registered" -FixAction 'RegisterPlayniteLogonTask' -FixLabel 'Register Playnite Logon Task'))
+    }
+    elseif (-not $task.Settings.Enabled) {
+        [void]$checks.Add((New-StatusCheck -Id 'T1' -Name 'Playnite logon task' -Status 'Fail' -Detail "Task '$playniteLogonTaskName' is disabled" -FixAction 'RegisterPlayniteLogonTask' -FixLabel 'Register Playnite Logon Task'))
+    }
+    else {
+        $actionPaths = @($task.Actions | ForEach-Object { $_.Execute }) -join ';'
+        if ($actionPaths -like "*Playnite.DesktopApp.exe*") {
+            $state = if ($task.State) { $task.State.ToString() } else { 'Ready' }
+            [void]$checks.Add((New-StatusCheck -Id 'T1' -Name 'Playnite logon task' -Status 'Pass' -Detail "$playniteLogonTaskName ($state) -> $expectedExe"))
+        }
+        else {
+            [void]$checks.Add((New-StatusCheck -Id 'T1' -Name 'Playnite logon task' -Status 'Fail' -Detail "Task action does not target Playnite.DesktopApp.exe (got: $actionPaths)" -FixAction 'RegisterPlayniteLogonTask' -FixLabel 'Register Playnite Logon Task'))
+        }
+    }
+}
+else {
+    [void]$checks.Add((New-StatusCheck -Id 'T1' -Name 'Playnite logon task' -Status 'Skip' -Detail 'Install path unknown' -Required $false))
+}
+
 $setupLog = Join-Path $scriptRoot 'Setup-PlayniteSteam.log'
 if (Test-Path -LiteralPath $setupLog) {
     $hasError = Select-String -LiteralPath $setupLog -Pattern '\[ERROR\]' -Quiet -ErrorAction SilentlyContinue

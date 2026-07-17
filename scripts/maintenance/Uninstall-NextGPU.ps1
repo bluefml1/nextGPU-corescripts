@@ -197,7 +197,7 @@ function Remove-ScheduledTaskSafe {
 
 function Remove-AllNextGpuScheduledTasks {
     $known = @(
-        'EndSession', 'auto game launch',
+        'EndSession', 'auto game launch', 'nextGPU-PlayniteLogon',
             'nextGPU-Heartbeat', 'nextGPU-AutoRepair', 'nextGPU-AutoUpdate', 'nextGPU-NvidiaLogon',
             'nextGPU-ShutdownPolicyLogon', 'nextGPU-SunshineLogon',
             'nextGPU-DesktopCleanupLogon', 'nextGPU-WallpaperFitLogon',

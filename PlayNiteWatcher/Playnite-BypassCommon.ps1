@@ -1104,16 +1104,33 @@ function New-BypassMultiLaunchScript {
     $launchBlocks = New-Object System.Collections.Generic.List[string]
     foreach ($launch in @($PreLaunches)) {
         if (-not $launch -or -not $launch.path) { continue }
-        $escaped = $launch.path.ToString().Replace("'", "''")
+        $rawPath = $launch.path.ToString()
+        $escaped = $rawPath.Replace("'", "''")
         $delay = 2
         if ($null -ne $launch.delaySec) { $delay = [int]$launch.delaySec }
-        [void]$launchBlocks.Add(@"
+        $isLnk = $rawPath.EndsWith('.lnk', [StringComparison]::OrdinalIgnoreCase)
+        if ($isLnk) {
+            # Same Wow64/Sysnative reason as the final shortcut: Start-Process on a RunAsTool
+            # .lnk fails with "path not found" under 32-bit Playnite; cmd start via Sysnative works.
+            [void]$launchBlocks.Add(@"
+`$prePath = '$escaped'
+if (`$prePath -and (Test-Path -LiteralPath `$prePath)) {
+    `$cmd64 = Join-Path `$env:SystemRoot 'Sysnative\cmd.exe'
+    if (-not (Test-Path -LiteralPath `$cmd64)) { `$cmd64 = Join-Path `$env:SystemRoot 'System32\cmd.exe' }
+    Start-Process -FilePath `$cmd64 -ArgumentList ('/c start "" "' + `$prePath + '"')
+    Start-Sleep -Seconds $delay
+}
+"@)
+        }
+        else {
+            [void]$launchBlocks.Add(@"
 `$prePath = '$escaped'
 if (`$prePath -and (Test-Path -LiteralPath `$prePath)) {
     Start-Process -FilePath `$prePath -WindowStyle Hidden
     Start-Sleep -Seconds $delay
 }
 "@)
+        }
     }
 
     $shortcutEscaped = $ShortcutLnkPath.Replace("'", "''")

@@ -11,8 +11,8 @@ By default it looks for Sunshine's `apps.json` at `C:\Program Files\Sunshine\con
 - Sunshine **`name`** = **NameID** (Steam AppID, e.g. `730` for CS2; Epic = install folder name).
 - **No** `image-path` (matches Add-SteamGames-style Steam entries).
 - **`prep-cmd`** undo: `powershell.exe ... eventLogs.ps1` (requires that script under `C:\Program Files\Sunshine\scripts\`).
-- Hidden **`playnite-id`** field stores the Playnite game GUID for [PlayNite Watcher](../readme.md) Installer.
-- Writes **`resolved-appids.json`** and **`resolved-appids.txt`** next to `apps.json`, using the **same CRC AppID algorithm** as [Add-SteamGames.ps1](../Add-SteamGames.ps1). Launch lines use `&"Playnite.DesktopApp.exe" --start <playniteGameId>` (PowerShell call operator) instead of `steam://rungameid/...`.
+- Hidden **`playnite-id`** field stores the Playnite game GUID for [PlayNite Watcher](user-guide.md) Installer.
+- Writes **`resolved-appids.json`** and **`resolved-appids.txt`** next to `apps.json`, using the **same CRC AppID algorithm** as [`PlayNiteWatcher/Add-SteamGames.ps1`](../../PlayNiteWatcher/Add-SteamGames.ps1). Launch lines use `&"Playnite.DesktopApp.exe" --start <playniteGameId>` (PowerShell call operator) instead of `steam://rungameid/...`.
 
 Example `resolved-appids.txt` line for CS2:
 

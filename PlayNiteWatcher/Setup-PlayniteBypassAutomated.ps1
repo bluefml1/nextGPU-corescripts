@@ -90,6 +90,13 @@ $copyStats = Copy-BypassGameShortcutsForSyncList `
 
 Write-BypassSetupLog ("Seed shortcuts: copied={0} skipped={1}" -f $copyStats.Copied, $copyStats.Skipped)
 
+$selectedBases = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+foreach ($lnkName in @($copyStats.CopiedNames)) {
+    if (-not $lnkName) { continue }
+    $base = [System.IO.Path]::GetFileNameWithoutExtension($lnkName.ToString())
+    if ($base) { [void]$selectedBases.Add($base) }
+}
+
 $wrapper = Get-BypassShortcutsConfig -RepoRoot $script:ModuleRoot
 $config = $wrapper.Config
 $config.parentPath = $folder.ParentPath
@@ -108,7 +115,7 @@ if (-not (Test-Path -LiteralPath $RntPath)) {
     throw "RunAsTool seed file not found: $RntPath"
 }
 
-$filteredRnt = New-FilteredRunAsToolRnt -RntPath $RntPath -SyncListEntries $syncList
+$filteredRnt = New-FilteredRunAsToolRnt -RntPath $RntPath -SyncListEntries $syncList -SeedBaseNames $selectedBases
 Write-BypassSetupLog ("RunAsTool RNT filtered: included={0} of {1} -> {2}" -f $filteredRnt.IncludedCount, $filteredRnt.TotalCount, $filteredRnt.Path)
 
 $cred = Get-Credential -UserName $AdminUser -Message "RunAsTool import requires the admin password for $AdminUser (one prompt for this setup)"

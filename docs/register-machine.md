@@ -294,7 +294,7 @@ nextGPU-corescripts/
 │   ├── desktop/                  # Wallpaper policy scripts
 │   ├── tasks/                    # Scheduled task registration
 │   └── maintenance/              # Games, copy/extract, uninstall helpers
-├── docs/                         # README, getting started, checklist
+├── docs/                         # centralized documentation (see docs/README.md)
 ├── assets/
 │   └── nextgputobu.jpeg          # Wallpaper source
 ├── domain.txt                    # Created at end of setup (required for heartbeat)

@@ -3936,7 +3936,7 @@ function Get-PlayniteNativeGameBsonTemplateDocument {
 
         $actions = Get-RawPlayActionDocumentsFromGameDocument -Doc $doc
         if ($actions.Count -gt 0) {
-            return $doc
+            return , $doc
         }
     }
 
@@ -3987,11 +3987,11 @@ function Get-PlayniteTemplatePlayActionDocument {
     foreach ($action in $actions) {
         $path = Get-BsonValueAsString -Value $action['Path']
         if (-not [string]::IsNullOrWhiteSpace($path)) {
-            return $action
+            return , $action
         }
     }
 
-    return $actions[0]
+    return , $actions[0]
 }
 
 function New-LiteDbGuidBsonDocument {

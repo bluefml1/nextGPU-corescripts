@@ -17,7 +17,8 @@ public partial class GetStartedPage : Page
         string PrimaryLabel,
         Action PrimaryAction,
         string? SecondaryLabel = null,
-        Action? SecondaryAction = null);
+        Action? SecondaryAction = null,
+        IReadOnlyList<(string Label, Action Action)>? NumberedActions = null);
     private sealed record TroubleItem(
         string Problem,
         string Fix,
@@ -91,10 +92,14 @@ public partial class GetStartedPage : Page
                 "06",
                 "Implement PlayNite",
                 "Run after RegisterMachine (Sunshine must exist). Requires 7-Zip or WinRAR, Steam/Epic games on disk, and optional Everything + config\\playnite\\desktop-apps.allowlist.json. Installs portable PlayNite, imports libraries, exports to Sunshine, installs PlayNiteWatcher, and pushes Moonlight games to AWS from domain.txt.",
-                "Run PlayNite Setup",
-                () => RunBatch(@"PlayNiteWatcher\Setup-PlayniteSteam.bat", keepConsoleOpen: true),
                 "Open PlayNite Tab",
-                () => NavigateTo(new PlaynitePage())),
+                () => NavigateTo(new PlaynitePage()),
+                NumberedActions: new List<(string Label, Action Action)>
+                {
+                    ("1. Run Playnite Setup", (Action)(() => RunBatch(@"PlayNiteWatcher\Setup-PlayniteSteam.bat", keepConsoleOpen: true))),
+                    ("2. Setup Games & Apps", (Action)(() => NavigateTo(new SetupGamesAppsPage()))),
+                    ("3. Bypass games",      (Action)(() => NavigateTo(new BypassPage())))
+                }),
             new StepItem(
                 "07",
                 "Verify Host Is Ready",
@@ -222,23 +227,42 @@ public partial class GetStartedPage : Page
         });
 
         var buttonRow = new StackPanel();
-        var primary = new Button
-        {
-            Content = step.PrimaryLabel,
-            Style = (Style)FindResource("PrimaryButton")
-        };
-        primary.Click += (_, _) => step.PrimaryAction();
-        UiLayoutHelper.AddStretchedAction(buttonRow, primary);
 
-        if (step.SecondaryLabel is not null && step.SecondaryAction is not null)
+        if (step.NumberedActions is not null)
         {
-            var sec = new Button
+            for (var i = 0; i < step.NumberedActions.Count; i++)
             {
-                Content = step.SecondaryLabel,
-                Style = (Style)FindResource("SecondaryButton")
+                var (label, action) = step.NumberedActions[i];
+                var numBtn = new Button
+                {
+                    Content = label,
+                    Style = (Style)FindResource(i == 0 ? "PrimaryButton" : "SecondaryButton"),
+                    Margin = new Thickness(0, 0, 0, 8)
+                };
+                numBtn.Click += (_, _) => action();
+                UiLayoutHelper.AddStretchedAction(buttonRow, numBtn);
+            }
+        }
+        else
+        {
+            var primary = new Button
+            {
+                Content = step.PrimaryLabel,
+                Style = (Style)FindResource("PrimaryButton")
             };
-            sec.Click += (_, _) => step.SecondaryAction();
-            UiLayoutHelper.AddStretchedAction(buttonRow, sec);
+            primary.Click += (_, _) => step.PrimaryAction();
+            UiLayoutHelper.AddStretchedAction(buttonRow, primary);
+
+            if (step.SecondaryLabel is not null && step.SecondaryAction is not null)
+            {
+                var sec = new Button
+                {
+                    Content = step.SecondaryLabel,
+                    Style = (Style)FindResource("SecondaryButton")
+                };
+                sec.Click += (_, _) => step.SecondaryAction();
+                UiLayoutHelper.AddStretchedAction(buttonRow, sec);
+            }
         }
 
         stack.Children.Add(buttonRow);

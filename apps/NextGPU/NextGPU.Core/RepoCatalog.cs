@@ -54,6 +54,14 @@ public static class RepoCatalog
         },
         new()
         {
+            TaskName = "nextGPU-PlayniteLogon",
+            DisplayName = "Playnite Logon",
+            Description = "Starts Playnite DesktopApp at user logon (--startdesktop --hidesplashscreen).",
+            IntervalSummary = "At user logon",
+            RegisterScriptRelativePath = @"PlayNiteWatcher\Register-PlayniteLogonTask.ps1"
+        },
+        new()
+        {
             TaskName = "EndSession",
             DisplayName = "End Session",
             Description = "Runs endSession.ps1 when LogoffManager event 2002 fires.",
@@ -115,6 +123,7 @@ public static class RepoCatalog
     public const string PlayniteInstallPathFile = "PlayniteInstall.path";
     public const string PlayniteAllowlistRelativePath = @"PlayNiteWatcher\config\playnite\desktop-apps.allowlist.json";
     public const string PlayniteBypassSyncListRelativePath = @"PlayNiteWatcher\config\playnite\bypass-sync-list.json";
+    public const string PlayniteBypassSeedCopySelectionRelativePath = @"PlayNiteWatcher\config\playnite\bypass-seed-copy-selection.json";
 
     public const string PlayniteSetupLog = "Setup-PlayniteSteam.log";
     public const string PlayniteExportLog = "Export-SunshineFromPlaynite.log";

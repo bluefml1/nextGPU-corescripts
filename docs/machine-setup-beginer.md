@@ -618,9 +618,9 @@ If you need to dig into a problem, these are the most useful files (all inside y
 
 | Document                                    | What's in it                                                               |
 | ------------------------------------------- | -------------------------------------------------------------------------- |
-| `README.md`                                 | Technical internals — useful once you're comfortable and want to go deeper |
+| `register-machine.md`                                 | Technical internals — useful once you're comfortable and want to go deeper |
 | `user-storage-recreate-flow.md`             | What to do if you delete and recreate the `nextGPU` account                |
-| `PlayNiteWatcher/docs/Playnite-EndToEnd.md` | Full detail on the PlayNite automation                                     |
+| `playnitewatcher/end-to-end.md` | Full detail on the PlayNite automation                                     |
 
 
 ### If you ever need to undo everything

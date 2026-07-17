@@ -65,6 +65,16 @@
                     <TextBlock Text="VENDOR ID (OPTIONAL)" Style="{StaticResource LabelCaptionText}"/>
                     <TextBox x:Name="VendorIdBox" Margin="0,0,0,14"/>
 
+                    <TextBlock Text="NEXTGPU-ADMIN PASSWORD" Style="{StaticResource LabelCaptionText}"/>
+                    <Grid Margin="0,0,0,4">
+                        <PasswordBox x:Name="AdminPasswordBox"/>
+                        <TextBlock x:Name="AdminPasswordPlaceholder" Text="Enter password for NextGPU-Admin"
+                                   Foreground="{StaticResource MutedBrush}" FontSize="13"
+                                   Margin="14,10,14,0" IsHitTestVisible="False" VerticalAlignment="Top"/>
+                    </Grid>
+                    <TextBlock Text="Required for RunAsTool and session management. Stored securely with DPAPI."
+                               Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,14"/>
+
                     <TextBlock Text="ADMIN ACCOUNT TO RENAME" Style="{StaticResource LabelCaptionText}"/>
                     <TextBox x:Name="AdminAccountBox" Margin="0,0,0,4"/>
                     <TextBlock Text="Renamed to NextGPU-Authority during setup."

@@ -18,6 +18,10 @@ logs/register-machine-vars.cmd
 scripts/maintenance/GarenaInstall.path
 scripts/maintenance/Garena-Apps.paths.json
 
+# Playnite library databases (regenerated per-machine by Setup)
+library/
+PlayNiteWatcher/library/
+
 # Local IDE / scratch (not repo config)
 .vscode/
 config.json

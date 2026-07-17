@@ -111,7 +111,7 @@ On first setup or update after upgrading this repo:
 | C4 | SyncOnly wrong row | `syncType` + `-OutsideAllowlist` |
 | C7 | Sunshine export skip for `.lnk` paths | `Get-ExportableDesktopPlayniteGames` binding match |
 
-Full matrix: [`docs/Playnite-EndToEnd.md`](../docs/Playnite-EndToEnd.md#bypass-vs-steam-conflict-matrix).
+Full matrix: [end-to-end.md](end-to-end.md#bypass-vs-steam-conflict-matrix).
 
 ## Testing
 

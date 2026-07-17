@@ -6,10 +6,60 @@
 
 $script:BypassSyncListFileName = 'bypass-sync-list.json'
 $script:BypassSyncListTemplateFileName = 'bypass-sync-list.json.template'
+$script:BypassSeedCopySelectionFileName = 'bypass-seed-copy-selection.json'
 
 function Get-BypassSyncListPath {
     param([string]$RepoRoot)
     return Join-Path $RepoRoot "config\playnite\$($script:BypassSyncListFileName)"
+}
+
+function Get-BypassSeedCopySelectionPath {
+    param([string]$RepoRoot)
+    return Join-Path $RepoRoot "config\playnite\$($script:BypassSeedCopySelectionFileName)"
+}
+
+function Get-BypassSeedCopySelection {
+    param([string]$RepoRoot)
+
+    $path = Get-BypassSeedCopySelectionPath -RepoRoot $RepoRoot
+    if (-not (Test-Path -LiteralPath $path)) {
+        return $null
+    }
+
+    try {
+        $doc = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+
+    $names = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($item in @($doc.shortcuts)) {
+        if (-not $item) { continue }
+        $leaf = $item.ToString().Trim()
+        if (-not $leaf) { continue }
+        if (-not $leaf.EndsWith('.lnk', [StringComparison]::OrdinalIgnoreCase)) {
+            $leaf = "$leaf.lnk"
+        }
+        $leaf = [System.IO.Path]::GetFileName($leaf)
+        if ($leaf) { [void]$names.Add($leaf) }
+    }
+
+    if ($names.Count -eq 0) { return $null }
+    return $names
+}
+
+function Resolve-BypassSeedCopyLnkNames {
+    param(
+        [string]$RepoRoot,
+        [Parameter(Mandatory)]
+        [object[]]$Entries
+    )
+
+    $selection = Get-BypassSeedCopySelection -RepoRoot $RepoRoot
+    if ($selection -and $selection.Count -gt 0) {
+        return $selection
+    }
+    return Get-BypassSyncListSeedShortcutLnkNames -Entries $Entries
 }
 
 function Ensure-BypassSyncListFile {
@@ -167,6 +217,17 @@ function Test-BypassSyncListEntryValid {
 
 function Normalize-BypassSyncListEntry {
     param($Entry)
+
+    # Auto-correct: strip gameId when both are present (prefer nameId for manual entries)
+    if ($Entry.gameId -and $Entry.nameId) {
+        $Entry = [PSCustomObject]@{
+            title        = $Entry.title
+            gameId       = ''
+            nameId       = $Entry.nameId
+            shortcutName = $Entry.shortcutName
+            launches     = $Entry.launches
+        }
+    }
 
     Test-BypassSyncListEntryValid -Entry $Entry | Out-Null
     $key = Get-BypassSyncListEntryKey -Entry $Entry
@@ -543,6 +604,43 @@ function Invoke-PlayniteBypassSyncFromSyncList {
     return $stats
 }
 
+function Get-BypassSyncListSeedShortcutLnkNames {
+    param(
+        [Parameter(Mandatory)]
+        [object[]]$Entries
+    )
+
+    $names = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($entry in @($Entries)) {
+        if ($entry.shortcutName) {
+            $sn = $entry.shortcutName.ToString().Trim()
+            if ($sn) { [void]$names.Add("$sn.lnk") }
+        }
+        foreach ($launch in @($entry.launches)) {
+            if (-not $launch -or -not $launch.path) { continue }
+            $p = $launch.path.ToString().Trim()
+            if (-not $p.EndsWith('.lnk', [StringComparison]::OrdinalIgnoreCase)) { continue }
+            $leaf = [System.IO.Path]::GetFileName($p)
+            if ($leaf) { [void]$names.Add($leaf) }
+        }
+    }
+    return $names
+}
+
+function Get-BypassSyncListSeedShortcutBaseNames {
+    param(
+        [Parameter(Mandatory)]
+        [object[]]$Entries
+    )
+
+    $bases = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($lnk in (Get-BypassSyncListSeedShortcutLnkNames -Entries $Entries)) {
+        $base = [System.IO.Path]::GetFileNameWithoutExtension($lnk)
+        if ($base) { [void]$bases.Add($base) }
+    }
+    return $bases
+}
+
 function Copy-BypassGameShortcutsForSyncList {
     param(
         [Parameter(Mandatory)]
@@ -568,10 +666,14 @@ function Copy-BypassGameShortcutsForSyncList {
         New-Item -ItemType Directory -Path $BypassesPath -Force | Out-Null
     }
 
+    $namesToCopy = Resolve-BypassSeedCopyLnkNames -RepoRoot $RepoRoot -Entries $entries
+    if ($namesToCopy.Count -eq 0) {
+        throw 'No seed shortcuts selected for copy. Check boxes on the Bypass Setup tab (or remove an empty bypass-seed-copy-selection.json).'
+    }
+
     $copied = 0
     $skipped = 0
-    foreach ($entry in $entries) {
-        $name = "$($entry.shortcutName).lnk"
+    foreach ($name in $namesToCopy) {
         $source = Join-Path $ShortcutsSeedPath $name
         $dest = Join-Path $BypassesPath $name
         if (-not (Test-Path -LiteralPath $source)) {
@@ -585,9 +687,22 @@ function Copy-BypassGameShortcutsForSyncList {
     }
 
     return [PSCustomObject]@{
-        Copied  = $copied
-        Skipped = $skipped
+        Copied      = $copied
+        Skipped     = $skipped
+        CopiedNames = @($namesToCopy)
     }
+}
+
+function Test-RunAsToolRntItemMatchesSeedShortcuts {
+    param(
+        [hashtable]$Item,
+        [System.Collections.Generic.HashSet[string]]$SeedBaseNames
+    )
+
+    if (-not $SeedBaseNames -or $SeedBaseNames.Count -eq 0) { return $false }
+    $fileName = if ($Item.FileName) { $Item.FileName.ToString().Trim() } else { "" }
+    if (-not $fileName) { return $false }
+    return $SeedBaseNames.Contains($fileName)
 }
 
 function Test-RunAsToolRntItemMatchesSyncEntry {
@@ -596,22 +711,22 @@ function Test-RunAsToolRntItemMatchesSyncEntry {
         [object]$Entry
     )
 
+    # Prefer seed-shortcut alignment (same names Setup copies into Game Shortcuts).
+    $seedBases = Get-BypassSyncListSeedShortcutBaseNames -Entries @($Entry)
+    if (Test-RunAsToolRntItemMatchesSeedShortcuts -Item $Item -SeedBaseNames $seedBases) {
+        return $true
+    }
+
     $fileName = if ($Item.FileName) { $Item.FileName.ToString().Trim() } else { "" }
     $filePath = if ($Item.FilePath) { $Item.FilePath.ToString().Trim() } else { "" }
     $exeLeaf = if ($filePath) { [System.IO.Path]::GetFileName($filePath) } else { "" }
-    $title = if ($Entry.title) { $Entry.title.ToString().Trim() } else { "" }
-    $shortcutName = if ($Entry.shortcutName) { $Entry.shortcutName.ToString().Trim() } else { "" }
     $appExe = Get-BypassSyncListAppExe -Entry $Entry
 
-    if ($title -and $fileName -ieq $title) { return $true }
-    if ($shortcutName -and $fileName -ieq $shortcutName) { return $true }
-    if ($title -and $exeLeaf -and $appExe -and $exeLeaf -ieq $appExe) { return $true }
     if ($appExe -and $exeLeaf -ieq $appExe) { return $true }
     foreach ($launch in @($Entry.launches)) {
         if (-not $launch -or -not $launch.path) { continue }
         $launchLeaf = [System.IO.Path]::GetFileName($launch.path.ToString())
         if ($launchLeaf -and $exeLeaf -ieq $launchLeaf) { return $true }
-        if ($launchLeaf -and $fileName -ieq $launchLeaf) { return $true }
     }
     return $false
 }
@@ -644,7 +759,8 @@ function New-FilteredRunAsToolRnt {
         [string]$RntPath,
         [Parameter(Mandatory)]
         [object[]]$SyncListEntries,
-        [string]$OutputPath = ""
+        [string]$OutputPath = "",
+        [System.Collections.Generic.HashSet[string]]$SeedBaseNames = $null
     )
 
     if (-not (Test-Path -LiteralPath $RntPath)) {
@@ -655,22 +771,23 @@ function New-FilteredRunAsToolRnt {
         $OutputPath = Join-Path ([System.IO.Path]::GetTempPath()) ("RunAsTool-filtered-{0}.rnt" -f ([guid]::NewGuid().ToString('N')))
     }
 
+    $seedBases = $SeedBaseNames
+    if (-not $seedBases -or $seedBases.Count -eq 0) {
+        $seedBases = Get-BypassSyncListSeedShortcutBaseNames -Entries $SyncListEntries
+    }
     $allItems = Parse-RunAsToolRntItems -RntPath $RntPath
     $selected = New-Object System.Collections.Generic.List[hashtable]
     foreach ($item in $allItems) {
-        foreach ($entry in @($SyncListEntries)) {
-            if (Test-RunAsToolRntItemMatchesSyncEntry -Item $item -Entry $entry) {
-                [void]$selected.Add($item)
-                break
-            }
+        if (Test-RunAsToolRntItemMatchesSeedShortcuts -Item $item -SeedBaseNames $seedBases) {
+            [void]$selected.Add($item)
         }
     }
 
     if ($selected.Count -eq 0) {
-        throw 'No RunAsTool RNT items matched the bypass sync list.'
+        throw 'No RunAsTool RNT items matched the selected seed shortcuts. Adjust Setup checkboxes or sync-list entries.'
     }
 
-    $header = "; Filtered by bypass sync list - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+    $header = "; Filtered by selected seed shortcuts - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
     $body = New-Object System.Collections.Generic.List[string]
     [void]$body.Add($header)
     foreach ($item in $selected) {

@@ -2,7 +2,7 @@
 
 Complete end-to-end guide for provisioning a Windows GPU rental host. This document mirrors the **Get Started** flow in the **NextGPU Controller** desktop app and expands each step with prerequisites, commands, verification, and troubleshooting.
 
-Use this guide when setting up a fresh machine or re-provisioning an existing host. For a shorter orientation, see `[started.md](started.md)`. For RegisterMachine internals (phases, services, APIs), see `[README.md](README.md)`.
+Use this guide when setting up a fresh machine or re-provisioning an existing host. For a shorter orientation, see `[started.md](started.md)`. For RegisterMachine internals (phases, services, APIs), see `[register-machine.md](register-machine.md)`.
 
 ---
 
@@ -471,7 +471,7 @@ Then re-export from the **PlayNite** tab or run Sunshine stack update with `-Ref
 - PlayNiteWatcher installed (verify on PlayNite tab)
 - AWS `updateNewGame` API reports success in `Setup-PlayniteSteam.log` (auto on `-WithSunshine`)
 
-Full PlayNite details: `[PlayNiteWatcher/docs/Playnite-EndToEnd.md](../PlayNiteWatcher/docs/Playnite-EndToEnd.md)`.
+Full PlayNite details: `[playnitewatcher/end-to-end.md](playnitewatcher/end-to-end.md)`.
 
 ---
 
@@ -762,9 +762,9 @@ Steps **05** and **06** both require **04**; they can run in either order. **07*
 | Document                                                                                       | Contents                               |
 | ---------------------------------------------------------------------------------------------- | -------------------------------------- |
 | `[started.md](started.md)`                                                                     | Fast orientation                       |
-| `[README.md](README.md)`                                                                       | RegisterMachine phases, services, APIs |
+| `[register-machine.md](register-machine.md)`                                                                       | RegisterMachine phases, services, APIs |
 | `[user-storage-recreate-flow.md](user-storage-recreate-flow.md)`                               | U: mount after nextGPU user recreate   |
-| `[../PlayNiteWatcher/docs/Playnite-EndToEnd.md](../PlayNiteWatcher/docs/Playnite-EndToEnd.md)` | PlayNite automation details            |
-| `[../apps/NextGPU/README.md](../apps/NextGPU/README.md)`                                       | NextGPU Controller build and deploy    |
+| `[playnitewatcher/end-to-end.md](playnitewatcher/end-to-end.md)` | PlayNite automation details            |
+| `[nextgpu-app/README.md](nextgpu-app/README.md)`                                       | NextGPU Controller build and deploy    |
 
 

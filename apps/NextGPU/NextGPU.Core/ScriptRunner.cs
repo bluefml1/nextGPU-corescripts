@@ -137,10 +137,15 @@ public sealed class ScriptRunner
                 psi.Verb = "runas";
                 psi.UseShellExecute = true;
             }
+            else if (keepConsoleOpen)
+            {
+                // Shell execute opens a real console from the WPF host; UseShellExecute=false often yields an empty window.
+                psi.UseShellExecute = true;
+            }
             else
             {
                 psi.UseShellExecute = false;
-                psi.CreateNoWindow = !keepConsoleOpen;
+                psi.CreateNoWindow = true;
             }
 
             var p = Process.Start(psi);
@@ -150,7 +155,9 @@ public sealed class ScriptRunner
                 p.WaitForExit(600_000);
             _audit.Write($"Started: {fileName}");
             var hint = keepConsoleOpen ? " Console stays open (/k or -NoExit); close it when finished." : "";
-            return (true, elevated ? $"Launched elevated window.{hint}" : $"Finished with exit {p.ExitCode}.{hint}");
+            if (elevated || keepConsoleOpen)
+                return (true, elevated ? $"Launched elevated window.{hint}" : $"Launched console window.{hint}");
+            return (true, $"Finished with exit {p.ExitCode}.{hint}");
         }
         catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {

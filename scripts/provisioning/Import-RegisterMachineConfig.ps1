@@ -46,6 +46,10 @@ $computerName = [string]$config.computerName
 $price = [string]$config.price
 $vendorId = if ($null -ne $config.vendorId) { [string]$config.vendorId } else { '' }
 $adminAccount = [string]$config.adminAccountName
+$adminPasswordEncrypted = if ($null -ne $config.adminPasswordEncrypted) { [string]$config.adminPasswordEncrypted } else { '' }
+
+Write-Host "[DEBUG] adminPasswordEncrypted length: $($adminPasswordEncrypted.Length)"
+Write-Host "[DEBUG] adminPasswordEncrypted prefix: $($adminPasswordEncrypted.Substring(0, [Math]::Min(20, $adminPasswordEncrypted.Length)))..."
 
 $required = @{
     cfApiToken       = $cfToken
@@ -59,6 +63,33 @@ foreach ($key in $required.Keys) {
     if ([string]::IsNullOrWhiteSpace($required[$key])) {
         Write-Error "Missing required field: $key"
         exit 1
+    }
+}
+
+# Store admin password securely using DPAPI
+if (-not [string]::IsNullOrWhiteSpace($adminPasswordEncrypted)) {
+    try {
+        $storeScript = Join-Path $PSScriptRoot "Store-NextGpuAdminCredential.ps1"
+        if (Test-Path -LiteralPath $storeScript) {
+            Write-Host "[INFO] Storing NextGPU-Admin password securely..."
+            $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+                '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                '-File', $storeScript,
+                '-EncryptedPassword', $adminPasswordEncrypted
+            ) -Wait -PassThru -NoNewWindow
+            if ($proc.ExitCode -eq 0) {
+                Write-Host "[OK] Admin password stored securely."
+            }
+            else {
+                Write-Warning "Failed to store admin password (exit code: $($proc.ExitCode))."
+            }
+        }
+        else {
+            Write-Warning "Store-NextGpuAdminCredential.ps1 not found at $storeScript"
+        }
+    }
+    catch {
+        Write-Warning "Failed to store admin password: $($_.Exception.Message)"
     }
 }
 

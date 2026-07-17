@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using NextGPU.Core;
@@ -16,6 +18,7 @@ public partial class RegisterMachineDialog : Window
         WirePasswordPlaceholder(CfTokenBox, CfTokenPlaceholder);
         WirePasswordPlaceholder(ApiKeyBox, ApiKeyPlaceholder);
         WireTextPlaceholder(PriceBox, PricePlaceholder);
+        WirePasswordPlaceholder(AdminPasswordBox, AdminPasswordPlaceholder);
     }
 
     private static void WirePasswordPlaceholder(PasswordBox box, TextBlock placeholder)
@@ -65,6 +68,7 @@ public partial class RegisterMachineDialog : Window
         var priceText = PriceBox.Text.Trim();
         var adminAccount = AdminAccountBox.Text.Trim();
         var vendorId = VendorIdBox.Text.Trim();
+        var adminPassword = AdminPasswordBox.Password;
 
         if (string.IsNullOrWhiteSpace(cfToken))
         {
@@ -102,6 +106,16 @@ public partial class RegisterMachineDialog : Window
             ShowError("Admin account username is required.");
             return;
         }
+        if (string.IsNullOrWhiteSpace(adminPassword))
+        {
+            ShowError("NextGPU-Admin password is required.");
+            return;
+        }
+        if (adminPassword.Length < 12)
+        {
+            ShowError("Password must be at least 12 characters.");
+            return;
+        }
 
         var enableVdd = VddCombo.SelectedItem is ComboBoxItem item
             && string.Equals(item.Content?.ToString(), "Yes", StringComparison.OrdinalIgnoreCase);
@@ -115,9 +129,17 @@ public partial class RegisterMachineDialog : Window
             ComputerName = computerName,
             Price = priceText,
             VendorId = string.IsNullOrWhiteSpace(vendorId) ? null : vendorId,
-            AdminAccountName = adminAccount
+            AdminAccountName = adminAccount,
+            AdminPasswordEncrypted = EncryptWithDpapi(adminPassword)
         };
         DialogResult = true;
+    }
+
+    private static string EncryptWithDpapi(string plainText)
+    {
+        var bytes = Encoding.UTF8.GetBytes(plainText);
+        var protectedBytes = ProtectedData.Protect(bytes, null, DataProtectionScope.CurrentUser);
+        return Convert.ToBase64String(protectedBytes);
     }
 
     private void ShowError(string message)

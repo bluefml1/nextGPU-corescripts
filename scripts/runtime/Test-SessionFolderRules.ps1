@@ -105,6 +105,80 @@ try {
     Assert-True ($phaseStats.Skipped -ge 1) 'Logon skips verified rule'
     Assert-True ($phaseStats.Failed -eq 0) 'Logon has no failures'
 
+    # Missing replace source creates session-templates parent, then fails clearly for non-Garena
+    $missingSource = Join-Path (Get-NextGpuSessionTemplateRoot) 'missing-template'
+    $missingTarget = Join-Path $tempRoot 'missing-runtime'
+    New-Item -ItemType Directory -Path $missingTarget -Force | Out-Null
+    if (Test-Path -LiteralPath (Get-NextGpuSessionTemplateRoot)) {
+        Remove-Item -LiteralPath (Get-NextGpuSessionTemplateRoot) -Recurse -Force
+    }
+    $missingRule = Normalize-SessionFolderRule -Entry ([PSCustomObject]@{
+            id     = 'missing-template'
+            title  = 'Missing'
+            action = 'replace'
+            target = $missingTarget
+            source = $missingSource
+        })
+    $missingResult = Invoke-SessionFolderRule -Rule $missingRule -Phase 'Logoff'
+    Assert-True (-not $missingResult.Success) 'Missing non-Garena source fails'
+    Assert-True (Test-Path -LiteralPath (Get-NextGpuSessionTemplateRoot)) 'session-templates recreated on missing source'
+    Assert-True ($missingResult.Error -match 'Replace source not found') 'Missing source error message'
+
+    # Garena auto-seed when replace source missing (Config\Garena -> session-templates\Garena)
+    $fakeBundle = Join-Path $tempRoot 'GarenaBundle'
+    $fakeConfigGarena = Join-Path $fakeBundle 'Config\Garena'
+    $fakeGxx = Join-Path $fakeConfigGarena 'gxx'
+    New-Item -ItemType Directory -Path (Join-Path $fakeGxx 'config') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $fakeGxx 'config\gxx.dat') -Value 'golden-gxx'
+    $fakeClient = Join-Path $fakeBundle 'Garena'
+    New-Item -ItemType Directory -Path $fakeClient -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $fakeClient 'Garena.exe') -Value 'fake'
+    $maintDir = Join-Path (Split-Path $scriptRoot -Parent) 'maintenance'
+    $garenaClientPath = Join-Path $maintDir 'Install-GarenaClient.ps1'
+    Assert-True (Test-Path -LiteralPath $garenaClientPath) 'Install-GarenaClient.ps1 present'
+    . $garenaClientPath
+    $pathFile = Get-GarenaInstallPathFile
+    $origGarenaPath = $null
+    if (Test-Path -LiteralPath $pathFile) {
+        $origGarenaPath = Get-Content -LiteralPath $pathFile -Raw
+    }
+    try {
+        Set-Content -LiteralPath $pathFile -Value $fakeBundle -Encoding UTF8 -NoNewline
+        $garenaSource = Join-Path (Get-NextGpuSessionTemplateRoot) 'Garena'
+        if (Test-Path -LiteralPath $garenaSource) {
+            Remove-Item -LiteralPath $garenaSource -Recurse -Force
+        }
+        $garenaTarget = Join-Path $tempRoot 'garena-runtime'
+        New-Item -ItemType Directory -Path $garenaTarget -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $garenaTarget 'dirty.txt') -Value 'dirty'
+        $garenaRule = Normalize-SessionFolderRule -Entry ([PSCustomObject]@{
+                id     = 'Garena'
+                title  = 'Garena reset'
+                action = 'replace'
+                target = $garenaTarget
+                source = $garenaSource
+            })
+        $garenaResult = Invoke-SessionFolderRule -Rule $garenaRule -Phase 'Logoff'
+        Assert-True $garenaResult.Success 'Garena auto-seed replace success'
+        Assert-True (Test-Path -LiteralPath (Join-Path $garenaSource 'gxx\config\gxx.dat')) 'Garena template seeded from Config'
+        Assert-True (Test-Path -LiteralPath (Join-Path $garenaTarget 'gxx\config\gxx.dat')) 'Garena target replaced from template'
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path $garenaTarget 'dirty.txt'))) 'Dirty file removed by replace'
+
+        $rulesAfterSeed = @(Get-SessionFolderRules)
+        $garenaRuleSaved = $rulesAfterSeed | Where-Object { $_.id -ieq 'Garena' } | Select-Object -First 1
+        Assert-True ($null -ne $garenaRuleSaved) 'Dynamic Garena rule upserted'
+        Assert-True ($garenaRuleSaved.source -like '*\session-templates\Garena') 'Dynamic rule source under session-templates'
+        Assert-True ($garenaRuleSaved.target -like '*\Garena') 'Dynamic rule target under ProgramData name'
+    }
+    finally {
+        if ($null -ne $origGarenaPath) {
+            Set-Content -LiteralPath $pathFile -Value $origGarenaPath -Encoding UTF8 -NoNewline
+        }
+        elseif (Test-Path -LiteralPath $pathFile) {
+            Remove-Item -LiteralPath $pathFile -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     # Merge CRUD
     $mergeScript = Join-Path $scriptRoot 'Merge-SessionFolderRules.ps1'
     $configPath = Ensure-SessionFolderRulesFile

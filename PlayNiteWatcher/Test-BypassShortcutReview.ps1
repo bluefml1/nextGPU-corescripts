@@ -248,7 +248,46 @@ finally {
     }
 }
 
-# Sync list: filtered RNT import subset
+# Sync list: primary + prelaunch .lnk both copied from seed
+$tempRepoPre = Join-Path $env:TEMP ("nextgpu-sync-pre-" + [guid]::NewGuid().ToString("N"))
+$seedDirPre = Join-Path $tempRepoPre "templates\bypass\Game Shortcuts"
+$destDirPre = Join-Path $tempRepoPre "host\Game Shortcuts"
+$configDirPre = Join-Path $tempRepoPre "config\playnite"
+New-Item -ItemType Directory -Path $seedDirPre -Force | Out-Null
+New-Item -ItemType Directory -Path $configDirPre -Force | Out-Null
+foreach ($name in @('Garena FC Online', 'Garena Platform', 'Extra')) {
+    Set-Content -LiteralPath (Join-Path $seedDirPre "$name.lnk") -Value '' -Encoding ASCII
+}
+Copy-Item -LiteralPath (Join-Path $scriptRoot "config\playnite\bypass-sync-list.json.template") `
+    -Destination (Join-Path $configDirPre "bypass-sync-list.json") -Force
+$syncDocPre = Get-Content -LiteralPath (Join-Path $configDirPre "bypass-sync-list.json") -Raw | ConvertFrom-Json
+$syncDocPre.apps = @(
+    [PSCustomObject]@{
+        title        = 'Garena FC Online'
+        nameId       = '10000304'
+        shortcutName = 'Garena FC Online'
+        launches     = @(
+            [PSCustomObject]@{ path = 'Z:\Game Shortcuts\Garena Platform.lnk'; delaySec = 2 }
+            [PSCustomObject]@{ path = 'Z:\Garena\Garena\Garena.exe'; delaySec = 1 }
+        )
+    }
+)
+$syncDocPre | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $configDirPre "bypass-sync-list.json") -Encoding UTF8
+try {
+    $copyPre = Copy-BypassGameShortcutsForSyncList -ShortcutsSeedPath $seedDirPre -BypassesPath $destDirPre -RepoRoot $tempRepoPre
+    if ($copyPre.Copied -ne 2) { throw "Expected primary+prelaunch 2 copied, got $($copyPre.Copied)" }
+    $destPreLnks = @(Get-ChildItem -LiteralPath $destDirPre -Filter '*.lnk' -File | Select-Object -ExpandProperty Name)
+    if ($destPreLnks.Count -ne 2) { throw "Expected 2 dest lnks (not Extra), got $($destPreLnks.Count)" }
+    if ($destPreLnks -notcontains 'Garena FC Online.lnk') { throw 'Missing Garena FC Online.lnk' }
+    if ($destPreLnks -notcontains 'Garena Platform.lnk') { throw 'Missing Garena Platform.lnk (prelaunch)' }
+}
+finally {
+    if (Test-Path -LiteralPath $tempRepoPre) {
+        Remove-Item -LiteralPath $tempRepoPre -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# Sync list: filtered RNT import subset (FileName must match seed shortcut base names)
 $tempRnt = Join-Path $env:TEMP ("nextgpu-rnt-" + [guid]::NewGuid().ToString("N") + ".rnt")
 @'
 [RunAsTool_Item]
@@ -266,6 +305,58 @@ $filtered = New-FilteredRunAsToolRnt -RntPath $tempRnt -SyncListEntries $entries
 if ($filtered.IncludedCount -ne 1) { throw "Filtered RNT expected 1 item, got $($filtered.IncludedCount)" }
 Remove-Item -LiteralPath $tempRnt -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $filtered.Path -Force -ErrorAction SilentlyContinue
+
+# Sync list: RNT import matches seed shortcuts (primary + prelaunch .lnk), not title-only extras
+$tempRnt2 = Join-Path $env:TEMP ("nextgpu-rnt2-" + [guid]::NewGuid().ToString("N") + ".rnt")
+@'
+[RunAsTool_Item]
+FileName=Garena FC Online
+FilePath=Z:\Garena\gxxapphelper.exe
+
+[RunAsTool_Item]
+FileName=Garena Platform
+FilePath=Z:\Garena\Garena.exe
+
+[RunAsTool_Item]
+FileName=Wuthering Waves
+FilePath=Z:\Steam\Wuthering Waves.exe
+
+[RunAsTool_Item]
+FileName=Steam
+FilePath=Z:\Steam\steam.exe
+
+[RunAsTool_Item]
+FileName=Other Game
+FilePath=Z:\Games\Other.exe
+'@ | Set-Content -LiteralPath $tempRnt2 -Encoding UTF8
+$entriesSeed = @(
+    [PSCustomObject]@{
+        title        = 'Wuthering Waves'
+        gameId       = '2807950'
+        shortcutName = 'Steam'
+        launches     = @()
+    },
+    [PSCustomObject]@{
+        title        = 'Garena FC Online'
+        nameId       = '10000304'
+        shortcutName = 'Garena FC Online'
+        launches     = @(
+            [PSCustomObject]@{ path = 'Z:\Game Shortcuts\Garena Platform.lnk'; delaySec = 2 }
+        )
+    }
+)
+$filteredSeed = New-FilteredRunAsToolRnt -RntPath $tempRnt2 -SyncListEntries $entriesSeed
+if ($filteredSeed.IncludedCount -ne 3) {
+    throw "Seed-aligned RNT expected 3 items (Steam, Garena FC Online, Garena Platform), got $($filteredSeed.IncludedCount)"
+}
+$filteredText = Get-Content -LiteralPath $filteredSeed.Path -Raw -Encoding UTF8
+if ($filteredText -notmatch 'FileName=Garena Platform') { throw 'Seed-aligned RNT missing Garena Platform' }
+if ($filteredText -notmatch 'FileName=Steam') { throw 'Seed-aligned RNT missing Steam' }
+if ($filteredText -notmatch 'FileName=Garena FC Online') { throw 'Seed-aligned RNT missing Garena FC Online' }
+if ($filteredText -match 'FileName=Wuthering Waves') { throw 'Seed-aligned RNT must not include title-only Wuthering Waves' }
+if ($filteredText -match 'FileName=Other Game') { throw 'Seed-aligned RNT must not include Other Game' }
+Remove-Item -LiteralPath $tempRnt2 -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $filteredSeed.Path -Force -ErrorAction SilentlyContinue
 
 # Sync list review rows ignore extra .lnk in folder
 $tempBypass = Join-Path $env:TEMP ("nextgpu-review-sync-" + [guid]::NewGuid().ToString("N"))
@@ -345,6 +436,24 @@ try {
     if ($ps1Text -notmatch [regex]::Escape($pre2)) { throw "Multi-launch .ps1 missing pre2" }
     if ($ps1Text -notmatch [regex]::Escape($pre3)) { throw "Multi-launch .ps1 missing pre3" }
     if ($ps1Text -notmatch [regex]::Escape($shortcutPath2)) { throw "Multi-launch .ps1 missing shortcut" }
+    if ($ps1Text -notmatch 'Start-Process -FilePath \$prePath -WindowStyle Hidden') {
+        throw "Multi-launch .ps1 must Start-Process .exe prelaunches directly"
+    }
+
+    $preLnk = Join-Path $tempBypass2 "Pre Launch.lnk"
+    Set-Content -LiteralPath $preLnk -Value '' -Encoding ASCII
+    $pathsLnk = New-BypassMultiLaunchScript `
+        -BypassesPath $tempBypass2 `
+        -DisplayName "Multi Lnk" `
+        -PreLaunches @([PSCustomObject]@{ path = $preLnk; delaySec = 2 }) `
+        -ShortcutLnkPath $shortcutPath2
+    $ps1Lnk = Get-Content -LiteralPath $pathsLnk.Ps1Path -Raw -Encoding UTF8
+    if ($ps1Lnk -notmatch [regex]::Escape($preLnk)) { throw "Multi-launch .ps1 missing prelaunch .lnk" }
+    if ($ps1Lnk -notmatch 'Sysnative') { throw "Multi-launch .ps1 must use Sysnative for prelaunch .lnk" }
+    if ($ps1Lnk -match 'Start-Process -FilePath \$prePath -WindowStyle Hidden') {
+        throw "Multi-launch .ps1 must not Start-Process .lnk prelaunches directly"
+    }
+    if ($ps1Lnk -notmatch "ArgumentList \('/c start") { throw "Multi-launch .ps1 must cmd-start prelaunch .lnk" }
 
     $emptyRow = [PSCustomObject]@{ PreLaunches = @(); SuggestedExe = "game.exe" }
     $appOnly = Resolve-BypassReviewedRowLauncher -Row $emptyRow -BypassesPath $tempBypass2 -DisplayName "Plain" -ShortcutLnkPath $shortcutPath2

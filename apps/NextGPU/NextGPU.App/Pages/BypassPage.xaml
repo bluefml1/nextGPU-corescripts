@@ -12,7 +12,7 @@
                                 ToolTip="RunAsTool bypass shortcuts for elevated launches" Margin="8,0,0,0" VerticalAlignment="Center"/>
                     </WrapPanel>
                     <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap"
-                               Text="Define bypass-sync-list.json first. Setup copies only listed shortcuts from the workspace seed and imports a filtered RunAsTool list."/>
+                               Text="Define bypass-sync-list.json for Playnite binding. On Setup, pick which available seed .lnk files to copy, then import a filtered RunAsTool list."/>
                 </StackPanel>
             </Border>
 
@@ -26,7 +26,36 @@
                             Margin="0,-1,0,0">
                         <StackPanel>
                             <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12"
-                                       Text="First-time setup: copy sync-list shortcuts from workspace seed and import filtered RunAsTool apps."/>
+                                       Text="First-time setup: choose which available seed .lnk files to copy into Game Shortcuts, then import a filtered RunAsTool list. Sync-list entries still drive Playnite launch-path binding."/>
+                            <WrapPanel Margin="0,0,0,6">
+                                <TextBlock Text="AVAILABLE SEED SHORTCUTS" Style="{StaticResource LabelCaptionText}" VerticalAlignment="Center"/>
+                                <Button Content="Refresh" Style="{StaticResource GhostButton}" Padding="10,6" Margin="12,0,0,0"
+                                        Click="RefreshSeedPreview_Click" ToolTip="Reload seed folder, sync-list roles, and saved selection"/>
+                            </WrapPanel>
+                            <TextBlock x:Name="SeedPreviewSummaryText" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" Margin="0,0,0,8"
+                                       Text="No shortcuts to seed yet."/>
+                            <WrapPanel x:Name="SeedPreviewActionsPanel" Margin="0,0,0,8"/>
+                            <DataGrid x:Name="SeedPreviewGrid" AutoGenerateColumns="False" IsReadOnly="False"
+                                      CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column"
+                                      CanUserSortColumns="False" CanUserReorderColumns="False"
+                                      GridLinesVisibility="Horizontal" MaxHeight="260" Margin="0,0,0,16">
+                                <DataGrid.Columns>
+                                    <DataGridTemplateColumn Header="" Width="40" IsReadOnly="True">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                          Checked="SeedSelection_Changed" Unchecked="SeedSelection_Changed"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Shortcut" Binding="{Binding Shortcut}" Width="*" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="Role" Binding="{Binding Role}" Width="90" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="For" Binding="{Binding ForTitle}" Width="*" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="Seed" Binding="{Binding SeedStatus}" Width="80" IsReadOnly="True"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <StackPanel x:Name="AdminSetupPanel" Margin="0,0,0,16"/>
                             <StackPanel x:Name="SetupPanel"/>
                         </StackPanel>
                     </Border>
@@ -40,7 +69,7 @@
                             Margin="0,-1,0,0">
                         <StackPanel>
                             <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12"
-                                       Text="Define bypass-sync-list.json first. Setup and sync only touch shortcuts named in the sync list."/>
+                                       Text="Define bypass-sync-list.json first. Setup copies primary and pre-launch .lnk names from the sync list; sync updates those Playnite launch paths."/>
                             <WrapPanel Margin="0,0,0,8">
                                 <TextBlock Text="BYPASS SYNC LIST" Style="{StaticResource LabelCaptionText}" VerticalAlignment="Center"/>
                                 <Button Content="?" Style="{StaticResource HelpIconButton}" Click="SyncListHelp_Click"

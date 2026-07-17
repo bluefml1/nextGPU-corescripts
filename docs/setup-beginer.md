@@ -424,4 +424,4 @@ Start the **Everything** search tool, let drives index, then re-run import from 
 | Full troubleshooting (all symptoms) | [machine-setup-beginer.md#if-something-goes-wrong](machine-setup-beginer.md#if-something-goes-wrong) |
 | Glossary | [machine-setup-beginer.md#glossary](machine-setup-beginer.md#glossary) |
 | Log file locations | [machine-setup-beginer.md#key-logs](machine-setup-beginer.md#key-logs) |
-| Technical reference | [README.md](README.md) |
+| Technical reference | [register-machine.md](register-machine.md) |

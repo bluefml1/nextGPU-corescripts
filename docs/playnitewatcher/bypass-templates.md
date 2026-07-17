@@ -12,7 +12,7 @@ Bundled assets for **Setup-PlayniteBypassAutomated.ps1** (NextGPU Bypass → Set
 
 ## Sync list scope
 
-The seed folder may contain many `.lnk` files for reference. **Setup does not bulk-copy the folder.** It copies `{shortcutName}.lnk` only for each row in [`config/playnite/bypass-sync-list.json`](../../config/playnite/bypass-sync-list.json). RunAsTool import uses a **filtered** subset of `RunAsTool.rnt` matched by sync-list `title`, `shortcutName`, or `launches[].path` exe leaf.
+The seed folder may contain many `.lnk` files for reference. **Setup does not bulk-copy the folder.** It copies `{shortcutName}.lnk` only for each row in [`PlayNiteWatcher/config/playnite/bypass-sync-list.json`](../../PlayNiteWatcher/config/playnite/bypass-sync-list.json). RunAsTool import uses a **filtered** subset of `RunAsTool.rnt` matched by sync-list `title`, `shortcutName`, or `launches[].path` exe leaf.
 
 Add or edit sync-list entries on the **Bypass → Sync** tab (or **PlayNite → Library → Add to Bypass Sync**) before running Setup Bypass.
 

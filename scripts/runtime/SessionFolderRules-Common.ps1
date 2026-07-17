@@ -75,6 +75,309 @@ function Ensure-NextGpuSessionFolders {
     }
 }
 
+function Get-MaintenanceScriptsDirForSessionRules {
+    $repo = Resolve-NextGpuRepoRootForSessionRules
+    if ($repo) {
+        $dir = Join-Path $repo 'scripts\maintenance'
+        if (Test-Path -LiteralPath $dir -PathType Container) { return $dir }
+    }
+    if ($PSScriptRoot) {
+        $dir = Join-Path (Split-Path $PSScriptRoot -Parent) 'maintenance'
+        if (Test-Path -LiteralPath $dir -PathType Container) { return $dir }
+    }
+    return $null
+}
+
+function Import-GarenaClientHelpersForSessionRules {
+    if (Get-Command Find-GarenaBundleRootOnDisk -ErrorAction SilentlyContinue) {
+        return $true
+    }
+    $maint = Get-MaintenanceScriptsDirForSessionRules
+    if (-not $maint) { return $false }
+    $garenaClient = Join-Path $maint 'Install-GarenaClient.ps1'
+    if (-not (Test-Path -LiteralPath $garenaClient)) { return $false }
+
+    if (-not (Get-Command Resolve-ManifestExtractPathString -ErrorAction SilentlyContinue)) {
+        function script:Resolve-ManifestExtractPathString {
+            param([AllowNull()]$Path)
+            if ($null -eq $Path) { return '' }
+            if ($Path -is [string]) { return $Path.Trim().Trim('"').TrimEnd('\') }
+            return ([string]$Path).Trim().Trim('"').TrimEnd('\')
+        }
+    }
+    if (-not (Get-Command ConvertTo-ObjectArray -ErrorAction SilentlyContinue)) {
+        function script:ConvertTo-ObjectArray {
+            param([AllowNull()]$InputObject)
+            if ($null -eq $InputObject) { return @() }
+            return @($InputObject)
+        }
+    }
+
+    . $garenaClient
+    return (Get-Command Find-GarenaBundleRootOnDisk -ErrorAction SilentlyContinue) -ne $null
+}
+
+function Write-SessionFolderRulesDocumentCore {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [object[]]$Rules
+    )
+    $payload = [PSCustomObject]@{
+        _comment = 'Logoff runs all rules. Logon re-runs rules with logonFallback when verification fails. Replace sources default under ProgramData\nextGPU\session-templates\{id}.'
+        rules    = @($Rules)
+    }
+    ($payload | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $Path -Encoding UTF8
+}
+
+function Upsert-SessionFolderReplaceRule {
+    param(
+        [Parameter(Mandatory)][string]$Id,
+        [Parameter(Mandatory)][string]$Title,
+        [Parameter(Mandatory)][string]$Target,
+        [Parameter(Mandatory)][string]$Source,
+        [string[]]$StopProcesses = @(),
+        [string[]]$Preserve = @(),
+        [bool]$LogonFallback = $true
+    )
+
+    $configPath = Ensure-SessionFolderRulesFile
+    $raw = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8
+    $doc = $null
+    try { $doc = $raw | ConvertFrom-Json } catch { $doc = $null }
+    if ($null -eq $doc) { $doc = [PSCustomObject]@{ rules = @() } }
+    if ($null -eq $doc.rules) {
+        $doc | Add-Member -NotePropertyName rules -NotePropertyValue @() -Force
+    }
+
+    $incoming = Normalize-SessionFolderRule -Entry ([PSCustomObject]@{
+            id            = $Id
+            title         = $Title
+            action        = 'replace'
+            target        = $Target
+            source        = $Source
+            preserve      = @($Preserve)
+            stopProcesses = @($StopProcesses)
+            logonFallback = $LogonFallback
+        })
+
+    $rules = [System.Collections.Generic.List[object]]::new()
+    $replaced = $false
+    foreach ($rule in @($doc.rules)) {
+        if ($null -eq $rule) { continue }
+        $norm = Normalize-SessionFolderRule -Entry $rule
+        if ($norm.id -ieq $incoming.id) {
+            [void]$rules.Add($incoming)
+            $replaced = $true
+        }
+        else {
+            [void]$rules.Add($norm)
+        }
+    }
+    if (-not $replaced) {
+        [void]$rules.Add($incoming)
+    }
+
+    Write-SessionFolderRulesDocumentCore -Path $configPath -Rules @($rules)
+    Write-SessionFolderRulesLog ("Upserted session rule '{0}' source={1} target={2}" -f $incoming.id, $incoming.source, $incoming.target)
+    return $incoming
+}
+
+function Get-GarenaSessionStopProcesses {
+    param([string]$BundleRoot)
+
+    $names = New-Object System.Collections.Generic.List[string]
+    [void]$names.Add('Garena.exe')
+
+    if ($BundleRoot) {
+        $clientDir = $null
+        if (Get-Command Get-GarenaClientSourcePath -ErrorAction SilentlyContinue) {
+            $clientDir = Get-GarenaClientSourcePath -BundleRoot $BundleRoot
+        }
+        if ($clientDir -and (Test-Path -LiteralPath $clientDir -PathType Container)) {
+            foreach ($exe in @(Get-ChildItem -LiteralPath $clientDir -Filter '*.exe' -File -ErrorAction SilentlyContinue)) {
+                if ($exe.Name -match '^(?i)gxxapphelper\.exe$') {
+                    if (-not ($names | Where-Object { $_ -ieq $exe.Name })) {
+                        [void]$names.Add($exe.Name)
+                    }
+                }
+            }
+            $helper = Get-ChildItem -LiteralPath $clientDir -Filter 'gxxapphelper.exe' -File -Recurse -Depth 3 -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if ($helper -and -not ($names | Where-Object { $_ -ieq $helper.Name })) {
+                [void]$names.Add($helper.Name)
+            }
+        }
+    }
+
+    if (-not ($names | Where-Object { $_ -ieq 'gxxapphelper.exe' })) {
+        [void]$names.Add('gxxapphelper.exe')
+    }
+    return @($names)
+}
+
+function Copy-SessionTemplateFolderContents {
+    param(
+        [Parameter(Mandatory)][string]$DestinationId,
+        [Parameter(Mandatory)][string]$SourcePath
+    )
+
+    if (-not (Test-Path -LiteralPath $SourcePath)) {
+        throw "Source path not found: $SourcePath"
+    }
+
+    Ensure-NextGpuSessionFolders | Out-Null
+    $dest = Join-Path (Get-NextGpuSessionTemplateRoot) $DestinationId
+    if (Test-Path -LiteralPath $dest) {
+        Remove-Item -LiteralPath $dest -Recurse -Force
+    }
+    $destParent = Split-Path -Parent $dest
+    if ($destParent -and -not (Test-Path -LiteralPath $destParent)) {
+        New-Item -ItemType Directory -Path $destParent -Force | Out-Null
+    }
+    Copy-Item -LiteralPath $SourcePath -Destination $dest -Recurse -Force
+    Write-SessionFolderRulesLog "Seeded template '$DestinationId' from $SourcePath -> $dest"
+    return $dest
+}
+
+function Seed-GarenaSessionTemplate {
+    if (-not (Import-GarenaClientHelpersForSessionRules)) {
+        throw 'Garena helper scripts not available (Install-GarenaClient.ps1).'
+    }
+
+    $bundleRoot = Find-GarenaBundleRootOnDisk
+    if (-not $bundleRoot) {
+        throw 'Garena bundle not found on disk. Run Sync / Setup Games & Apps first.'
+    }
+
+    $configFolder = Get-GarenaConfigFolderSourcePath -BundleRoot $bundleRoot
+    if (-not $configFolder -or -not (Test-Path -LiteralPath $configFolder -PathType Container)) {
+        throw "No Config\* folder with gxx found under: $(Join-Path $bundleRoot 'Config')"
+    }
+
+    # Safety: only seed the folder nested under Config\, never the client Garena folder outside Config.
+    if (-not (Test-GarenaPathIsUnderConfig -Path $configFolder -BundleRoot $bundleRoot)) {
+        throw "Refusing to seed path outside Config\: $configFolder"
+    }
+    $parentLeaf = Split-Path -Leaf (Split-Path -Parent $configFolder)
+    if ($parentLeaf -ine 'Config') {
+        throw "Expected a direct child of Config\, got: $configFolder"
+    }
+
+    $folderName = Split-Path -Leaf $configFolder
+    $dest = Copy-SessionTemplateFolderContents -DestinationId $folderName -SourcePath $configFolder
+
+    $programDataTarget = Join-Path $env:ProgramData $folderName
+    $null = Upsert-SessionFolderReplaceRule `
+        -Id $folderName `
+        -Title ("{0} reset" -f $folderName) `
+        -Target $programDataTarget `
+        -Source $dest `
+        -StopProcesses (Get-GarenaSessionStopProcesses -BundleRoot $bundleRoot)
+
+    Write-SessionFolderRulesLog "Seeded Config\$folderName only (client Garena outside Config was not moved)."
+    return $dest
+}
+
+# Back-compat alias for callers still using the old name.
+function Seed-GarenaGxxSessionTemplate {
+    return (Seed-GarenaSessionTemplate)
+}
+
+function Test-SessionTemplateSourceCoveredBySeed {
+    param(
+        [Parameter(Mandatory)][string]$Source,
+        [Parameter(Mandatory)][string]$SeededPath
+    )
+    if ([string]::IsNullOrWhiteSpace($Source) -or [string]::IsNullOrWhiteSpace($SeededPath)) { return $false }
+    if (-not (Test-Path -LiteralPath $SeededPath)) { return $false }
+    if ($Source -ieq $SeededPath) { return (Test-Path -LiteralPath $Source) }
+    if ($Source.StartsWith(($SeededPath.TrimEnd('\') + '\'), [System.StringComparison]::OrdinalIgnoreCase)) {
+        return (Test-Path -LiteralPath $Source)
+    }
+    return $false
+}
+
+function Ensure-SessionFolderReplaceSource {
+    param([Parameter(Mandatory)][object]$Rule)
+
+    Ensure-NextGpuSessionFolders | Out-Null
+
+    $source = [string]$Rule.source
+    if ([string]::IsNullOrWhiteSpace($source)) {
+        throw "Replace rule '$($Rule.id)' has empty source."
+    }
+
+    if (Test-Path -LiteralPath $source) {
+        return
+    }
+
+    Write-SessionFolderRulesLog "Replace source missing: $source" -Level WARN
+
+    $parent = Split-Path -Parent $source
+    if ($parent -and -not (Test-Path -LiteralPath $parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        Write-SessionFolderRulesLog "Created session template parent: $parent"
+    }
+
+    $templateRoot = Get-NextGpuSessionTemplateRoot
+    $underTemplates = $source.StartsWith($templateRoot, [System.StringComparison]::OrdinalIgnoreCase)
+    $sourceLeaf = Split-Path -Leaf $source
+
+    $shouldTryGarenaSeed = $false
+    if ($underTemplates -and (Import-GarenaClientHelpersForSessionRules)) {
+        try {
+            $bundleRoot = Find-GarenaBundleRootOnDisk
+            if ($bundleRoot) {
+                $configFolder = Get-GarenaConfigFolderSourcePath -BundleRoot $bundleRoot
+                if ($configFolder) {
+                    $configLeaf = Split-Path -Leaf $configFolder
+                    if ($sourceLeaf -ieq $configLeaf -or $sourceLeaf -ieq 'gxx' -or [string]$Rule.id -ieq $configLeaf) {
+                        $shouldTryGarenaSeed = $true
+                    }
+                }
+            }
+        }
+        catch { }
+    }
+
+    if ($shouldTryGarenaSeed) {
+        try {
+            $seeded = Seed-GarenaSessionTemplate
+            if (Test-SessionTemplateSourceCoveredBySeed -Source $source -SeededPath $seeded) {
+                Write-SessionFolderRulesLog "Auto-seeded session template -> $source"
+                return
+            }
+            if ($seeded -and (Test-Path -LiteralPath $seeded)) {
+                $seedLeaf = Split-Path -Leaf $seeded
+                if ($sourceLeaf -ieq $seedLeaf -or $sourceLeaf -ieq 'gxx') {
+                    if (Test-Path -LiteralPath $source) {
+                        Remove-Item -LiteralPath $source -Recurse -Force
+                    }
+                    $sourceParent = Split-Path -Parent $source
+                    if ($sourceParent -and -not (Test-Path -LiteralPath $sourceParent)) {
+                        New-Item -ItemType Directory -Path $sourceParent -Force | Out-Null
+                    }
+                    if ($sourceLeaf -ieq 'gxx' -and (Test-Path -LiteralPath (Join-Path $seeded 'gxx'))) {
+                        Copy-Item -LiteralPath (Join-Path $seeded 'gxx') -Destination $source -Recurse -Force
+                    }
+                    else {
+                        Copy-Item -LiteralPath $seeded -Destination $source -Recurse -Force
+                    }
+                    if (Test-Path -LiteralPath $source) {
+                        Write-SessionFolderRulesLog "Copied seeded Config folder to rule source -> $source"
+                        return
+                    }
+                }
+            }
+        }
+        catch {
+            throw ("Replace source not found: {0}. Auto-seed failed: {1}" -f $source, $_.Exception.Message)
+        }
+    }
+
+    throw "Replace source not found: $source. Seed the template under session-templates first."
+}
+
 function Write-SessionFolderRulesLog {
     param(
         [string]$Message,
@@ -85,7 +388,7 @@ function Write-SessionFolderRulesLog {
     $line = '[{0}] [{1}] {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level, $Message
     Add-Content -LiteralPath (Get-NextGpuSessionRulesLogPath) -Value $line -Encoding UTF8 -ErrorAction SilentlyContinue
     if ($Level -eq 'WARN') { Write-Warning $Message }
-    elseif ($Level -eq 'ERROR') { Write-Error $Message }
+    elseif ($Level -eq 'ERROR') { Write-Host $line -ForegroundColor Red }
     else { Write-Host $line }
 }
 
@@ -386,9 +689,7 @@ function Sync-SessionFolderReplace {
         [switch]$WhatIf
     )
 
-    if (-not (Test-Path -LiteralPath $Rule.source)) {
-        throw "Replace source not found: $($Rule.source)"
-    }
+    Ensure-SessionFolderReplaceSource -Rule $Rule
 
     if ($WhatIf) {
         Write-SessionFolderRulesLog "WhatIf replace: $($Rule.source) -> $($Rule.target)"
@@ -396,7 +697,7 @@ function Sync-SessionFolderReplace {
     }
 
     $tempPreserve = Join-Path $env:TEMP ("nextgpu-preserve-" + [guid]::NewGuid().ToString('N'))
-  $saved = @{}
+    $saved = @{}
     try {
         if ((Test-Path -LiteralPath $Rule.target) -and $Rule.preserve.Count -gt 0) {
             if (-not (Test-Path -LiteralPath $tempPreserve)) {

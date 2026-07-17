@@ -663,7 +663,7 @@ function Deploy-GarenaClient {
         [Parameter(Mandatory)][string]$LogPath,
         [bool]$UseGui = $true
     )
-    $dest = Join-Path $GarenaRoot 'Garena'
+    # Client lives outside Config\ (e.g. <bundle>\Garena\...). Never move it — only Config\<name> is seeded/deployed.
     $source = Resolve-ManifestExtractPathString -Path $SourceClientDir
     if (-not (Test-Path -LiteralPath $source -PathType Container)) {
         throw "Garena client source not found: $source"
@@ -671,33 +671,11 @@ function Deploy-GarenaClient {
     if (-not (Test-Path -LiteralPath (Join-Path $source 'Garena.exe') -PathType Leaf)) {
         throw "Garena.exe not found under: $source"
     }
-    try {
-        $sourceKey = [System.IO.Path]::GetFullPath($source).TrimEnd('\').ToUpperInvariant()
-        $destKey = [System.IO.Path]::GetFullPath($dest).TrimEnd('\').ToUpperInvariant()
+    if (Test-GarenaPathIsUnderConfig -Path $source -BundleRoot $GarenaRoot) {
+        throw "Refusing client path under Config\: $source (use the Garena folder outside Config)."
     }
-    catch {
-        $sourceKey = $source
-        $destKey = $dest
-    }
-    if ($sourceKey -eq $destKey) {
-        Write-ArrangeGarenaLog -LogPath $LogPath -Message "Client left at sync location: $source"
-        return $source
-    }
-    if (Test-Path -LiteralPath $dest) {
-        $msg = "Move Garena client from sync location:`n$source`n`nto:`n$dest`n`nContinue? (Leave at sync location if No.)"
-        if (-not (Confirm-GarenaDeploy -Message $msg -UseGui:$UseGui)) {
-            Write-ArrangeGarenaLog -LogPath $LogPath -Message "Client left at sync location: $source"
-            return $source
-        }
-        Remove-Item -LiteralPath $dest -Recurse -Force
-    }
-    $destParent = Split-Path -Parent $dest
-    if ($destParent -and -not (Test-Path -LiteralPath $destParent)) {
-        New-Item -ItemType Directory -Path $destParent -Force | Out-Null
-    }
-    Move-Item -LiteralPath $source -Destination $dest -Force
-    Write-ArrangeGarenaLog -LogPath $LogPath -Message "MOVE client -> $dest"
-    return $dest
+    Write-ArrangeGarenaLog -LogPath $LogPath -Message "Client left at sync location (not moved): $source"
+    return $source
 }
 
 function Start-GarenaClientAfterArrange {
@@ -749,11 +727,11 @@ function Invoke-ArrangeGarenaLayout {
 
     $gxxSource = Get-GarenaGxxSourcePath -BundleRoot $bundleRoot
     $clientSource = Get-GarenaClientSourcePath -BundleRoot $bundleRoot
-    if (-not (Test-Path -LiteralPath $gxxSource -PathType Container)) {
-        throw "Garena gxx source not found: $gxxSource"
+    if (-not $gxxSource -or -not (Test-Path -LiteralPath $gxxSource -PathType Container)) {
+        throw "Garena gxx source not found under Config for bundle: $bundleRoot"
     }
-    if (-not (Test-Path -LiteralPath (Join-Path $clientSource 'Garena.exe') -PathType Leaf)) {
-        throw "Garena.exe not found under: $clientSource"
+    if (-not $clientSource -or -not (Test-Path -LiteralPath (Join-Path $clientSource 'Garena.exe') -PathType Leaf)) {
+        throw "Garena.exe not found under bundle: $bundleRoot"
     }
 
     $templateRoot = [string]$appsConfig.templateInstallRoot
@@ -842,8 +820,8 @@ function Invoke-ArrangeGarenaLayout {
         -TemplateUserId $templateUserId `
         -LogPath $logPath `
         -UseGui:$UseGui
-    $clientDir = Deploy-GarenaClient -SourceClientDir $clientSource -GarenaRoot $garenaRoot -LogPath $logPath -UseGui:$UseGui
-    $clientRoot = Split-Path -Parent $clientDir
+    $clientDir = Deploy-GarenaClient -SourceClientDir $clientSource -GarenaRoot $bundleRoot -LogPath $logPath -UseGui:$UseGui
+    $clientRoot = $bundleRoot
 
     foreach ($check in @($layoutChecks)) {
         $null = Test-GarenaPostDeployInstallLayout `
@@ -858,13 +836,32 @@ function Invoke-ArrangeGarenaLayout {
         Save-GarenaAppsPathsMap -AppPaths $newAppPaths
     }
 
+    $seededTemplatePath = $null
+    try {
+        $sessionRulesCommon = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) 'runtime') 'SessionFolderRules-Common.ps1'
+        if (Test-Path -LiteralPath $sessionRulesCommon) {
+            . $sessionRulesCommon
+            $seededTemplatePath = Seed-GarenaSessionTemplate
+            Write-ArrangeGarenaLog -LogPath $logPath -Message "Seeded session template + rule: $seededTemplatePath"
+        }
+        else {
+            Write-ArrangeGarenaWarn -LogPath $logPath -Message "SessionFolderRules-Common.ps1 not found; skip session-templates seed."
+        }
+    }
+    catch {
+        Write-ArrangeGarenaWarn -LogPath $logPath -Message ("Could not seed session-templates from Config: {0}" -f $_.Exception.Message)
+    }
+
     $null = Start-GarenaClientAfterArrange -ClientDir $clientDir -LogPath $logPath
 
     Write-ArrangeGarenaLog -LogPath $logPath -Message '=== Arrange Garena layout finished ==='
     Write-Host ''
     Write-Host '[OK] Garena arranged and launched.' -ForegroundColor Green
     Write-Host "  Client: $(Join-Path $clientDir 'Garena.exe')" -ForegroundColor DarkGray
-    Write-Host "  gxx:    $(Get-GarenaProgramDataGxxPath)" -ForegroundColor DarkGray
+    Write-Host "  gxx:    $(Get-GarenaProgramDataGxxPath -BundleRoot $garenaRoot)" -ForegroundColor DarkGray
+    if ($seededTemplatePath) {
+        Write-Host "  template: $seededTemplatePath" -ForegroundColor DarkGray
+    }
     Write-Host '  Sync FC Online in Garena after login.' -ForegroundColor DarkGray
 
     if ($UseGui) {

@@ -1059,6 +1059,33 @@ function Invoke-SetupDesktopAppImport {
             $result.RootsScanned, $result.Added, $result.Updated)
 }
 
+function Invoke-RegisterPlayniteLogonTask {
+    param([string]$PlayniteInstallDirParam = '')
+
+    if (-not (Test-IsAdministrator)) {
+        Write-SetupLog "Skipped Playnite logon task registration (requires elevated setup)." "WARN"
+        return
+    }
+
+    $registerScript = Join-Path $script:PlayNiteWatcherRepoRoot 'Register-PlayniteLogonTask.ps1'
+    if (-not (Test-Path -LiteralPath $registerScript)) {
+        Write-SetupLog "Register-PlayniteLogonTask.ps1 not found: $registerScript" "WARN"
+        return
+    }
+
+    try {
+        $regParams = @{}
+        if (-not [string]::IsNullOrWhiteSpace($PlayniteInstallDirParam)) {
+            $regParams.PlayniteInstallDir = $PlayniteInstallDirParam
+        }
+        & $registerScript @regParams
+        Write-SetupLog "Registered nextGPU-PlayniteLogon (Playnite starts at user logon)."
+    }
+    catch {
+        Write-SetupLog "Playnite logon task registration failed: $($_.Exception.Message)" "WARN"
+    }
+}
+
 function Show-DiskScanNextSteps {
     param(
         [string]$PlayniteExe,
@@ -1068,6 +1095,7 @@ function Show-DiskScanNextSteps {
     $text = @"
 === Setup complete (Playnite) ===
 Playnite path: $PlayniteExe
+Logon task: nextGPU-PlayniteLogon (Playnite DesktopApp at user logon)
 Re-scan after new installs: .\Update-PlayniteLibraries.ps1
 Optional online library sync: Add-ons - Extension settings - Libraries - Steam/Epic - Log in
 "@
@@ -1121,7 +1149,7 @@ try {
         if ($script:RunSunshinePipeline) { $script:SetupStepTotal++ }
         if ($script:RunAwsPush) { $script:SetupStepTotal++ }
         if ($LaunchPlaynite) { $script:SetupStepTotal++ }
-        $script:SetupStepTotal++
+        $script:SetupStepTotal++ # Register Playnite logon task
         $step = 1
 
         Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Resolve Playnite portable install folder"
@@ -1217,6 +1245,10 @@ try {
             Invoke-PushMoonlightGamesToAws | Out-Null
         }
 
+        Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Register Playnite logon task"
+        $step++
+        Invoke-RegisterPlayniteLogonTask -PlayniteInstallDirParam $playniteDir
+
         Stop-PlayniteProcess -PlayniteExe $playniteExe
         Write-SetupLog "Ensured Playnite is closed so games.db is not locked (only one instance may use the library)."
 
@@ -1241,7 +1273,7 @@ try {
         if (-not $SkipSunshineExtension) { $script:SetupStepTotal++ }
         if ($script:RunSunshinePipeline) { $script:SetupStepTotal++ }
         if ($script:RunAwsPush) { $script:SetupStepTotal++ }
-        $script:SetupStepTotal++
+        $script:SetupStepTotal++ # Register Playnite logon task
         $step = 1
 
         Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Resolve Playnite portable install folder"
@@ -1362,6 +1394,10 @@ try {
             $step++
             Invoke-PushMoonlightGamesToAws | Out-Null
         }
+
+        Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Register Playnite logon task"
+        $step++
+        Invoke-RegisterPlayniteLogonTask -PlayniteInstallDirParam $playniteDir
 
         Stop-PlayniteProcess -PlayniteExe $playniteExe
         Write-SetupLog "Ensured Playnite is closed so games.db is not locked (only one instance may use the library)."

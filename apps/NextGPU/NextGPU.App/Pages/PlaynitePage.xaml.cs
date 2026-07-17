@@ -76,16 +76,19 @@ public partial class PlaynitePage : Page
 
         ActionPageTools.AddPrimaryBatchButton(SetupPanel, "Run Full PlayNite Setup",
             @"PlayNiteWatcher\Setup-PlayniteSteam.bat", keepConsoleOpen: true,
-            helpText: "End-to-end first-time setup: installs portable Playnite, grants BUILTIN\\Users Modify on the Playnite folder (rental ACL), configures Steam/Epic disk scan, updates libraries, exports to Sunshine, installs PlayNiteWatcher, and pushes Moonlight games to AWS. Run elevated after RegisterMachine when Sunshine is present.");
+            helpText: "End-to-end first-time setup: installs portable Playnite, grants BUILTIN\\Users Modify on the Playnite folder (rental ACL), configures Steam/Epic disk scan, updates libraries, registers nextGPU-PlayniteLogon (starts Playnite at user logon), exports to Sunshine, installs PlayNiteWatcher, and pushes Moonlight games to AWS. Run elevated after RegisterMachine when Sunshine is present.");
         ActionPageTools.AddPowerShellButton(SetupPanel, "Grant Playnite Rental Access",
             @"PlayNiteWatcher\Grant-PlayniteRentalAccess.ps1", "", keepConsoleOpen: true,
             helpText: "Grants BUILTIN\\Users Modify on the portable Playnite install folder so the nextGPU rental user can write games.db and config. Run elevated after setup or when Verify shows P7 Rental write access failed.");
         ActionPageTools.AddPowerShellButton(SetupPanel, "Setup Playnite Only",
             @"PlayNiteWatcher\Setup-PlayniteSteam.ps1", "-PickInstallFolder", keepConsoleOpen: true,
-            helpText: "Installs or configures portable Playnite only (includes rental ACL grant). Prompts for install folder. Does not run the full Sunshine export + watcher pipeline.");
+            helpText: "Installs or configures portable Playnite only (includes rental ACL grant and nextGPU-PlayniteLogon registration). Prompts for install folder. Does not run the full Sunshine export + watcher pipeline.");
         ActionPageTools.AddPowerShellButton(SetupPanel, "Re-run Setup (Skip Install)",
             @"PlayNiteWatcher\Setup-PlayniteSteam.ps1", "-PickInstallFolder -WithSunshine -SkipInstall", keepConsoleOpen: true,
-            helpText: "Re-applies Playnite configuration, rental ACL, and Sunshine integration without re-downloading Playnite. Use when extensions, library config, games.db, or rental ACL need repair.");
+            helpText: "Re-applies Playnite configuration, rental ACL, logon task, and Sunshine integration without re-downloading Playnite. Use when extensions, library config, games.db, or rental ACL need repair.");
+        ActionPageTools.AddPowerShellButton(SetupPanel, "Register Playnite Logon Task",
+            @"PlayNiteWatcher\Register-PlayniteLogonTask.ps1", "", keepConsoleOpen: true,
+            helpText: "Registers nextGPU-PlayniteLogon so Playnite.DesktopApp starts at user logon (--startdesktop --hidesplashscreen). Required so Moonlight game launch can send --start to an already-running Playnite instance.");
         ActionPageTools.AddBatchButton(SetupPanel, "Update Libraries",
             @"PlayNiteWatcher\Update-PlayniteLibraries.bat", keepConsoleOpen: true,
             helpText: "Scans installed Steam and Epic games on disk and imports them into Playnite's games.db. Run after new games are installed or when library is empty.");
@@ -964,6 +967,9 @@ public partial class PlaynitePage : Page
                 break;
             case "GrantPlayniteRentalAccess":
                 App.Session.Scripts.RunPowerShellRelative(@"PlayNiteWatcher\Grant-PlayniteRentalAccess.ps1", "", elevated: true, keepConsoleOpen: true);
+                break;
+            case "RegisterPlayniteLogonTask":
+                App.Session.Scripts.RunPowerShellRelative(@"PlayNiteWatcher\Register-PlayniteLogonTask.ps1", "", elevated: true, keepConsoleOpen: true);
                 break;
             case "ImportDesktopApps":
                 App.Session.Scripts.RunBatchRelative(@"PlayNiteWatcher\Import-PlayniteDesktopApps.bat",

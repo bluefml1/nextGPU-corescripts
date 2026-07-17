@@ -1,6 +1,16 @@
 param(
-    [string]$Username = 'nextGPU'
+    [string]$Username = 'nextGPU',
+    [string]$AdminUsername = 'NextGPU-Admin'
 )
+
+# ── Load secure credential functions ──────────────────────────────
+$credScript = Join-Path $PSScriptRoot "scripts\provisioning\NextGPU-AdminCredential.ps1"
+if (Test-Path -LiteralPath $credScript) {
+    . $credScript
+}
+else {
+    Write-Warning "NextGPU-AdminCredential.ps1 not found at $credScript - password storage unavailable"
+}
 
 # ── Log setup ─────────────────────────────────────────────────
 $LogPath = Join-Path $PSScriptRoot "UserReset_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
@@ -54,6 +64,180 @@ function Get-NextGpuRepoRootForUpdate {
     }
 
     return $null
+}
+
+function Stop-NextGpuProcessesForUser {
+    param([string]$User)
+
+    $killed = 0
+    try {
+        $procs = @(Get-CimInstance -ClassName Win32_Process -ErrorAction SilentlyContinue)
+    }
+    catch {
+        Write-Log "WARN: Could not enumerate processes for '$User': $_"
+        return $killed
+    }
+
+    foreach ($proc in $procs) {
+        try {
+            $owner = Invoke-CimMethod -InputObject $proc -MethodName GetOwner -ErrorAction SilentlyContinue
+        }
+        catch {
+            continue
+        }
+        if ($owner -and $owner.ReturnValue -eq 0 -and $owner.User -eq $User) {
+            try {
+                Stop-Process -Id $proc.ProcessId -Force -ErrorAction Stop
+                Write-Log "Killed PID $($proc.ProcessId) ($($proc.Name)) owned by '$User'."
+                $killed++
+            }
+            catch {
+                Write-Log "WARN: Could not kill PID $($proc.ProcessId) ($($proc.Name)): $_"
+            }
+        }
+    }
+    return $killed
+}
+
+function Get-NextGpuProfileForUser {
+    param([string]$User)
+    return @(
+        Get-CimInstance -ClassName Win32_UserProfile -ErrorAction SilentlyContinue |
+            Where-Object { $_.LocalPath -and (($_.LocalPath -split '\\')[-1] -eq $User) }
+    )
+}
+
+function Remove-NextGpuUserProfileWithRetry {
+    param(
+        [string]$User,
+        [int]$MaxAttempts = 15,
+        [int]$DelaySeconds = 4
+    )
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        $profiles = Get-NextGpuProfileForUser -User $User
+        if ($profiles.Count -eq 0) {
+            return $true
+        }
+
+        foreach ($profileItem in $profiles) {
+            if ($profileItem.Loaded) {
+                Write-Log "Profile $($profileItem.LocalPath) still loaded (attempt $attempt/$MaxAttempts); re-killing '$User' processes."
+                [void](Stop-NextGpuProcessesForUser -User $User)
+                continue
+            }
+            try {
+                $profileItem | Remove-CimInstance -ErrorAction Stop
+                Write-Log "Deleted profile $($profileItem.LocalPath)."
+            }
+            catch {
+                Write-Log "WARN: Delete profile attempt $attempt/$MaxAttempts failed: $_"
+            }
+        }
+
+        if ((Get-NextGpuProfileForUser -User $User).Count -eq 0) {
+            return $true
+        }
+        if ($attempt -lt $MaxAttempts) {
+            Start-Sleep -Seconds $DelaySeconds
+        }
+    }
+
+    return ((Get-NextGpuProfileForUser -User $User).Count -eq 0)
+}
+
+function Reset-NextGpuAdminLauncher {
+    param(
+        [string]$User
+    )
+
+    if ([string]::IsNullOrWhiteSpace($User)) {
+        Write-Log "INFO: No admin launcher account name provided; skipping admin reset."
+        return
+    }
+
+    # Get password from secure credential storage
+    $Password = $null
+    if (Get-Command Get-NextGpuAdminCredential -ErrorAction SilentlyContinue) {
+        $cred = Get-NextGpuAdminCredential -AdminUser $User -Silent
+        if ($cred) {
+            $Password = $cred.GetNetworkCredential().Password
+        }
+    }
+
+    Write-Log "Resetting admin launcher account '$User' (hard delete)..."
+
+    # 1) Log off any interactive session (usually none; account is used via RunAsTool).
+    try {
+        $adminSession = (quser 2>$null | Select-String -SimpleMatch $User)
+        if ($adminSession) {
+            $adminSessionId = ($adminSession.ToString().Trim().TrimStart('>') -split '\s+') |
+                Where-Object { $_ -match '^\d+$' } | Select-Object -First 1
+            if ($adminSessionId) {
+                logoff $adminSessionId 2>$null
+                Write-Log "Logged off '$User' (session id $adminSessionId)."
+                Start-Sleep -Seconds 3
+            }
+        }
+    }
+    catch {
+        Write-Log "WARN: Logoff check for '$User' failed: $_"
+    }
+
+    # 2) Kill all processes owned by the account (elevated games hold the profile open).
+    $killedCount = Stop-NextGpuProcessesForUser -User $User
+    Write-Log "Terminated $killedCount process(es) owned by '$User'."
+    if ($killedCount -gt 0) {
+        Start-Sleep -Seconds 3
+    }
+
+    # 3) Delete the account.
+    try {
+        Remove-LocalUser -Name $User -ErrorAction Stop
+        Write-Log "SUCCESS: Deleted account '$User'."
+    }
+    catch {
+        Write-Log "WARN: Delete account '$User' (may not exist): $_"
+    }
+
+    # 4) Delete the profile (retries while it unloads after processes die).
+    if (Remove-NextGpuUserProfileWithRetry -User $User) {
+        Write-Log "SUCCESS: Profile for '$User' removed."
+    }
+    else {
+        $leftover = (Get-NextGpuProfileForUser -User $User | ForEach-Object { $_.LocalPath }) -join '; '
+        Write-Log "ERROR: Profile for '$User' could not be fully removed: $leftover"
+    }
+
+    # 5) Recreate as an administrator (only when a persistent password is supplied,
+    #    so RunAsTool bindings keep working for the next session).
+    if ([string]::IsNullOrEmpty($Password)) {
+        Write-Log "WARN: No admin password supplied; '$User' deleted but NOT recreated. Pass -AdminPassword to recreate it for the next session."
+        return
+    }
+
+    $createResult = net user $User $Password /add /y 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Log "ERROR: Failed to recreate '$User': $createResult"
+        return
+    }
+    Write-Log "SUCCESS: Recreated account '$User'."
+
+    try {
+        Add-LocalGroupMember -Group 'Administrators' -Member $User -ErrorAction Stop
+        Write-Log "SUCCESS: Added '$User' to Administrators group."
+    }
+    catch {
+        Write-Log "WARN: Add '$User' to Administrators: $_"
+    }
+
+    try {
+        Set-LocalUser -Name $User -PasswordNeverExpires $true -ErrorAction Stop
+        Write-Log "Configured '$User' password to never expire."
+    }
+    catch {
+        Write-Log "WARN: Set password-never-expires for '$User': $_"
+    }
 }
 
 Write-Log "========================================="
@@ -160,6 +344,16 @@ if ($verify) {
 }
 else {
     Write-Log "ERROR: User verification failed."
+}
+
+# ── STEP 7b: Reset admin launcher account (NextGPU-Admin) ──
+Write-Log "STEP 7b: Resetting admin launcher account '$AdminUsername'..."
+
+try {
+    Reset-NextGpuAdminLauncher -User $AdminUsername
+}
+catch {
+    Write-Log "ERROR: Admin launcher reset failed: $_"
 }
 
 # ── STEP 8: Run checking-update.bat ───────────────────────────

@@ -1,19 +1,15 @@
+*.txt
+*.json
+*.zip
+!config/playnite/desktop-apps.allowlist.json.template
+!config/playnite/*.template.json
 
+# Auto-downloaded SQLite CLI (see Playnite-Common.ps1 Ensure-Sqlite3Available)
+tools/sqlite/*
+!tools/sqlite/.gitkeep
+
+# Guard against accidental relative DatabasePath outputs
+library/
 
 # Per-machine install folder from Setup folder picker
 PlayniteInstall.path
-
-# RunAsTool binaries (place manually or use Install-RunAsTool.ps1 -Download)
-tools/runastool/**/*.exe
-tools/runastool/**/*.zip
-
-# Everything CLI (downloaded by setup if missing)
-tools/everything/es.exe
-config/playnite/bypass-shortcuts.json
-
-# Runtime logs and downloaded installers (not source)
-*.log
-Download/
-PlayNiteWatcher.zip
-
-# SteamExtensions/build/ is committed intentionally (prebuilt extensions for setup)

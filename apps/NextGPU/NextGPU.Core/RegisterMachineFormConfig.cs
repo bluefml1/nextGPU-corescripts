@@ -28,4 +28,7 @@ public sealed class RegisterMachineFormConfig
 
     [JsonPropertyName("adminAccountName")]
     public string AdminAccountName { get; set; } = "";
+
+    [JsonPropertyName("adminPasswordEncrypted")]
+    public string? AdminPasswordEncrypted { get; set; }
 }

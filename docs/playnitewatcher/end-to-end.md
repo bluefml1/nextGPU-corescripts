@@ -9,7 +9,7 @@ Automated **portable Playnite** install with **Steam/Epic disk scan** (installed
 1. Install **7-Zip** or **WinRAR/UnRAR** (for Playnite `.7z` portable archives).
 2. Clone or extract this repo to a **fixed folder** (do not move it after setup).
 3. Install **Steam** and/or **Epic** with games on disk (for import).
-4. For desktop allowlist import: install [voidtools Everything](https://www.voidtools.com/) and index data drives (e.g. `Z:\Adobe`). See [`tools/everything/README.md`](../tools/everything/README.md).
+4. For desktop allowlist import: install [voidtools Everything](https://www.voidtools.com/) and index data drives (e.g. `Z:\Adobe`). See [everything.md](everything.md).
 5. Copy and edit the allowlist (optional but required for desktop apps):
 
 ```powershell
@@ -345,7 +345,7 @@ Skip desktop export: `.\Export-SunshineFromPlaynite.ps1 -SkipDesktopApps`
 | Playnite “DB damaged” / `InvalidCastException` | Old script wrote invalid manual BSON — see [games.db recovery](#gamesdb-recovery) below |
 | Playnite “file is being used by another process” | Another `Playnite.DesktopApp.exe` still open — stop it before import or launch |
 
-Everything details: [`tools/everything/README.md`](../tools/everything/README.md).
+Everything details: [everything.md](everything.md).
 
 ### games.db recovery
 

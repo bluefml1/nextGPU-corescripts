@@ -2,6 +2,13 @@
 <#
 .SYNOPSIS
     Register nextGPU-SessionFolderRulesLogoff and nextGPU-SessionFolderRulesLogon tasks.
+
+.NOTES
+    Logoff task runs as SYSTEM so it can start when nextGPU signs out (InteractiveToken
+    cannot run at logoff).
+
+    Many Windows builds omit Task Scheduler "At log off" / LogoffTrigger. On those hosts
+    registration uses Security event 4647 (user-initiated logoff for account nextGPU).
 #>
 [CmdletBinding()]
 param(
@@ -31,8 +38,10 @@ if (-not $localUser) {
 }
 
 $userId = "$env:USERDOMAIN\nextGPU"
+$accountName = 'nextGPU'
 $logoffTask = 'nextGPU-SessionFolderRulesLogoff'
 $logonTask = 'nextGPU-SessionFolderRulesLogon'
+$systemPrincipalId = 'NT AUTHORITY\SYSTEM'
 
 function Remove-SessionFolderRulesTaskIfPresent {
     param([string]$TaskName)
@@ -46,6 +55,15 @@ function New-SessionFolderRulesTaskAction {
     param([string]$Phase)
     $psArgs = '-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -Phase {1} -Quiet' -f $InvokeScriptPath, $Phase
     return New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $psArgs
+}
+
+function New-SessionFolderRulesSystemPrincipal {
+    return New-ScheduledTaskPrincipal -UserId $systemPrincipalId -LogonType ServiceAccount -RunLevel Highest
+}
+
+function New-SessionFolderRulesTaskSettings {
+    return New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 15) -Hidden
 }
 
 function New-SessionFolderRulesLogoffTriggerFromSessionState {
@@ -78,20 +96,20 @@ function New-SessionFolderRulesLogoffTriggerFromSessionState {
 function Register-SessionFolderRulesLogoffTaskViaXml {
     param(
         [Parameter(Mandatory)][string]$TaskName,
-        [Parameter(Mandatory)][string]$UserId,
-        [Parameter(Mandatory)][object]$Action,
-        [Parameter(Mandatory)][object]$Settings
+        [Parameter(Mandatory)][string]$WatchUserId,
+        [Parameter(Mandatory)][object]$Action
     )
 
-    $escapedUser = [System.Security.SecurityElement]::Escape($UserId)
+    $escapedUser = [System.Security.SecurityElement]::Escape($WatchUserId)
     $escapedCommand = [System.Security.SecurityElement]::Escape($Action.Execute)
     $escapedArgs = [System.Security.SecurityElement]::Escape($Action.Arguments)
 
+    # LogoffTrigger is missing on some Windows builds (UI and XML). Callers must catch failure.
     $xml = @"
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Run nextGPU session folder rules when the rental user logs off</Description>
+    <Description>Run nextGPU session folder rules when the rental user logs off (SYSTEM)</Description>
   </RegistrationInfo>
   <Triggers>
     <LogoffTrigger>
@@ -101,8 +119,7 @@ function Register-SessionFolderRulesLogoffTaskViaXml {
   </Triggers>
   <Principals>
     <Principal id="Author">
-      <UserId>$escapedUser</UserId>
-      <LogonType>InteractiveToken</LogonType>
+      <UserId>S-1-5-18</UserId>
       <RunLevel>HighestAvailable</RunLevel>
     </Principal>
   </Principals>
@@ -113,6 +130,7 @@ function Register-SessionFolderRulesLogoffTaskViaXml {
     <AllowHardTerminate>true</AllowHardTerminate>
     <StartWhenAvailable>true</StartWhenAvailable>
     <ExecutionTimeLimit>PT15M</ExecutionTimeLimit>
+    <Hidden>true</Hidden>
   </Settings>
   <Actions Context="Author">
     <Exec>
@@ -134,16 +152,55 @@ function Register-SessionFolderRulesLogoffTaskViaXml {
     }
 }
 
+function Register-SessionFolderRulesLogoffTaskViaEvent4647 {
+    param(
+        [Parameter(Mandatory)][string]$TaskName,
+        [Parameter(Mandatory)][object]$Action,
+        [Parameter(Mandatory)][object]$Principal,
+        [Parameter(Mandatory)][object]$Settings
+    )
+
+    $subscription = @"
+<QueryList>
+  <Query Id="0" Path="Security">
+    <Select Path="Security">*[System[(EventID=4647)]] and *[EventData[Data[@Name='TargetUserName'] and (Data='$accountName')]]</Select>
+  </Query>
+</QueryList>
+"@
+
+    $triggerClass = Get-CimClass -ClassName MSFT_TaskEventTrigger `
+        -Namespace Root/Microsoft/Windows/TaskScheduler -ErrorAction Stop
+    $eventTrigger = New-CimInstance -CimClass $triggerClass -ClientOnly -Property @{
+        Enabled      = $true
+        Subscription = $subscription
+    }
+
+    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $eventTrigger `
+        -Principal $Principal -Settings $Settings -Force | Out-Null
+    return $true
+}
+
 function Register-SessionFolderRulesLogoffTask {
     Remove-SessionFolderRulesTaskIfPresent -TaskName $logoffTask
     $action = New-SessionFolderRulesTaskAction -Phase 'Logoff'
-    $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Highest
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-        -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 15)
+    $principal = New-SessionFolderRulesSystemPrincipal
+    $settings = New-SessionFolderRulesTaskSettings
+
+    $errors = New-Object System.Collections.Generic.List[string]
+
+    # 1) Native LogoffTrigger (servers / builds that still expose it)
+    try {
+        if (Register-SessionFolderRulesLogoffTaskViaXml -TaskName $logoffTask -WatchUserId $userId -Action $action) {
+            Write-Host "[*] Registered: $logoffTask (XML LogoffTrigger for $userId, runs as SYSTEM)."
+            return
+        }
+    }
+    catch {
+        [void]$errors.Add("XML LogoffTrigger: $($_.Exception.Message)")
+    }
 
     $triggers = New-Object System.Collections.Generic.List[object]
     $triggerNotes = New-Object System.Collections.Generic.List[string]
-    $errors = New-Object System.Collections.Generic.List[string]
 
     $cmd = Get-Command New-ScheduledTaskTrigger -ErrorAction SilentlyContinue
     if ($cmd -and $cmd.Parameters.ContainsKey('AtLogOff')) {
@@ -171,27 +228,35 @@ function Register-SessionFolderRulesLogoffTask {
         }
     }
 
-    if ($triggers.Count -eq 0) {
-        try {
-            if (Register-SessionFolderRulesLogoffTaskViaXml -TaskName $logoffTask -UserId $userId -Action $action -Settings $settings) {
-                Write-Host "[*] Registered: $logoffTask (XML LogoffTrigger for $userId, Highest)."
-                return
-            }
-        }
-        catch {
-            [void]$errors.Add("XML LogoffTrigger: $($_.Exception.Message)")
-        }
+    if ($triggers.Count -gt 0) {
+        Register-ScheduledTask -TaskName $logoffTask -Action $action -Trigger $triggers.ToArray() `
+            -Principal $principal -Settings $settings -Force | Out-Null
+        $triggerSummary = ($triggerNotes -join ', ')
+        Write-Host "[*] Registered: $logoffTask ($triggerSummary for $userId, runs as SYSTEM)."
+        return
     }
 
-    if ($triggers.Count -eq 0) {
-        foreach ($stateName in @('RemoteDisconnect', 'ConsoleDisconnect')) {
-            try {
-                [void]$triggers.Add((New-SessionFolderRulesLogoffTriggerFromSessionState -StateChangeName $stateName -UserId $userId))
-                [void]$triggerNotes.Add($stateName)
-            }
-            catch {
-                [void]$errors.Add("${stateName}: $($_.Exception.Message)")
-            }
+    # 2) Security 4647 — primary path on Windows builds without LogoffTrigger (incl. this host)
+    try {
+        if (Register-SessionFolderRulesLogoffTaskViaEvent4647 -TaskName $logoffTask -Action $action `
+                -Principal $principal -Settings $settings) {
+            Write-Host "[*] Registered: $logoffTask (Security event 4647 logoff for $accountName, runs as SYSTEM)."
+            Write-Host "[*] Note: Task Scheduler UI has no At log off on this Windows build; event 4647 is the logoff trigger."
+            return
+        }
+    }
+    catch {
+        [void]$errors.Add("Event 4647: $($_.Exception.Message)")
+    }
+
+    # 3) Session disconnect fallback (not the same as Sign out)
+    foreach ($stateName in @('RemoteDisconnect', 'ConsoleDisconnect')) {
+        try {
+            [void]$triggers.Add((New-SessionFolderRulesLogoffTriggerFromSessionState -StateChangeName $stateName -UserId $userId))
+            [void]$triggerNotes.Add($stateName)
+        }
+        catch {
+            [void]$errors.Add("${stateName}: $($_.Exception.Message)")
         }
     }
 
@@ -203,10 +268,8 @@ function Register-SessionFolderRulesLogoffTask {
     Register-ScheduledTask -TaskName $logoffTask -Action $action -Trigger $triggers.ToArray() `
         -Principal $principal -Settings $settings -Force | Out-Null
     $triggerSummary = ($triggerNotes -join ', ')
-    Write-Host "[*] Registered: $logoffTask ($triggerSummary for $userId, Highest)."
-    if ($triggerNotes -notcontains 'AtLogOff' -and $triggerNotes -notcontains 'CIM LogoffTrigger') {
-        Write-Warning 'This Windows build does not expose AtLogOff triggers. Clean session runs on session disconnect; logon fallback still covers incomplete logoff runs.'
-    }
+    Write-Host "[*] Registered: $logoffTask ($triggerSummary for $userId, runs as SYSTEM)."
+    Write-Warning 'True logoff trigger was unavailable. Using session disconnect; logon fallback still covers incomplete runs.'
 }
 
 function Register-SessionFolderRulesLogonTask {

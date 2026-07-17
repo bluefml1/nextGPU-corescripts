@@ -1,0 +1,98 @@
+﻿[session]
+when=2026-07-01 16:47:52
+status=Complete
+rclone_log=C:\ProgramData\nextGPU\logs\sync-games-apps-20260701-163832.log
+[entry]
+extract=Z:\FCONLINE
+size_bytes=24994509775
+type=generic
+[/entry]
+[/session]
+
+[session]
+when=2026-07-01 16:50:23
+status=Complete
+rclone_log=C:\ProgramData\nextGPU\logs\sync-games-apps-20260701-165018.log
+[entry]
+extract=Z:\Garena
+size_bytes=59206174
+type=generic
+[/entry]
+[/session]
+
+[session]
+when=2026-07-02 11:18:31
+status=Complete
+rclone_log=C:\ProgramData\nextGPU\logs\sync-games-apps-20260702-102954.log
+[entry]
+extract=Z:\ForzaHorizan6
+size_bytes=134977888172
+type=steam
+[/entry]
+[/session]
+
+[session]
+when=2026-07-02 11:29:18
+status=Complete
+rclone_log=C:\ProgramData\nextGPU\logs\sync-games-apps-20260702-112851.log
+[entry]
+extract=Z:\Steam
+size_bytes=637419925
+type=Steam app
+[/entry]
+[/session]
+
+[session]
+when=2026-07-02 12:56:38
+status=Complete
+rclone_log=C:\ProgramData\nextGPU\logs\sync-games-apps-20260702-113206.log
+[entry]
+extract=Z:\CS2
+size_bytes=53240054385
+type=steam
+[/entry]
+[entry]
+extract=Z:\FCONLINE
+size_bytes=24994509775
+type=generic
+[/entry]
+[entry]
+extract=Z:\MavelRivals
+size_bytes=115833346133
+type=steam
+[/entry]
+[/session]
+
+[session]
+when=2026-07-02 17:14:40
+status=Complete
+rclone_log=C:\ProgramData\nextGPU\logs\sync-games-apps-20260702-171428.log
+[entry]
+extract=Z:\Garena
+size_bytes=59206174
+type=generic
+[/entry]
+[/session]
+
+[session]
+when=2026-07-02 22:09:44
+status=Complete
+rclone_log=C:\ProgramData\nextGPU\logs\sync-games-apps-20260702-220937.log
+[entry]
+extract=Z:\HoYoPlay
+size_bytes=158422030
+type=generic
+[/entry]
+[/session]
+
+[session]
+when=2026-07-04 13:06:48
+status=Complete
+rclone_log=C:\ProgramData\nextGPU\logs\sync-games-apps-20260704-114553.log
+[entry]
+extract=Z:\Wuthering waves
+size_bytes=132159427629
+type=steam
+[/entry]
+[/session]
+

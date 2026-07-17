@@ -843,3 +843,165 @@
 [2026-07-10 17:08:22] [INFO] Done. folders=0 storeReverted=0 manualRemoved=0 allowlistRemoved=0 missing=0 playniteRemoved=False playniteRemovalDeferred=False
 [2026-07-10 17:08:22] [INFO] Playnite install kept. Run Update-PlayniteLibraries.ps1 and Import-PlayniteDesktopApps.ps1 to restore library entries if needed.
 [2026-07-10 17:08:22] [INFO] === Uninstall-PlayniteBypass finished ===
+[2026-07-14 15:08:46] [INFO] === Uninstall-PlayniteBypass started ===
+[2026-07-14 15:08:46] [INFO] Playnite install: Z:\Playnite
+[2026-07-14 15:08:50] [INFO] PlayNiteWatcher uninstall exit code: 0
+[2026-07-14 15:08:50] [INFO] Stopping Playnite so games.db can be updated...
+[2026-07-14 15:08:50] [INFO] Playnite store game reverted to library plugin: Wuthering Waves
+[2026-07-14 15:08:50] [INFO] Removed manual bypass game from Playnite library: Garena FC Online (run Import Desktop Apps to restore)
+[2026-07-14 15:08:51] [INFO] Removed Playnite bypass extension data: Z:\Playnite\ExtensionsData\NextGPU
+[2026-07-14 15:08:51] [INFO] Removed 1 allowlist entries linked to bypass bindings.
+[2026-07-14 15:08:51] [INFO] Removed Game Shortcuts folder: Z:\Game Shortcuts
+[2026-07-14 15:08:51] [INFO] Removed RunAsTool install: C:\ProgramData\NextGPU\RunAsTool
+[2026-07-14 15:08:51] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool.exe
+[2026-07-14 15:08:51] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool_x64.exe
+[2026-07-14 15:08:51] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool\RunAsTool.exe
+[2026-07-14 15:08:51] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool\RunAsTool_x64.exe
+[2026-07-14 15:08:51] [INFO] Removed bundled RunAsTool folder: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool
+[2026-07-14 15:08:51] [INFO] Reset bypass-shortcuts.json to empty template.
+[2026-07-14 15:08:51] [INFO] Cleared Playnite bypass-bindings.json.
+[2026-07-14 15:08:53] [INFO] Scheduling Playnite folder removal after this script exits (LiteDB.dll is loaded in this session)...
+[2026-07-14 15:08:53] [INFO] Playnite folder will be deleted after this script exits; check Uninstall-PlayniteBypass.log for confirmation.
+[2026-07-14 15:08:53] [INFO] Done. folders=1 storeReverted=1 manualRemoved=1 allowlistRemoved=1 missing=0 playniteRemoved=False playniteRemovalDeferred=True
+[2026-07-14 15:08:53] [INFO] === Uninstall-PlayniteBypass finished ===
+[2026-07-14 15:09:04] [INFO] === Uninstall-PlayniteBypass started ===
+[2026-07-14 15:09:04] [INFO] Playnite install: Z:\Playnite
+[2026-07-14 15:09:05] [INFO] Removed Playnite portable install: Z:\Playnite
+[2026-07-14 15:09:05] [INFO] Removed PlayniteInstall.path
+[2026-07-14 15:09:06] [INFO] Reset bypass-shortcuts.json to empty template.
+[2026-07-14 15:09:06] [INFO] Cleared Playnite bypass-bindings.json.
+[2026-07-14 15:09:06] [INFO] Done. folders=0 storeReverted=0 manualRemoved=0 allowlistRemoved=0 missing=0 playniteRemoved=False playniteRemovalDeferred=False
+[2026-07-14 15:09:06] [INFO] Playnite install kept. Run Update-PlayniteLibraries.ps1 and Import-PlayniteDesktopApps.ps1 to restore library entries if needed.
+[2026-07-14 15:09:06] [INFO] === Uninstall-PlayniteBypass finished ===
+[2026-07-16 16:55:03] [INFO] === Uninstall-PlayniteBypass started ===
+[2026-07-16 16:55:03] [INFO] Playnite install: Z:\Playnite
+[2026-07-16 16:55:05] [INFO] Stopping Playnite so games.db can be updated...
+[2026-07-16 16:55:05] [INFO] Playnite store game reverted to library plugin: Wuthering Waves
+[2026-07-16 16:55:05] [INFO] Removed manual bypass game from Playnite library: Garena FC Online (run Import Desktop Apps to restore)
+[2026-07-16 16:55:06] [INFO] Removed Playnite bypass extension data: Z:\Playnite\ExtensionsData\NextGPU
+[2026-07-16 16:55:06] [INFO] Removed 1 allowlist entries linked to bypass bindings.
+[2026-07-16 16:55:06] [INFO] Removed Game Shortcuts folder: Z:\Game Shortcuts
+[2026-07-16 16:55:06] [INFO] Removed RunAsTool install: C:\ProgramData\NextGPU\RunAsTool
+[2026-07-16 16:55:06] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool.exe
+[2026-07-16 16:55:06] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool_x64.exe
+[2026-07-16 16:55:06] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool\RunAsTool.exe
+[2026-07-16 16:55:06] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool\RunAsTool_x64.exe
+[2026-07-16 16:55:06] [INFO] Removed bundled RunAsTool folder: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool
+[2026-07-16 16:55:06] [INFO] Reset bypass-shortcuts.json to empty template.
+[2026-07-16 16:55:06] [INFO] Cleared Playnite bypass-bindings.json.
+[2026-07-16 16:55:06] [INFO] Done. folders=1 storeReverted=1 manualRemoved=1 allowlistRemoved=1 missing=0 playniteRemoved=False playniteRemovalDeferred=False
+[2026-07-16 16:55:06] [INFO] Playnite install kept. Run Update-PlayniteLibraries.ps1 and Import-PlayniteDesktopApps.ps1 to restore library entries if needed.
+[2026-07-16 16:55:06] [INFO] === Uninstall-PlayniteBypass finished ===
+[2026-07-16 17:56:25] [INFO] === Uninstall-PlayniteBypass started ===
+[2026-07-16 17:56:25] [INFO] Playnite install: Z:\Playnite
+[2026-07-16 17:56:27] [INFO] Stopping Playnite so games.db can be updated...
+[2026-07-16 17:56:27] [INFO] Playnite store game reverted to library plugin: Wuthering Waves
+[2026-07-16 17:56:27] [INFO] Removed manual bypass game from Playnite library: Garena FC Online (run Import Desktop Apps to restore)
+[2026-07-16 17:56:27] [INFO] Removed Playnite bypass extension data: Z:\Playnite\ExtensionsData\NextGPU
+[2026-07-16 17:56:27] [INFO] Removed 1 allowlist entries linked to bypass bindings.
+[2026-07-16 17:56:27] [INFO] Removed Game Shortcuts folder: Z:\Game Shortcuts
+[2026-07-16 17:56:27] [INFO] Removed RunAsTool install: C:\ProgramData\NextGPU\RunAsTool
+[2026-07-16 17:56:27] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool.exe
+[2026-07-16 17:56:27] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool_x64.exe
+[2026-07-16 17:56:27] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool\RunAsTool.exe
+[2026-07-16 17:56:27] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool\RunAsTool_x64.exe
+[2026-07-16 17:56:27] [INFO] Removed bundled RunAsTool folder: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool
+[2026-07-16 17:56:27] [INFO] Reset bypass-shortcuts.json to empty template.
+[2026-07-16 17:56:27] [INFO] Cleared Playnite bypass-bindings.json.
+[2026-07-16 17:56:27] [INFO] Done. folders=1 storeReverted=1 manualRemoved=1 allowlistRemoved=1 missing=0 playniteRemoved=False playniteRemovalDeferred=False
+[2026-07-16 17:56:27] [INFO] Playnite install kept. Run Update-PlayniteLibraries.ps1 and Import-PlayniteDesktopApps.ps1 to restore library entries if needed.
+[2026-07-16 17:56:27] [INFO] === Uninstall-PlayniteBypass finished ===
+[2026-07-16 18:16:14] [INFO] === Uninstall-PlayniteBypass started ===
+[2026-07-16 18:16:14] [INFO] Playnite install: Z:\Playnite
+[2026-07-16 18:16:16] [INFO] Stopping Playnite so games.db can be updated...
+[2026-07-16 18:16:17] [INFO] Removed manual bypass game from Playnite library: Garena FC Online (run Import Desktop Apps to restore)
+[2026-07-16 18:16:17] [INFO] Playnite store game reverted to library plugin: Wuthering Waves
+[2026-07-16 18:16:17] [INFO] Removed Playnite bypass extension data: Z:\Playnite\ExtensionsData\NextGPU
+[2026-07-16 18:16:17] [INFO] Removed 1 allowlist entries linked to bypass bindings.
+[2026-07-16 18:16:17] [INFO] Removed Game Shortcuts folder: Z:\Game Shortcuts
+[2026-07-16 18:16:17] [INFO] Removed RunAsTool install: C:\ProgramData\NextGPU\RunAsTool
+[2026-07-16 18:16:17] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool.exe
+[2026-07-16 18:16:17] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool_x64.exe
+[2026-07-16 18:16:17] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool\RunAsTool.exe
+[2026-07-16 18:16:17] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool\RunAsTool_x64.exe
+[2026-07-16 18:16:17] [INFO] Removed bundled RunAsTool folder: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool
+[2026-07-16 18:16:17] [INFO] Reset bypass-shortcuts.json to empty template.
+[2026-07-16 18:16:17] [INFO] Cleared Playnite bypass-bindings.json.
+[2026-07-16 18:16:17] [INFO] Done. folders=1 storeReverted=1 manualRemoved=1 allowlistRemoved=1 missing=0 playniteRemoved=False playniteRemovalDeferred=False
+[2026-07-16 18:16:17] [INFO] Playnite install kept. Run Update-PlayniteLibraries.ps1 and Import-PlayniteDesktopApps.ps1 to restore library entries if needed.
+[2026-07-16 18:16:17] [INFO] === Uninstall-PlayniteBypass finished ===
+[2026-07-16 18:21:55] [INFO] === Uninstall-PlayniteBypass started ===
+[2026-07-16 18:21:55] [INFO] Playnite install: Z:\Playnite
+[2026-07-16 18:21:59] [INFO] PlayNiteWatcher uninstall exit code: 0
+[2026-07-16 18:21:59] [INFO] Stopping Playnite so games.db can be updated...
+[2026-07-16 18:21:59] [INFO] Playnite store game reverted to library plugin: Wuthering Waves
+[2026-07-16 18:21:59] [INFO] Removed manual bypass game from Playnite library: Garena FC Online (run Import Desktop Apps to restore)
+[2026-07-16 18:21:59] [INFO] Removed Playnite bypass extension data: Z:\Playnite\ExtensionsData\NextGPU
+[2026-07-16 18:21:59] [INFO] Removed 1 allowlist entries linked to bypass bindings.
+[2026-07-16 18:21:59] [INFO] Removed Game Shortcuts folder: Z:\Game Shortcuts
+[2026-07-16 18:21:59] [INFO] Removed RunAsTool install: C:\ProgramData\NextGPU\RunAsTool
+[2026-07-16 18:21:59] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool.exe
+[2026-07-16 18:21:59] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool_x64.exe
+[2026-07-16 18:21:59] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool\RunAsTool.exe
+[2026-07-16 18:21:59] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool\RunAsTool_x64.exe
+[2026-07-16 18:21:59] [INFO] Removed bundled RunAsTool folder: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool
+[2026-07-16 18:21:59] [INFO] Reset bypass-shortcuts.json to empty template.
+[2026-07-16 18:21:59] [INFO] Cleared Playnite bypass-bindings.json.
+[2026-07-16 18:22:01] [INFO] Scheduling Playnite folder removal after this script exits (LiteDB.dll is loaded in this session)...
+[2026-07-16 18:22:01] [INFO] Playnite folder will be deleted after this script exits; check Uninstall-PlayniteBypass.log for confirmation.
+[2026-07-16 18:22:01] [INFO] Done. folders=1 storeReverted=1 manualRemoved=1 allowlistRemoved=1 missing=0 playniteRemoved=False playniteRemovalDeferred=True
+[2026-07-16 18:22:01] [INFO] === Uninstall-PlayniteBypass finished ===
+[2026-07-16 18:22:13] [WARN] Playnite folder removal attempt 1/6 failed: Access to the path 'LiteDB.dll' is denied.
+[2026-07-16 18:22:18] [WARN] Playnite folder removal attempt 2/6 failed: Access to the path 'LiteDB.dll' is denied.
+[2026-07-16 18:22:23] [WARN] Playnite folder removal attempt 3/6 failed: Access to the path 'LiteDB.dll' is denied.
+[2026-07-16 18:22:28] [WARN] Playnite folder removal attempt 4/6 failed: Access to the path 'LiteDB.dll' is denied.
+[2026-07-16 18:22:34] [WARN] Playnite folder removal attempt 5/6 failed: Access to the path 'LiteDB.dll' is denied.
+[2026-07-16 18:22:39] [WARN] Playnite folder removal attempt 6/6 failed: Access to the path 'LiteDB.dll' is denied.
+[2026-07-16 18:24:08] [INFO] === Uninstall-PlayniteBypass started ===
+[2026-07-16 18:24:08] [INFO] Playnite install: Z:\Playnite
+[2026-07-16 18:24:11] [INFO] PlayNiteWatcher uninstall exit code: 1
+[2026-07-16 18:24:11] [INFO] Removed Game Shortcuts folder: Z:\Game Shortcuts
+[2026-07-16 18:24:11] [INFO] Removed RunAsTool install: C:\ProgramData\NextGPU\RunAsTool
+[2026-07-16 18:24:11] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool.exe
+[2026-07-16 18:24:11] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool_x64.exe
+[2026-07-16 18:24:11] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool\RunAsTool.exe
+[2026-07-16 18:24:11] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool\RunAsTool_x64.exe
+[2026-07-16 18:24:11] [INFO] Removed bundled RunAsTool folder: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool
+[2026-07-16 18:24:12] [INFO] Reset bypass-shortcuts.json to empty template.
+[2026-07-16 18:24:12] [INFO] Cleared Playnite bypass-bindings.json.
+[2026-07-16 18:24:14] [INFO] Scheduling Playnite folder removal after this script exits...
+[2026-07-16 18:24:14] [INFO] Playnite folder will be deleted after this script exits; check Uninstall-PlayniteBypass.log for confirmation.
+[2026-07-16 18:24:14] [INFO] Done. folders=1 storeReverted=0 manualRemoved=0 allowlistRemoved=0 missing=0 playniteRemoved=False playniteRemovalDeferred=True
+[2026-07-16 18:24:14] [INFO] === Uninstall-PlayniteBypass finished ===
+[2026-07-16 18:24:18] [INFO] === Uninstall-PlayniteBypass started ===
+[2026-07-16 18:24:18] [INFO] Playnite install: Z:\Playnite
+[2026-07-16 18:24:20] [INFO] Removed Playnite portable install: Z:\Playnite
+[2026-07-16 18:24:20] [INFO] Removed PlayniteInstall.path
+[2026-07-16 18:24:20] [INFO] Reset bypass-shortcuts.json to empty template.
+[2026-07-16 18:24:20] [INFO] Cleared Playnite bypass-bindings.json.
+[2026-07-16 18:24:20] [INFO] Done. folders=0 storeReverted=0 manualRemoved=0 allowlistRemoved=0 missing=0 playniteRemoved=False playniteRemovalDeferred=False
+[2026-07-16 18:24:20] [INFO] Playnite install kept. Run Update-PlayniteLibraries.ps1 and Import-PlayniteDesktopApps.ps1 to restore library entries if needed.
+[2026-07-16 18:24:20] [INFO] === Uninstall-PlayniteBypass finished ===
+[2026-07-17 16:45:58] [INFO] === Uninstall-PlayniteBypass started ===
+[2026-07-17 16:45:58] [INFO] Playnite install: Z:\Playnite
+[2026-07-17 16:46:01] [INFO] PlayNiteWatcher uninstall exit code: 0
+[2026-07-17 16:46:01] [INFO] Stopping Playnite so games.db can be updated...
+[2026-07-17 16:46:01] [INFO] Playnite store game reverted to library plugin: Wuthering Waves
+[2026-07-17 16:46:01] [INFO] Removed manual bypass game from Playnite library: Garena FC Online (run Import Desktop Apps to restore)
+[2026-07-17 16:46:01] [INFO] Removed Playnite bypass extension data: Z:\Playnite\ExtensionsData\NextGPU
+[2026-07-17 16:46:01] [INFO] Removed 1 allowlist entries linked to bypass bindings.
+[2026-07-17 16:46:01] [INFO] Removed Game Shortcuts folder: Z:\Game Shortcuts
+[2026-07-17 16:46:01] [INFO] Removed RunAsTool install: C:\ProgramData\NextGPU\RunAsTool
+[2026-07-17 16:46:01] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool.exe
+[2026-07-17 16:46:01] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool_x64.exe
+[2026-07-17 16:46:01] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool\RunAsTool.exe
+[2026-07-17 16:46:01] [INFO] Removed bundled RunAsTool: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool\RunAsTool_x64.exe
+[2026-07-17 16:46:01] [INFO] Removed bundled RunAsTool folder: C:\Users\Administrator\Downloads\nextGPU-corescripts\nextGPU-corescripts\PlayNiteWatcher\tools\runastool\RunAsTool
+[2026-07-17 16:46:01] [INFO] Reset bypass-shortcuts.json to empty template.
+[2026-07-17 16:46:01] [INFO] Cleared Playnite bypass-bindings.json.
+[2026-07-17 16:46:03] [INFO] Scheduling Playnite folder removal after this script exits (LiteDB.dll is loaded in this session)...
+[2026-07-17 16:46:03] [INFO] Playnite folder will be deleted after this script exits; check Uninstall-PlayniteBypass.log for confirmation.
+[2026-07-17 16:46:03] [INFO] Done. folders=1 storeReverted=1 manualRemoved=1 allowlistRemoved=1 missing=0 playniteRemoved=False playniteRemovalDeferred=True
+[2026-07-17 16:46:03] [INFO] === Uninstall-PlayniteBypass finished ===
+[2026-07-17 16:46:08] [INFO] Removed Playnite portable install: Z:\Playnite
+[2026-07-17 16:46:08] [INFO] Removed PlayniteInstall.path
