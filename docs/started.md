@@ -44,6 +44,7 @@ Before running it, have these values ready:
 - Machine display name, for example `GPU-RENTAL-01`.
 - Original rental/listing price.
 - Optional vendor ID.
+- **NextGPU-Admin password** (RunAsTool / session management; stored with DPAPI).
 - Existing local admin username that should become `NextGPU-Authority`.
 
 After it finishes, reboot manually. Driver enumeration, display paths, scheduled tasks, and user/account changes are more reliable after a restart.

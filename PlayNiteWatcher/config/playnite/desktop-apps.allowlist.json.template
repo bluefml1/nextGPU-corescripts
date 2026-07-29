@@ -1,5 +1,6 @@
 {
-  "_comment": "List executable filenames only (exe), not install paths. Setup uses voidtools es.exe to find the real path (e.g. Z:\\Adobe\\...\\Lightroom.exe) and writes it into Playnite.",
+  "_comment": "List executable filenames only (exe), not install paths. Setup uses voidtools es.exe to find the real path (e.g. Z:\\Adobe\\...\\Lightroom.exe) and writes it into Playnite. Set skipAcl=true to opt out of the Z:\\ write ACL grant on launch (Steam/Epic always grant ACL and are not listed here).",
+  "_skipAcl": "Optional per-app. true = launchGame.ps1 will not grant Z:\\ write ACL and will not block browser downloads for this app. Defaults to false.",
   "apps": [
     { "exe": "Acrobat.exe", "nameId": "1", "title": "Acrobat DC" },
     { "exe": "AfterFX.exe", "nameId": "2", "title": "Adobe After Effects" },
@@ -16,6 +17,7 @@
     { "exe": "Lightroom.exe", "nameId": "13", "title": "Adobe Lightroom Classic" },
     { "exe": "Adobe Media Encoder.exe", "nameId": "14", "title": "Adobe Media Encoder" },
     { "exe": "Photoshop.exe", "nameId": "15", "title": "Adobe Photoshop" },
-    { "exe": "Adobe UXP Developer Tools.exe", "nameId": "16", "title": "Adobe UXP Developer Tools" }
+    { "exe": "Adobe UXP Developer Tools.exe", "nameId": "16", "title": "Adobe UXP Developer Tools" },
+    { "exe": "OBS64.exe", "nameId": "10000301", "title": "OBS Studio", "skipAcl": true }
   ]
 }

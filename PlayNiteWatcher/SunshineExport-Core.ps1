@@ -220,12 +220,20 @@ function Export-PlayniteLibraryToSunshine {
 
         $appId = Get-AppIdFromName -AppName $nameId
         [void]$resolvedAppIds.Add([PSCustomObject]@{
-                Name   = $nameId
-                AppID  = $appId
-                Source = $game.SourceLabel
+                Name             = $nameId
+                AppID            = $appId
+                Source           = $game.SourceLabel
+                InstallDirectory = $game.InstallDirectory
             })
 
         $line = "${appId}: ${playniteCmdPrefix}$($game.Id)"
+        $skipAcl = [bool]$game.SkipAclGrant
+        if ($skipAcl -and $game.SourceLabel -notin @('Steam', 'Epic')) {
+            $line = "${line} @NOACL"
+        }
+        if (-not [string]::IsNullOrWhiteSpace($game.InstallDirectory)) {
+            $line = "${line} | $($game.InstallDirectory)"
+        }
         if ($game.SourceLabel -eq 'Steam') {
             $appLaunchLinesSteam.Add($line)
             $counts.Steam++

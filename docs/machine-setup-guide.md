@@ -56,7 +56,8 @@ Have these ready **before** running RegisterMachine:
 | **API Key**                | `x-api-key` header for the `registerMachine` Lambda              |
 | **Computer Name**          | Display name (e.g. `NEXTGPU-105`);                               |
 | **Original Price**         | Listing price (e.g. `4000`)                                      |
-| **Vendor ID** *(optional)* | Sent as `vendor_id` in registration payload; press Enter to skip |
+| **Vendor ID** *(optional)* | Sent as `vendor_id` in registration payload; leave blank to skip |
+| **NextGPU-Admin password** | Password for `NextGPU-Admin` (RunAsTool / session management); stored with DPAPI |
 | **Admin account username** | Existing local admin renamed to `**NextGPU-Authority`**          |
 
 
@@ -77,6 +78,7 @@ Never commit real tokens or S3 keys to git.
 | ----------------------- | ------------------------------------------------------------------- |
 | `**NextGPU-Authority`** | Former admin; only account allowed to shut down/restart the machine |
 | `**nextGPU`**           | Standard rental user; Moonlight sessions, desktop cleanup, U: mount |
+| `**NextGPU-Admin`**     | Admin launcher for RunAsTool / bypass; **deleted and recreated at session end** (`endSession`) using the DPAPI password from Register Machine |
 
 
 ---
@@ -263,7 +265,7 @@ This invokes `Sync-GamesApps-Official.ps1`, which:
 2. Open **Get Started** (sidebar).
 3. On **Step 04 — Provision Full Host**, click **Run RegisterMachine**.
   - The app elevates via UAC and opens an elevated console with output kept visible (`keepConsoleOpen`).
-  - Enter Cloudflare token, account ID, API key, computer name, price, optional vendor ID, and admin username when prompted.
+  - In **Register Machine — Configuration**, enter Cloudflare token, account ID, API key, computer name, price, optional vendor ID, **NextGPU-Admin password**, and the admin account to rename. Choose Install VDD/VAD **Yes** or **No** as needed.
   - Confirm the summary with **Y** to continue.
 4. While provisioning runs, use **Open Provisioning Logs** (secondary button on the same step) or the **Logs** page to tail `sunshine-bind.log`, `VDD-VAD.log`, and `register_api_log.txt`.
 5. When the console finishes, follow [After RegisterMachine](#after-registermachine) below.
@@ -411,7 +413,7 @@ See `[user-storage-recreate-flow.md](user-storage-recreate-flow.md)` for the ful
 
 **Prerequisite:** Step 04 completed (Sunshine must exist).
 
-**UI actions:** **Run PlayNite Setup** · **Open PlayNite Tab**
+**UI actions:** **Run Playnite Setup** · **Setup Games & Apps** · **Bypass games** · **Open PlayNite Tab**
 
 ### Prerequisites
 
@@ -422,6 +424,8 @@ See `[user-storage-recreate-flow.md](user-storage-recreate-flow.md)` for the ful
 | **Steam and/or Epic**       | Games installed on disk (disk scan, no login required)                                                      |
 | **Everything** *(optional)* | For desktop app allowlist import; index data drives                                                         |
 | **Allowlist** *(optional)*  | Copy `config\playnite\desktop-apps.allowlist.json.template` → `config\playnite\desktop-apps.allowlist.json` |
+| **Assigned apps list**      | From NextGPU — which titles this host should layout, Clean Session, and Bypass                              |
+| **NextGPU-Admin password**  | Set during Register Machine; reused once for RunAsTool bypass import                                        |
 
 
 ### Run setup
@@ -455,13 +459,23 @@ Skip AWS push only when needed:
 Setup-PlayniteSteam.ps1 -PickInstallFolder -WithSunshine -SkipAwsPush
 ```
 
+### After Playnite setup — assigned apps only
+
+After **Run Playnite Setup** succeeds, finish host layout and elevated launches for **only the apps NextGPU assigned to this machine**:
+
+1. **Setup Games & Apps** (Host Setup) — arrange/sync for assigned titles; on **Clean Session**, **Import JSON** (assigned rules) → confirm the table in the UI → **Register Session Folder Tasks**. See [session/clean-session.md](session/clean-session.md).
+2. **Bypass games** — on the Setup tab, check **only** seed `.lnk` rows for assigned apps (plus required pre-launches). Run **Setup Bypass (Automated)**, pick `Z:` as the Game Shortcuts parent, enter the **NextGPU-Admin password** from Register Machine when prompted, then **3. Review and Sync**.
+3. **PlayNite tab → Verify PlayNite Status** — fix any **`[FAIL]`** (use row fix actions); **`[WARN]`** and **`[SKIP]`** (incl. S1/S2 Sunshine) are OK to ignore.
+
+Do **not** enable every ready seed shortcut by default.
+
 ### After new games are installed
 
 ```bat
 PlayNiteWatcher\Update-PlayniteLibraries.bat
 ```
 
-Then re-export from the **PlayNite** tab or run Sunshine stack update with `-RefreshPlayniteLibrary`, then **Push Moonlight Games to AWS** from **User Experience** (or re-run full setup export).
+Then re-export from the **PlayNite** tab or run Sunshine stack update with `-RefreshPlayniteLibrary`, then **Push Moonlight Games to AWS** from **User Experience** (or re-run full setup export). Re-run Bypass Review and Sync if those titles need elevated shortcuts.
 
 ### Success criteria
 
@@ -470,8 +484,9 @@ Then re-export from the **PlayNite** tab or run Sunshine stack update with `-Ref
 - Sunshine `apps.json` includes PlayNite-exported games
 - PlayNiteWatcher installed (verify on PlayNite tab)
 - AWS `updateNewGame` API reports success in `Setup-PlayniteSteam.log` (auto on `-WithSunshine`)
+- Assigned bypass `.lnk` files under `Z:\Game Shortcuts`; Playnite paths updated after Review and Sync; RunAsTool lists those apps
 
-Full PlayNite details: `[playnitewatcher/end-to-end.md](playnitewatcher/end-to-end.md)`.
+Full PlayNite details: `[playnitewatcher/end-to-end.md](playnitewatcher/end-to-end.md)`. Beginner walkthrough with screenshots: `[setup-beginer.md](setup-beginer.md#step-6--playnite)`.
 
 ---
 

@@ -477,12 +477,15 @@ public partial class PlaynitePage : Page
                 var type = app.TryGetProperty("type", out var typeEl) ? typeEl.GetString() ?? "" : "";
                 if (string.IsNullOrWhiteSpace(type) && long.TryParse(nameId, out var nid))
                     type = InferTypeFromNameId(nid) ?? "";
+                var skipAcl = app.TryGetProperty("skipAcl", out var skipEl) &&
+                              skipEl.ValueKind == JsonValueKind.True;
                 _allAllowlistEntries.Add(new PlayniteAllowlistEntry
                 {
                     Exe = exe,
                     NameId = nameId,
                     Title = title,
-                    Type = type
+                    Type = type,
+                    SkipAclGrant = skipAcl
                 });
             }
         }
@@ -530,6 +533,22 @@ public partial class PlaynitePage : Page
     }
 
     private void AllowlistFilter_Changed(object sender, RoutedEventArgs e) => ApplyAllowlistFilter();
+
+    private void AllowlistSkipAcl_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox cb) return;
+        if (cb.DataContext is not PlayniteAllowlistEntry entry) return;
+
+        try
+        {
+            SaveAllowlistToDisk(_allAllowlistEntries);
+            AllowlistGridFooter.Text = $"skipAcl updated for '{entry.Title}'. Re-export to Sunshine so the @NOACL marker is emitted into resolved-appids.txt.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to save allowlist with skipAcl change: {ex.Message}", "Allowlist");
+        }
+    }
 
     private void RefreshAllowlistGrid_Click(object sender, RoutedEventArgs e)
     {
@@ -598,13 +617,14 @@ public partial class PlaynitePage : Page
 
         var payload = new
         {
-            _comment = "List executable filenames only (exe), not install paths. Setup uses voidtools es.exe to find the real path and writes it into Playnite.",
+            _comment = "List executable filenames only (exe), not install paths. Setup uses voidtools es.exe to find the real path (e.g. Z:\\Adobe\\...\\Lightroom.exe) and writes it into Playnite. Set skipAcl=true on Desktop apps to opt out of the Z:\\ write ACL grant on launch (Steam/Epic always grant ACL and are not listed here).",
             apps = entries.Select(e => new
             {
                 exe = e.Exe,
                 nameId = e.NameId,
                 title = e.Title,
-                type = e.Type
+                type = e.Type,
+                skipAcl = e.SkipAclGrant
             }).ToArray()
         };
 
@@ -773,7 +793,8 @@ public partial class PlaynitePage : Page
             exe = e.Exe,
             nameId = e.NameId,
             title = e.Title,
-            type = e.Type
+            type = e.Type,
+            skipAcl = e.SkipAclGrant
         }).ToArray();
 
         var payload = new { apps };
@@ -784,10 +805,10 @@ public partial class PlaynitePage : Page
     private static void WriteAllowlistCsv(string destinationPath, IEnumerable<PlayniteAllowlistEntry> entries)
     {
         using var writer = new StreamWriter(destinationPath);
-        writer.WriteLine("exe,nameId,title,type");
+        writer.WriteLine("exe,nameId,title,type,skipAcl");
         foreach (var entry in entries)
         {
-            writer.WriteLine($"{CsvEscape(entry.Exe)},{CsvEscape(entry.NameId)},{CsvEscape(entry.Title)},{CsvEscape(entry.Type)}");
+            writer.WriteLine($"{CsvEscape(entry.Exe)},{CsvEscape(entry.NameId)},{CsvEscape(entry.Title)},{CsvEscape(entry.Type)},{(entry.SkipAclGrant ? "true" : "false")}");
         }
     }
 

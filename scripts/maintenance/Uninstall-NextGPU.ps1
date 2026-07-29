@@ -11,6 +11,10 @@
     keys, releases stale NTUSER mounts, removes CLOUDFLARE_TUNNEL_TOKEN, optional
     nextGPU local user, and generated setup/runtime logs.
 
+    If machine-profile.json has vdd.enabled=false (register skipped VDD/VAD),
+    VDD/VAD/VB-CABLE removal is skipped automatically; ViGEmBus is still removed.
+    Use -SkipDrivers to skip all driver removal.
+
     Run with -WhatIf first to preview actions:
         powershell -ExecutionPolicy Bypass -File .\scripts\maintenance\Uninstall-NextGPU.ps1 -WhatIf
 #>
@@ -919,35 +923,45 @@ function Remove-Sunshine {
 }
 
 function Remove-Drivers {
-    $vddVadCommon = Join-Path $ScriptRoot 'scripts\drivers\VddVadCommon.ps1'
-    if (-not (Test-Path -LiteralPath $vddVadCommon)) {
-        Write-Log "VddVadCommon.ps1 not found at $vddVadCommon" -Level WARN
-        return
-    }
-    . $vddVadCommon
+    param(
+        [switch]$SkipVdd
+    )
 
-    $logAction = {
-        param([string]$Message, [string]$Level)
-        Write-Log -Message $Message -Level $Level
+    if ($SkipVdd) {
+        Write-Log 'VDD/VAD removal skipped (machine-profile: vdd.enabled=false; not installed at register).' -Level SKIP
     }
-
-    if ($PSCmdlet.ShouldProcess('VDD/VAD/VB-CABLE stack', 'Remove drivers and PnP devices')) {
-        Write-Log 'Removing VDD, VAD, and VB-CABLE drivers...'
-        Remove-VddVadStack -IncludeVbCable -RemoveVddSettings -LogAction $logAction
-        $absent = Test-VddVadAbsent -IncludeVbCable
-        if (-not $absent.AllClear) {
-            Write-Log 'Remnant VDD/VAD/VB-CABLE devices found; running second removal pass...' -Level WARN
-            Remove-VddVadStack -IncludeVbCable -LogAction $logAction
-            $absent = Test-VddVadAbsent -IncludeVbCable
-        }
-        if (-not $absent.AllClear) {
-            Write-Log "VDD/VAD/VB-CABLE still visible in PnP: $($absent.Summary). Reboot recommended." -Level WARN
-            foreach ($dev in $absent.Remaining) {
-                Write-Log "  Remaining: $($dev.InstanceId) [$($dev.FriendlyName)]" -Level WARN
-            }
+    else {
+        $vddVadCommon = Join-Path $ScriptRoot 'scripts\drivers\VddVadCommon.ps1'
+        if (-not (Test-Path -LiteralPath $vddVadCommon)) {
+            Write-Log "VddVadCommon.ps1 not found at $vddVadCommon" -Level WARN
         }
         else {
-            Write-Log 'VDD/VAD/VB-CABLE removed from PnP (AllClear).' -Level OK
+            . $vddVadCommon
+
+            $logAction = {
+                param([string]$Message, [string]$Level)
+                Write-Log -Message $Message -Level $Level
+            }
+
+            if ($PSCmdlet.ShouldProcess('VDD/VAD/VB-CABLE stack', 'Remove drivers and PnP devices')) {
+                Write-Log 'Removing VDD, VAD, and VB-CABLE drivers...'
+                Remove-VddVadStack -IncludeVbCable -RemoveVddSettings -LogAction $logAction
+                $absent = Test-VddVadAbsent -IncludeVbCable
+                if (-not $absent.AllClear) {
+                    Write-Log 'Remnant VDD/VAD/VB-CABLE devices found; running second removal pass...' -Level WARN
+                    Remove-VddVadStack -IncludeVbCable -LogAction $logAction
+                    $absent = Test-VddVadAbsent -IncludeVbCable
+                }
+                if (-not $absent.AllClear) {
+                    Write-Log "VDD/VAD/VB-CABLE still visible in PnP: $($absent.Summary). Reboot recommended." -Level WARN
+                    foreach ($dev in $absent.Remaining) {
+                        Write-Log "  Remaining: $($dev.InstanceId) [$($dev.FriendlyName)]" -Level WARN
+                    }
+                }
+                else {
+                    Write-Log 'VDD/VAD/VB-CABLE removed from PnP (AllClear).' -Level OK
+                }
+            }
         }
     }
 
@@ -1034,8 +1048,28 @@ Remove-CloudflaredArtifacts
 if ($SkipDrivers) {
     Write-Log 'Driver removal skipped by -SkipDrivers.' -Level SKIP
 } else {
-    Write-Log 'Removing VDD/VAD and ViGEmBus drivers...'
-    Remove-Drivers
+    $machineProfileScript = Join-Path $ScriptRoot 'scripts\provisioning\MachineProfile.ps1'
+    $skipVddFromProfile = $false
+    if (Test-Path -LiteralPath $machineProfileScript) {
+        . $machineProfileScript
+        $vddEnabled = Get-NextGpuVddEnabled -RepoRoot $ScriptRoot
+        if (-not $vddEnabled) {
+            $skipVddFromProfile = $true
+            Write-Log 'machine-profile.json has vdd.enabled=false; VDD/VAD will not be removed.' -Level SKIP
+        }
+    }
+    else {
+        Write-Log "MachineProfile.ps1 not found at $machineProfileScript; assuming VDD was installed." -Level WARN
+    }
+
+    if ($skipVddFromProfile) {
+        Write-Log 'Removing ViGEmBus (VDD/VAD skipped per machine profile)...'
+        Remove-Drivers -SkipVdd
+    }
+    else {
+        Write-Log 'Removing VDD/VAD and ViGEmBus drivers...'
+        Remove-Drivers
+    }
 }
 
 Write-Log 'Removing shutdown lock policy...'

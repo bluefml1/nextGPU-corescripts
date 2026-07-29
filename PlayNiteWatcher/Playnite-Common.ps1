@@ -2146,6 +2146,7 @@ function Get-DesktopAppAllowlist {
         $nameId = if ($entry.nameId) { $entry.nameId.ToString().Trim() } else { "" }
         $title = if ($entry.title) { $entry.title.ToString().Trim() } else { "" }
         $type = if ($entry.type) { $entry.type.ToString().Trim() } else { "" }
+        $skipAcl = [bool]$entry.skipAcl
 
         if ([string]::IsNullOrWhiteSpace($exe) -or [string]::IsNullOrWhiteSpace($nameId)) {
             throw "Each allowlist app requires exe and nameId: $path"
@@ -2177,10 +2178,11 @@ function Get-DesktopAppAllowlist {
         }
 
         [void]$normalized.Add([PSCustomObject]@{
-                Exe    = $exe
-                NameId = $nameId
-                Title  = $title
-                Type   = $type
+                Exe          = $exe
+                NameId       = $nameId
+                Title        = $title
+                Type         = $type
+                SkipAclGrant = $skipAcl
             })
     }
 
@@ -4381,6 +4383,7 @@ function Get-ExportableDesktopPlayniteGames {
                 SourceLabel      = "Desktop"
                 NameId           = $entry.NameId
                 Exe              = $entry.Exe
+                SkipAclGrant     = [bool]$entry.SkipAclGrant
             })
     }
 

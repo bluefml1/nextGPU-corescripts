@@ -250,6 +250,7 @@ function Get-ExportablePlayniteGames {
                 Name             = if ($row.Name) { $row.Name.ToString() } else { "" }
                 InstallDirectory = if ($row.InstallDirectory) { $row.InstallDirectory.ToString() } else { "" }
                 SourceLabel      = $sourceLabel
+                SkipAclGrant     = $false
             })
     }
 

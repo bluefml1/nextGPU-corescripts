@@ -31,18 +31,18 @@ You only do most of this **once per machine**. After that, it mostly runs itself
 ## Table of contents
 
 1. [Before you touch anything](#1-before-you-touch-anything)
-2. [Start from a clean machine](#2-start-from-a-clean-machine)
+2. [Start from a clean machine](#2-decide-whether-to-clean-the-machine-first-optional)
 3. [Get the files onto the machine](#3-get-the-files-onto-the-machine)
-4. [Install and open the Controller app](#4-install-and-open-the-controller-app)
-5. [Step 1: Check the machine is ready](#step-1-check-the-machine-is-ready)
-6. [Step 2: Prepare a drive for games](#step-2-prepare-a-drive-for-games)
-7. [Step 3: Download the official games/apps](#step-3-download-the-official-gamesapps)
-8. [Step 4: Set up NVIDIA (driver and settings)](#step-4-set-up-nvidia-driver-and-settings)
-9. [Step 5: Run the main setup (RegisterMachine)](#step-5-run-the-main-setup-registermachine)
-10. [Step 6: Set up renter storage (the U: drive)](#step-6-set-up-renter-storage-the-u-drive)
-11. [Step 7: Add games with PlayNite](#step-7-add-games-with-playnite)
-12. [Step 8: Publish your game list to AWS](#step-8-publish-your-game-list-to-aws)
-13. [Step 9: Final check before going live](#step-9-final-check-before-going-live)
+4. [NVIDIA driver and settings](#nvidia-driver-and-settings)
+5. [Install and open the Controller app](#5-install-and-open-the-controller-app)
+6. [Step 1: Check the machine is ready](#step-1-check-the-machine-is-ready) *(Controller STEP 01)*
+7. [Step 2: Prepare a drive for games](#step-2-prepare-a-drive-for-games) *(STEP 02)*
+8. [Step 3: Download the official games/apps](#step-3-download-the-official-gamesapps) *(STEP 03)*
+9. [Step 4: Run the main setup (RegisterMachine)](#step-4-run-the-main-setup-registermachine) *(STEP 04)*
+10. [Step 5: Set up renter storage (the U: drive)](#step-5-set-up-renter-storage-the-u-drive) *(STEP 05)*
+11. [Step 6: Add games with PlayNite](#step-6-add-games-with-playnite) *(STEP 06)*
+12. [Step 7: Publish your game list to AWS](#step-7-publish-your-game-list-to-aws)
+13. [Step 8: Final check before going live](#step-8-final-check-before-going-live) *(STEP 07)*
 14. [If something goes wrong](#if-something-goes-wrong)
 15. [Glossary](#glossary)
 16. [Where to find things later](#where-to-find-things-later)
@@ -67,7 +67,7 @@ You only do most of this **once per machine**. After that, it mostly runs itself
 
 ### Have these ready (write them down somewhere before you start)
 
-Think of this as your shopping list. You'll be asked for these mid-way through Step 5, and stopping to go find them partway through is the most common reason people redo this step.
+Think of this as your shopping list. You'll be asked for these mid-way through Step 4 (RegisterMachine), and stopping to go find them partway through is the most common reason people redo this step.
 
 
 | What                        | What it's for                                                                             | Where it usually comes from                                                                 |
@@ -77,13 +77,16 @@ Think of this as your shopping list. You'll be asked for these mid-way through S
 | nextGPU API Key             | Lets this machine register itself with nextGPU's servers                                  | Contact with NextGPU                                                                        |
 | A name for this computer    | What you'll see in the dashboard (e.g: `NEXTGPU-105`)                                     | Contact with NextGPU                                                                        |
 | Listing price               | What this machine will be listed/rented for (e.g: 4000)                                   | Contact with NextGPU                                                                        |
-| Vendor ID *(optional)*      | Only needed if you're a vendor partner — otherwise just press Enter to skip               | Your nextGPU contact, if applicable                                                         |
-| Your current admin username | The setup will rename this account — see note below(eg: ezycloudx-admin, pcrender, admin) | Already on your machine(check what username you log-on open cmd and type: "echo %USERNAME%" |
+| Vendor ID *(optional)*      | Only needed if you're a vendor partner — otherwise leave blank                            | Your nextGPU contact, if applicable                                                         |
+| **NextGPU-Admin password**  | Password for the `NextGPU-Admin` account used by RunAsTool and session management. Stored securely with DPAPI on this machine — choose one you will remember | You choose it (write it down somewhere safe)                                                |
+| Your current admin username | The setup will rename this account — see note below (e.g. ezycloudx-admin, pcrender, admin) | Already on your machine (open cmd and type: `echo %USERNAME%`)                              |
 
 
-**Important about that last one:** the setup process renames your current admin account to `NextGPU-Authority` and creates a brand new everyday account called `nextGPU` (this is the one renters actually use). Your admin login still works after the rename — it just has a new name and becomes the "owner" account that can shut the machine down. Nothing is deleted.
+**Important about accounts:** the setup renames your current admin account to `NextGPU-Authority`, creates the rental account `nextGPU` (what renters use), and creates/stores credentials for `NextGPU-Admin` (RunAsTool / bypass session management — password from the form above). Your admin login still works after the rename — it just has a new name and becomes the "owner" account that can shut the machine down.
 
-You'll also want these later, for Step 6 — it's fine to gather them now or just before that step:
+> **Notice — Clean Session / session end:** When a rental session ends, **`NextGPU-Admin` is deleted (account + profile) and then recreated** with the same DPAPI-stored password so RunAsTool still works for the next renter. This is intentional cleanup — write the password down and do not rely on leftover files under that profile between sessions.
+
+You'll also want these later, for Step 5 (U: storage) — it's fine to gather them now or just before that step:
 
 
 | What                       | What it's for                                                       |
@@ -132,22 +135,89 @@ If you're not sure which bucket your machine falls into, erring toward cleaning 
 
 1. Download the setup package: [RegisterMachine.zip](https://github.com/bluefml1/nextGPU-corescripts/releases/latest/download/RegisterMachine.zip) (always points to the latest release)
 2. Extract the zip somewhere permanent on the **local C: drive** — or **Downloads folder**
-3. **Pick a folder now and don't move it later.** Once Step 7 (PlayNite) runs, several scripts remember this exact location. Moving the folder afterward will break things.
+3. **Pick a folder now and don't move it later.** Once Step 6 (PlayNite) runs, several scripts remember this exact location. Moving the folder afterward will break things.
 
 That's the whole step — you now have a folder full of scripts and an app installer sitting on the machine.
 
 ---
 
-## 4. Install and open the Controller app
+## NVIDIA driver and settings
+
+**What you're doing:** making sure the graphics card has the latest official **Game Ready** driver installed, then setting a few options under **Graphics → Global Settings** so games stream smoothly at a steady frame rate. This step is done on the machine itself — there is no button for it in the Controller app.
+
+**Do this before Install the Controller / Step 4 (RegisterMachine).** A reboot after installing the driver is normal; RegisterMachine will ask for another reboot later anyway. This keeps Get Started STEP 01–07 aligned with the numbered steps below.
+
+### Turn off Windows Firewall first
+
+Turn **Windows Defender Firewall** off before installing or updating the NVIDIA driver — otherwise the install can fail or hang.
+
+1. Search Windows for **Windows Defender Firewall**, or open **Control Panel → System and Security → Windows Defender Firewall**.
+2. In the left sidebar, click **Turn Windows Defender Firewall on or off**.
+3. Under both **Private network settings** and **Public network settings**, select **Turn off Windows Defender Firewall**.
+4. Click **OK**. Confirm both sections show **Windows Defender Firewall state: Off**.
+
+![Windows Defender Firewall — Off for Private and Public](images/setup-beginer/firewall-off.png)
+
+### Install the latest Game Ready driver
+
+Use the **NVIDIA App** on the machine — no need to download the driver from a website.
+
+1. Press the **Windows** key and type **NVIDIA** — open **NVIDIA App**.
+  - Don't see it? Install **NVIDIA App** from the **Microsoft Store** (search the Store for "NVIDIA"), then open it.
+  - You can also right-click the desktop and choose **NVIDIA App**, or click the NVIDIA icon in the system tray (bottom-right, near the clock).
+2. In the left sidebar, click **Drivers** (disk/arrow icon — not the gear **Settings** icon).
+3. At the top of the Drivers page, open the driver-type dropdown and choose **Game Ready Driver** ("Provides the best gaming experience") — **not** Studio Driver.
+4. If an update is listed, download and install it (**Express Installation** is fine). If the page already shows **Up-to-date**, you're done with the driver install.
+5. **Reboot when the installer asks you to** (or reboot manually after a fresh install).
+
+![NVIDIA App — Drivers tab with Game Ready Driver](images/setup-beginer/nvidia-app-drivers.png)
+
+**What "success" looks like:**
+
+- Drivers page shows **Up-to-date**, with **Installed - GeForce Game Ready Driver** and a version number.
+- In **Device Manager** → **Display adapters**, your GPU shows without a yellow warning icon.
+
+**If the install fails:** close NVIDIA App, reopen it, and try updating again from **Drivers**. If it keeps failing, use **Custom install** / clean installation in the driver installer, then reboot.
+
+### Global Settings (Graphics tab only)
+
+These options are under **Graphics → Global Settings** — **not** the sidebar **Settings** gear, and **not** the **Program Settings** tab.
+
+These settings keep frame rates predictable for remote streaming — renters get a smooth picture without unnecessary lag.
+
+1. In the left sidebar, click **Graphics** (chip icon).
+2. At the top of the page, open the **Global Settings** tab only (leave **Program Settings** alone).
+3. Under **Driver Settings**, find and set each option below. Scroll the list if a row is not on screen yet.
+
+
+| Setting                                   | Set it to     |
+| ----------------------------------------- | ------------- |
+| **Low Latency Mode**                      | **Ultra**     |
+| **Max Frame Rate**                        | **120 FPS**   |
+| **Vertical sync**                         | **Off**       |
+| **Background Application Max Frame Rate** | **120 FPS**   |
+
+
+4. If **Vertical sync** or **Background Application Max Frame Rate** is not in the main list, scroll further; **Background Application Max Frame Rate** may appear under **Legacy settings** / **Show Legacy Settings**.
+
+![NVIDIA App — Graphics → Global Settings](images/setup-beginer/nvidia-app-global-settings.png)
+
+NVIDIA App usually saves as you change each value. Stay on **Graphics → Global Settings** and confirm **Max Frame Rate** is **120 FPS** and **Low Latency Mode** is **Ultra**.
+
+**Why these values?** 120 FPS matches a common streaming target; Low Latency Mode Ultra reduces input delay; turning VSync off avoids extra lag; capping background apps stops Windows clutter from stealing GPU time while a renter is playing.
+
+---
+
+## 5. Install and open the Controller app
 
 The Controller is a small desktop app with buttons for everything below. You technically *can* run every step by typing commands instead, but there's no reason to — the app runs the exact same scripts and shows you what's happening as it goes. This guide assumes you're using it.
 
-1. Open the folder from Step 2.
+1. Open the folder from [Get the files](#3-get-the-files-onto-the-machine).
 2. Double-click `NextGPU.bat`.
 3. If Windows shows a security prompt asking to let it make changes, click **Yes** — the app needs Administrator rights to do anything useful.
 4. Sign in with the credentials from your nextGPU onboarding email or admin. *(If you don't have these yet, that's expected for a brand-new install — contact your admin before continuing)*
 
-Once you're in, you'll land on a **Get Started** page with the same nine steps listed in this guide, each with its own button. From here on, this guide explains what each button actually does, what to expect, and what "success" looks like — so you're never just clicking and hoping.
+Once you're in, you'll land on a **Get Started** page with Controller **STEP 01–07**. From here on, this guide’s Steps 1–6 and Step 8 match those cards (plus Step 7 for pushing games later).
 
 ---
 
@@ -164,7 +234,7 @@ Once you're in, you'll land on a **Get Started** page with the same nine steps l
 
 **If something fails:**
 
-- Most often, the folder from Step 2 didn't extract completely. Delete it and re-extract the zip fresh.
+- Most often, the folder from [Get the files](#3-get-the-files-onto-the-machine) didn't extract completely. Delete it and re-extract the zip fresh.
 - Double check you're running this on the Windows machine itself, not from a Mac or Linux computer.
 
 You can't usefully continue past this step until it passes — fix any `[FAIL]` lines first.
@@ -223,60 +293,9 @@ You can come back and re-run this step later any time new official content is ad
 
 ---
 
-## Step 4: Set up NVIDIA (driver and settings)
+## Step 4: Run the main setup (RegisterMachine)
 
-**What you're doing:** making sure the graphics card has the latest official NVIDIA driver installed, then setting a few global options so games stream smoothly at a steady frame rate. This step is done on the machine itself — there is no button for it in the Controller app.
-
-**Do this before Step 5 (RegisterMachine).** A reboot after installing the driver is normal; RegisterMachine will ask for another reboot later anyway.
-
-### 4a. Install the latest Game Ready driver
-
-Use the **NVIDIA App** on the machine — no need to download the driver from a website.
-
-1. Press the **Windows** key and type **NVIDIA** — open **NVIDIA App**.
-  - Don't see it? Install **NVIDIA App** from the **Microsoft Store** (search the Store for "NVIDIA"), then open it.
-  - You can also right-click the desktop and choose **NVIDIA App**, or click the NVIDIA icon in the system tray (bottom-right, near the clock).
-2. In NVIDIA App, open the **Drivers** tab (sometimes labeled **Driver**).
-3. Click **Check for updates** (or **Download** if an update is already listed).
-4. When the download finishes, click **Install** and choose **Express Installation** (recommended).
-5. **Reboot when the installer asks you to** (or reboot manually if it doesn't prompt).
-
-**What "success" looks like:**
-
-- After reboot, NVIDIA App opens normally and the **Drivers** tab shows your GPU is up to date (no pending update).
-- In **Device Manager** → **Display adapters**, your GPU shows without a yellow warning icon.
-
-**If the install fails:** close NVIDIA App, reopen it, and try **Check for updates** again. If it keeps failing, use **Custom install** in the driver installer and check **Perform a clean installation**, then reboot.
-
-### 4b. Set global 3D settings
-
-These three settings keep frame rates predictable for remote streaming — renters get a smooth picture without unnecessary lag from VSync.
-
-Stay in **NVIDIA App** (the same app you used in 4a):
-
-1. In the left sidebar, click **Graphics**.
-2. At the top of the page, open the **Global Settings** tab (not a single game or app).
-3. Scroll through the list and set each option below. If you don't see a setting right away, scroll further down the page.
-
-
-| Setting                                   | Set it to                       |
-| ----------------------------------------- | ------------------------------- |
-| **Max Frame Rate**                        | **On** — then enter **120** FPS |
-| **Vertical sync**                         | **Off**                         |
-| **Background Application Max Frame Rate** | **120 FPS**                     |
-
-
-1. **Background Application Max Frame Rate** may be under **Legacy settings** — if you don't see it in the main list, scroll to the bottom and click **Show Legacy Settings**, then set it to **120 FPS**.
-
-NVIDIA App usually saves as you change each value. Close and reopen **Graphics** → **Global Settings** to double-check all three stuck.
-
-**Quick check:** all three values should still show **120 FPS** / **Off** / **120 FPS** after you reopen the Global Settings page.
-
-**Why these values?** 120 FPS matches a common streaming target; turning VSync off avoids extra input delay; capping background apps stops Windows clutter from stealing GPU time while a renter is playing.
-
----
-
-## Step 5: Run the main setup (RegisterMachine)
+**Controller:** STEP 04 — Provision Full Host
 
 This is the big one — it's the longest step and the one that needs your full attention, since it'll ask you questions partway through.
 
@@ -286,27 +305,29 @@ This is the big one — it's the longest step and the one that needs your full a
 
 **Click:** `Run RegisterMachine`
 
-1. Maybe Windows will ask for permission to make changes (if you're not in the administrator priviledge)  — click **Yes**.
-2. A console window opens and starts asking questions one at a time: Cloudflare token, Cloudflare account ID, your nextGPU API key, a name for the computer, the listing price, an optional vendor ID, and your current admin username.
+1. Windows may ask for permission to make changes — click **Yes**.
+2. The Controller opens **Register Machine — Configuration**. Fill every required field, then click **Run Register Machine**. An elevated console continues the rest of setup.
 
 
-| What                        | What it's for                                                                             | Where it usually comes from                                                                  |
-| --------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Cloudflare API Token        | Lets this machine create its own public web address                                       | Contact with NextGPU                                                                         |
-| Cloudflare Account ID       | Identifies which Cloudflare account owns that address                                     | Contact with NextGPU                                                                         |
-| nextGPU API Key             | Lets this machine register itself with nextGPU's servers                                  | Contact with NextGPU                                                                         |
-| A name for this computer    | What you'll see in the dashboard (e.g: `NEXTGPU-105`)                                     | Contact with NextGPU                                                                         |
-| Listing price               | What this machine will be listed/rented for (e.g: 4000)                                   | Contact with NextGPU                                                                         |
-| Vendor ID *(optional)*      | Only needed if you're a vendor partner — otherwise just press Enter to skip               | Your nextGPU contact, if applicable                                                          |
-| Your current admin username | The setup will rename this account — see note below(eg: ezycloudx-admin, pcrender, admin) | Already on your machine(check what username you log-on open cmd and type: "echo %USERNAME%") |
+| Field | What it's for | Notes |
+| ----- | ------------- | ----- |
+| Install VDD/VAD | Virtual display + audio for headless streaming | Choose **No** only if this machine uses a physical monitor only |
+| Cloudflare API Token | Public web address for this machine | From NextGPU |
+| Cloudflare Account ID | Cloudflare account that owns the tunnel | From NextGPU |
+| API Key | Register this machine with nextGPU servers | From NextGPU |
+| Computer Name | Dashboard label (e.g. `NEXTGPU-105`) | From NextGPU |
+| Original Price | Listing / rental price | From NextGPU |
+| Vendor ID *(optional)* | Vendor partner id | Leave blank if not applicable |
+| **NextGPU-Admin password** | Password for `NextGPU-Admin` (RunAsTool + session management) | Required. Stored with DPAPI — write it down safely (account is deleted/recreated every session end) |
+| Admin account to rename | Existing local admin → `NextGPU-Authority` | Usually your current login (`echo %USERNAME%`) |
 
+![Register Machine — Configuration (top)](images/setup-beginer/register-machine-config-top.png)
 
-1. It'll show you a summary of everything you entered. Check it, then type **Y** to confirm and continue.
-2. Type "Y" when console showing: Installing Virtual Display Driver and Virtual Audio Driver...
-  Install or refresh VDD/VAD now? [Y/N]
+![Register Machine — Configuration (bottom: NextGPU-Admin password)](images/setup-beginer/register-machine-config-bottom.png)
+
 3. From here, it runs unattended for a while. You can watch progress with `Open Provisioning Logs` if you're curious, but you don't need to do anything else until it finishes.
 
-**Don't worry if:** you're input wrong credentials or mismatch something, just turn off the console window and click to run Step 5 again
+**Don't worry if:** you entered wrong credentials or mismatched something — close the console, then run Step 4 again with corrected values.
 
 ### What's actually happening behind the scenes (for context, not action)
 
@@ -319,7 +340,7 @@ This is the big one — it's the longest step and the one that needs your full a
 | Public address          | Creates your Cloudflare tunnel and DNS so the machine has a web address                                                      |
 | Registration            | Sends your hardware details to nextGPU's servers and gets this machine officially listed                                     |
 | Background services     | Sets up the small always-running programs that keep things healthy (heartbeat, auto-repair)                                  |
-| Wrap-up                 | Applies the wallpaper, renames your admin account, creates the `nextGPU` rental account                                      |
+| Wrap-up                 | Applies the wallpaper, renames your admin account, creates `nextGPU` and `NextGPU-Admin` |
 
 
 ### When it finishes
@@ -330,9 +351,11 @@ This is the big one — it's the longest step and the one that needs your full a
 
 ---
 
-## Step 6: Set up renter storage (the U: drive)
+## Step 5: Set up renter storage (the U: drive)
 
-**Requires:** Step 5 must be fully finished first (it creates a file called `domain.txt` that this step needs).
+**Controller:** STEP 05
+
+**Requires:** Step 4 must be fully finished first (it creates a file called `domain.txt` that this step needs).
 
 **What you're doing:** giving each renter their own private storage drive, labeled `U:`, that shows up automatically about 22 seconds after they log in.
 
@@ -346,7 +369,7 @@ You'll need the S3 Access Key and Secret Key from your list in Section 1. The ap
 
 ### Confirm it worked
 
-1. Log in as the `nextGPU` account (the rental account created in Step 5) — either directly or through a Moonlight session.
+1. Log in as the `nextGPU` account (the rental account created in Step 4) — either directly or through a Moonlight session.
 2. Wait about 22 seconds.
 3. A `U:` drive should appear, labeled with something like "**{Name}'s Storage**".
 
@@ -356,40 +379,140 @@ You'll need the S3 Access Key and Secret Key from your list in Section 1. The ap
 
 ---
 
-## Step 7: Add games with PlayNite
+## Step 6: Add games with PlayNite
 
-**Requires:** Step 5 must be finished (this step needs Sunshine, which Step 5 installs).
+**Controller:** STEP 06 — Implement PlayNite
 
-**What you're doing:** scanning for games already installed on the machine (Steam, Epic, etc.) and making them show up as launchable options for renters in Moonlight.
+**Requires:** Step 4 must be finished (this step needs Sunshine, which Step 4 installs).
 
-**Before you click anything**, make sure the games you want available are actually installed on this machine already — this step finds existing installs, it doesn't install games for you.
+**What you're doing:** scanning for games already installed on the machine (Steam, Epic, etc.), making them show up for renters in Moonlight, then configuring **Setup Games & Apps** and **Bypass** for **only the apps NextGPU assigned to this machine**.
 
-**Click:** `Run PlayNite Setup`
+In the Controller this card is **STEP 06 — Implement PlayNite** with three buttons: **1. Run Playnite Setup**, **2. Setup Games & Apps**, **3. Bypass games**.
+
+![STEP 06 — Implement PlayNite](images/setup-beginer/step06-playnite-buttons.png)
+
+**Before you click anything**, make sure the games you want available are actually installed on this machine already — Playnite finds existing installs; it doesn't install games for you. Keep your **assigned apps list** handy for the Setup Games & Apps and Bypass steps.
+
+### 1. Run Playnite Setup
+
+**Click:** `1. Run Playnite Setup`
 
 1. Pick a folder to install PlayNite into (e.g. `Z:\Playnite`).
 2. It downloads and unpacks PlayNite automatically.
 3. It scans your drives for Steam and Epic games — no login to those services needed, it just looks at what's on disk.
-4. After scan Steam and Epic it will showing options to scan allowlist choose specific "disk or folder" to make it scan faster or scan "all disks"
+4. After Steam/Epic scan it shows options to scan the allowlist: choose a specific disk/folder (faster) or all disks.
 5. It exports everything it found to Sunshine, so it shows up for renters.
-6. It installs a small helper (PlayNiteWatcher) that automatically closes the stream when a renter exits a game, rather than leaving it running.
-7. It automatically **pushes the Moonlight game list to AWS** using `domain.txt` (from Step 5) — no separate Step 8 click needed on first setup.
+6. It installs a small helper (PlayNiteWatcher) that automatically closes the stream when a renter exits a game.
+7. It automatically **pushes the Moonlight game list to AWS** using `domain.txt` (from Step 4) — no separate Step 7 click needed on first setup.
 
 **What "success" looks like:**
 
-- The games you expected show up when you check the **PlayNite** tab in the Controller via launch PlayNite to see what app installed in playnite application
-- The setup console ends with `Moonlight games pushed to AWS successfully` (or `SUCCESS` from the update API)
+- The games you expected show up when you check the **PlayNite** tab in the Controller (launch PlayNite to see what is installed).
+- The setup console ends with `Moonlight games pushed to AWS successfully` (or `SUCCESS` from the update API).
 
 **Added new games since running this?** Click `Update-PlayniteLibraries` (also on the PlayNite tab) and re-export — you don't need to redo the whole setup. Then run **Push Moonlight Games to AWS** (User Experience tab) so the backend stays in sync.
 
+### 2. Setup Games & Apps (assigned apps only)
+
+**Click:** `2. Setup Games & Apps`
+
+**What you're doing:** laying out official game/app bundles on the host, and (when needed) registering Clean Session rules so rental folders reset between sessions. Configure **only apps on your assigned list**.
+
+1. Open **Setup Games & Apps** → **Host Setup** tab.
+2. Run **Setup Games & Apps** (arrange) and any sync/push actions your assigned titles need.
+
+![Setup Games & Apps — Host Setup](images/setup-beginer/setup-games-apps-host.png)
+
+3. **Clean Session** (only if an assigned app needs a folder reset each rental — e.g. Garena):
+   1. Open the **Clean Session** tab.
+   2. Click **Import JSON** and select the rules file NextGPU provided for this machine’s assigned apps.
+   3. Confirm the table looks correct in the UI (id, title, action, target, source, stop, logon). Edit a cell only if something is wrong.
+   4. Click **Register Session Folder Tasks** and wait until the console shows the logoff/logon tasks registered.
+
+> **Notice:** At session end, Clean Session folder rules run **and** `endSession` **deletes then recreates `NextGPU-Admin`** so elevated-launch state does not carry across rentals. Keep the Register Machine password; it is how the account comes back.
+
+![Clean Session — Import JSON → verify table → Register Session Folder Tasks](images/setup-beginer/clean-session-import-json.png)
+
+![Session folder tasks registered](images/setup-beginer/session-folder-tasks-registered.png)
+
+More detail: [session/clean-session.md](session/clean-session.md).
+
+### 3. Bypass games (assigned apps only)
+
+**Click:** `3. Bypass games`
+
+**What you're doing:** installing RunAsTool bypass shortcuts so elevated Playnite launches work for renters **without** prompting for an admin password each time. Select **only seed shortcuts for apps assigned to this machine** — do not enable every ready seed by default.
+
+1. Open **Bypass** → **Setup** tab.
+2. In the seed `.lnk` table, **check only assigned apps** (and their required pre-launch shortcuts, e.g. Garena Platform with Garena FC Online). Leave unassigned rows unchecked.
+
+![Bypass Setup — select assigned shortcuts](images/setup-beginer/bypass-setup-select-assigned.png)
+
+3. **Before** Setup Bypass, click **Setup NextGPU-Admin**.
+4. Verify status:
+   - **User Account: Ready**
+   - **Credential: Stored**
+5. If both are Ready / Stored (normal after Register Machine), click **Cancel** — skip entering a password and skip **Create & Store**. Only create/store if either status is missing.
+
+![Setup NextGPU-Admin — Ready and Stored](images/setup-beginer/setup-nextgpu-admin-ready.png)
+
+6. Click **1. Setup Bypass (Automated)**.
+7. When **Browse For Folder** asks for the parent of **Game Shortcuts**, choose the data drive (typically `NextGPUData (Z:)`). Setup creates `Z:\Game Shortcuts`.
+
+![Browse For Folder — Z:](images/setup-beginer/bypass-browse-z-folder.png)
+
+8. At the Windows PowerShell credential prompt, enter the **NextGPU-Admin password** you set during Register Machine. This is one prompt for this setup.
+
+![NextGPU-Admin password prompt](images/setup-beginer/bypass-nextgpu-admin-password.png)
+
+9. Wait until the console shows **Automated bypass setup complete**. The next step note points to Review and Sync.
+
+![Automated bypass setup complete](images/setup-beginer/bypass-setup-complete.png)
+
+10. Optional check: open RunAsTool and confirm only your selected apps appear (e.g. Steam, Garena Platform, Garena FC Online).
+
+![RunAsTool assigned apps](images/setup-beginer/runastool-assigned-apps.png)
+
+11. Open the **Sync** tab → click **3. Review and Sync** → in **Review bypass shortcuts**, confirm only assigned entries → **OK**. Leave the console open until sync finishes.
+
+![Bypass Sync tab](images/setup-beginer/bypass-sync-tab.png)
+
+![Review bypass shortcuts](images/setup-beginer/bypass-review-shortcuts.png)
+
+![Sync finished](images/setup-beginer/bypass-sync-finished.png)
+
+**What "success" looks like for bypass:**
+
+- Assigned `.lnk` (and wrappers) exist under `Z:\Game Shortcuts`.
+- Playnite launch paths for those titles point at the bypass shortcuts after Review and Sync.
+- RunAsTool lists the same assigned apps.
+
+### 4. Verify PlayNite Status
+
+**Where:** Controller → **PlayNite** tab → **Verify PlayNite Status**
+
+When Steps 6.1–6.3 are done, run this checklist before you move on.
+
+1. Click **Verify PlayNite Status**.
+2. For each result line:
+   - **`[PASS]`** — that part of Step 6 is OK.
+   - **`[FAIL]`** — something required is broken. Use the **→ Run:** action on that row (or repeat the sub-step it maps to), then click **Re-verify**.
+   - **`[WARN]`** — informational only; you can continue (common for optional allowlist/desktop checks).
+   - **`[SKIP]`** — not checked on purpose; you can ignore (especially **S1** / **S2** Sunshine — streaming uses in-session Sunshine, not the `gpu-sunshine` service).
+3. **Healthy** or **Degraded (warnings only)** with no **`[FAIL]`** lines means Step 6 is good enough to continue.
+4. **Not ready** with one or more **`[FAIL]`** lines means stop and fix those before Step 7 / final check.
+
+![Verify PlayNite Status](images/setup-beginer/playnite-verify-status.png)
+
 ---
 
-## Step 8: Publish your game list to AWS
+## Step 7: Publish your game list to AWS
 
-**Requires:** Steps 5 and 7 finished — this needs `domain.txt` (from RegisterMachine) and games already exported to Moonlight (from PlayNite).
+**Requires:** Steps 4 and 6 finished — this needs `domain.txt` (from RegisterMachine) and games already exported to Moonlight (from PlayNite).
 
 **What you're doing:** sending the current Moonlight game list to nextGPU's servers so renters can see and launch those games from the dashboard — not just on this machine locally.
 
-**On first setup:** Step 7 (**Run PlayNite Setup**) does this automatically at the end when `-WithSunshine` runs (the default **Run PlayNite Setup** button). You only need this step manually when you add or change games later.
+**On first setup:** Step 6 (**Run PlayNite Setup**) does this automatically at the end when `-WithSunshine` runs (the default **Run PlayNite Setup** button). You only need this step manually when you add or change games later.
 
 **Click:** **Push Moonlight Games to AWS** (Controller → **User Experience** tab)
 
@@ -399,23 +522,26 @@ You'll need the S3 Access Key and Secret Key from your list in Section 1. The ap
 **What "success" looks like:**
 
 - The console ends with `SUCCESS` and lists the games that were added (or updated).
-- The game count matches what you expect from Step 7.
+- The game count matches what you expect from Step 6.
 
 **If it fails:**
 
-- **"Could not reach Moonlight Web"** — make sure the `moonlight-web` service is running (you'll verify this again in Step 9).
-- **"domain.txt is missing COMPUTER_NAME or PUBLIC_IP"** — re-run Step 5 (RegisterMachine) or fix `domain.txt` at the repo root.
-- **"No apps returned"** — go back to Step 7 and confirm games show up in Moonlight first, then try again.
+- **"Could not reach Moonlight Web"** — make sure the `moonlight-web` service is running (you'll verify this again in Step 8).
+- **"domain.txt is missing COMPUTER_NAME or PUBLIC_IP"** — re-run Step 4 (RegisterMachine) or fix `domain.txt` at the repo root.
+- **"No apps returned"** — go back to Step 6 and confirm games show up in Moonlight first, then try again.
+- **Still failing after the above** — restart Sunshine (`https://localhost:47990/troubleshooting` → **Restart Sunshine**), then try **Push Moonlight Games to AWS** again.
 
 **Added or changed games later?** Click **Push Moonlight Games to AWS** again — you do not need to redo the full PlayNite setup.
 
 ---
 
-## Step 9: Final check before going live
+## Step 8: Final check before going live
 
-**Requires:** Step 8 finished (game list published to AWS).
+**Controller:** STEP 07 — Verify Host Is Ready
 
-**What you're doing:** going through a short checklist to confirm everything from Steps 1–8 is actually working together, before you hand the machine off to a renter.
+**Requires:** Step 7 finished (game list published to AWS), or Step 6 if the automatic push already succeeded.
+
+**What you're doing:** going through a short checklist to confirm everything from Steps 1–7 is actually working together, before you hand the machine off to a renter.
 
 **Click:** `Run Wallpaper Verification`, then work through this list:
 
@@ -559,7 +685,7 @@ Turn off hibernation, move or shrink the page file, and clear System Restore poi
 
 1. Open **User Storage** → **Diagnose & fix**.
 2. Try **Mount U: for Moonlight**.
-3. If that doesn't work, re-run the Step 6 setup — no reboot needed for this one.
+3. If that doesn't work, re-run the Step 5 setup — no reboot needed for this one.
 
 ### Push Moonlight Games to AWS failed
 
@@ -567,11 +693,11 @@ Turn off hibernation, move or shrink the page file, and clear System Restore poi
 
 **Try, in order:**
 
-1. Confirm the `moonlight-web` service is running (Step 9, checklist item 4).
-2. Confirm games appear in the Moonlight app list locally (Step 7 / Step 9, checklist item 6).
+1. Confirm the `moonlight-web` service is running (Step 8, checklist item 4).
+2. Confirm games appear in the Moonlight app list locally (Step 6 / Step 8, checklist item 6).
 3. Open `domain.txt` and verify `COMPUTER_NAME=` and `PUBLIC_IP=` are filled in.
 4. Re-run **Push Moonlight Games to AWS** from the **User Experience** tab.
-5. **If it still fails:** open `**https://localhost:47990`** in a browser (accept the certificate warning if prompted), go to the **Troubleshooting** tab, and **restart Sunshine**. Then try **Push Moonlight Games to AWS** again.
+5. **If it still fails:** open [`https://localhost:47990/troubleshooting`](https://localhost:47990/troubleshooting) in a browser (accept the certificate warning if prompted), click **Restart Sunshine**, then try **Push Moonlight Games to AWS** again.
 
 ---
 
@@ -589,9 +715,10 @@ Quick definitions if a term in this guide is unfamiliar.
 | **Cloudflare Tunnel**     | A way to give this machine a public web address without configuring your router.                   |
 | **rclone / WinFsp**       | Background tools that let a cloud storage bucket appear as a normal drive letter in Windows.       |
 | **PlayNite**              | A game/app library manager that finds installed games/apps and lists them for streaming.           |
-| `**domain.txt`**          | A file created after Step 5 containing this machine's public web address.                          |
+| `**domain.txt`**          | A file created after Step 4 containing this machine's public web address.                          |
 | `**NextGPU-Authority`**   | Your original admin account, renamed — the only account that can shut down or restart the machine. |
 | `**nextGPU`** (account)   | The everyday account renters actually use during their session.                                    |
+| `**NextGPU-Admin`**       | Admin launcher for RunAsTool / bypass. **Deleted and recreated at every session end** (Clean Session / `endSession`); password from Register Machine is reused. |
 
 
 ---
@@ -605,7 +732,7 @@ If you need to dig into a problem, these are the most useful files (all inside y
 
 | Log file                                        | What it tells you                                                        |
 | ----------------------------------------------- | ------------------------------------------------------------------------ |
-| `logs\register_api_log.txt`                     | What was sent to nextGPU's servers during Step 5, and how they responded |
+| `logs\register_api_log.txt`                     | What was sent to nextGPU's servers during Step 4, and how they responded |
 | `logs\VDD-VAD.log`                              | Virtual display/audio driver install details                             |
 | `logs\heartbeat.log`                            | Ongoing status updates from this machine                                 |
 | `logs\auto-repair.log`                          | Anything the machine fixed automatically on its own                      |

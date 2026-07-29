@@ -6,6 +6,7 @@ namespace NextGPU.App.Pages;
 public sealed class PlayniteAllowlistEntry : INotifyPropertyChanged
 {
     private bool _isSelected;
+    private bool _skipAclGrant;
 
     public bool IsSelected
     {
@@ -23,6 +24,18 @@ public sealed class PlayniteAllowlistEntry : INotifyPropertyChanged
     public string NameId { get; set; } = "";
     public string Title { get; set; } = "";
     public string Type { get; set; } = "";
+
+    public bool SkipAclGrant
+    {
+        get => _skipAclGrant;
+        set
+        {
+            if (_skipAclGrant == value)
+                return;
+            _skipAclGrant = value;
+            OnPropertyChanged();
+        }
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

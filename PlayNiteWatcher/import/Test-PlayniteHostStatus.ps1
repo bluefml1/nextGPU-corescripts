@@ -299,28 +299,10 @@ else {
     [void]$checks.Add((New-StatusCheck -Id 'A1' -Name 'Allowlist file exists' -Status 'Warn' -Detail 'Missing allowlist JSON' -FixAction 'AddAllowlist' -FixLabel 'Add to Allowlist' -Required $false))
 }
 
-# Sunshine S*
+# Sunshine S* — skip S1/S2: gpu-sunshine is demand-start; Sunshine runs in-session (not required here)
 $sunshineConfig = Get-SunshineConfigDir
-$svc = Get-Service -Name 'gpu-sunshine' -ErrorAction SilentlyContinue
-if ($svc -and $svc.Status -eq 'Running') {
-    [void]$checks.Add((New-StatusCheck -Id 'S1' -Name 'Sunshine service' -Status 'Pass' -Detail 'gpu-sunshine running'))
-}
-else {
-    [void]$checks.Add((New-StatusCheck -Id 'S1' -Name 'Sunshine service' -Status 'Fail' -Detail 'gpu-sunshine not running' -FixAction 'RestartSunshine' -FixLabel 'Restart Sunshine (Service)'))
-}
-
-try {
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-    $resp = Invoke-WebRequest -Uri 'https://localhost:47990/' -UseBasicParsing -TimeoutSec 5
-    [void]$checks.Add((New-StatusCheck -Id 'S2' -Name 'Sunshine HTTP' -Status 'Pass' -Detail "HTTP $($resp.StatusCode)"))
-}
-catch {
-    [void]$checks.Add((New-StatusCheck -Id 'S2' -Name 'Sunshine HTTP' -Status 'Fail' -Detail $_.Exception.Message -FixAction 'StartSunshineSession' -FixLabel 'Start Sunshine In Session'))
-}
-finally {
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
-}
+[void]$checks.Add((New-StatusCheck -Id 'S1' -Name 'Sunshine service' -Status 'Skip' -Detail 'Not verified (in-session Sunshine; gpu-sunshine is demand-start only)' -Required $false))
+[void]$checks.Add((New-StatusCheck -Id 'S2' -Name 'Sunshine HTTP' -Status 'Skip' -Detail 'Not verified (start Sunshine in session when streaming)' -Required $false))
 
 $appsJson = Join-Path $sunshineConfig 'apps.json'
 if (Test-Path -LiteralPath $appsJson) {
