@@ -1,4 +1,4 @@
-# One-click: removes existing VDD/VAD devices and installs fresh drivers silently.
+# One-click: installs VDD/VAD when missing or broken; skips when already ready.
 # Staging folder (kept after install): <script dir>\VDD-VAD-Install\
 # Usage: double-click InstallVDD-VAD.bat  OR  run this script as Administrator.
 [CmdletBinding()]
@@ -9,7 +9,8 @@ param(
     [string]$LogPath = "",
     [string]$InstallDir = "",
     [switch]$RequireVad,
-    [switch]$SkipIfInstalled
+    [switch]$SkipIfInstalled,
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,6 +26,8 @@ if ([string]::IsNullOrWhiteSpace($LogPath)) {
     $LogPath = Join-Path (Join-Path $scriptRoot "logs") "VDD-VAD.log"
 }
 
+. (Join-Path $scriptDir 'VddVadCommon.ps1')
+
 function Write-Log {
     param([string]$Message, [ValidateSet("INFO", "WARN", "ERROR", "SKIP", "OK")][string]$Level = "INFO")
     $line = "[{0:yyyy-MM-dd HH:mm:ss}] [{1}] {2}" -f (Get-Date), $Level, $Message
@@ -39,6 +42,11 @@ function Write-Log {
     $dir = Split-Path $LogPath -Parent
     if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     Add-Content -Path $LogPath -Value $line -Encoding UTF8
+}
+
+$script:VddVadLogAction = {
+    param([string]$Message, [string]$Level)
+    Write-Log -Message $Message -Level $Level
 }
 
 function Test-Admin {
@@ -203,125 +211,6 @@ function Test-DriverPresent {
     return [bool]$cim
 }
 
-function Get-PnpDevicesByPattern {
-    param(
-        [Parameter(Mandatory)][string[]]$InstancePatterns,
-        [string]$FriendlyNamePattern = ''
-    )
-    try {
-        @(Get-PnpDevice -ErrorAction Stop | Where-Object {
-            $match = $false
-            foreach ($pattern in $InstancePatterns) {
-                if ($_.InstanceId -like $pattern) { $match = $true; break }
-            }
-            if (-not $match -and $FriendlyNamePattern -and $_.FriendlyName) {
-                $match = $_.FriendlyName -match $FriendlyNamePattern
-            }
-            $match
-        })
-    }
-    catch {
-        Write-Log "Get-PnpDevice failed: $($_.Exception.Message)" -Level WARN
-        @()
-    }
-}
-
-function Remove-PnpDevicesByPattern {
-    param(
-        [Parameter(Mandatory)][string[]]$InstancePatterns,
-        [string]$FriendlyNamePattern = '',
-        [Parameter(Mandatory)][string]$Label
-    )
-    $devices = @(Get-PnpDevicesByPattern -InstancePatterns $InstancePatterns -FriendlyNamePattern $FriendlyNamePattern)
-    if ($devices.Count -eq 0) {
-        Write-Log "No existing $Label devices found." -Level SKIP
-        return
-    }
-
-    foreach ($device in $devices) {
-        Write-Log "Removing existing $Label device: $($device.InstanceId) [$($device.Status) / $($device.Problem)]"
-        $output = & pnputil.exe /remove-device "$($device.InstanceId)" 2>&1 | Out-String
-        if ($output.Trim()) { Write-Log $output.Trim() }
-        if ($LASTEXITCODE -ne 0) {
-            Write-Log "pnputil /remove-device returned $LASTEXITCODE for $($device.InstanceId)" -Level WARN
-        }
-    }
-}
-
-function Get-PnpDriverRecords {
-    $output = & pnputil.exe /enum-drivers 2>&1
-    $records = New-Object System.Collections.Generic.List[object]
-    $current = @{}
-
-    foreach ($line in $output) {
-        $text = [string]$line
-        if ($text -match '^\s*$') { continue }
-        if ($text -match '^\s*Published Name\s*:\s*(.+)$') {
-            if ($current.Count -gt 0) { $records.Add([pscustomobject]$current) }
-            $current = @{ PublishedName = $Matches[1].Trim() }
-            continue
-        }
-        if ($text -match '^\s*Original Name\s*:\s*(.+)$') { $current.OriginalName = $Matches[1].Trim(); continue }
-        if ($text -match '^\s*Provider Name\s*:\s*(.+)$') { $current.ProviderName = $Matches[1].Trim(); continue }
-        if ($text -match '^\s*Class Name\s*:\s*(.+)$') { $current.ClassName = $Matches[1].Trim(); continue }
-        if ($text -match '^\s*Driver Version\s*:\s*(.+)$') { $current.DriverVersion = $Matches[1].Trim(); continue }
-        if ($text -match '^\s*Signer Name\s*:\s*(.+)$') { $current.SignerName = $Matches[1].Trim(); continue }
-    }
-
-    if ($current.Count -gt 0) { $records.Add([pscustomobject]$current) }
-    return $records.ToArray()
-}
-
-function Remove-DriverPackagesByOriginalName {
-    param(
-        [Parameter(Mandatory)][string[]]$OriginalNames,
-        [Parameter(Mandatory)][string]$Label
-    )
-    try {
-        $drivers = @(Get-PnpDriverRecords | Where-Object {
-            $original = if ($_.PSObject.Properties.Name -contains 'OriginalName') { $_.OriginalName } else { '' }
-            $OriginalNames -contains $original
-        })
-    }
-    catch {
-        Write-Log "Failed to enumerate driver packages for $Label : $($_.Exception.Message)" -Level WARN
-        return
-    }
-
-    if ($drivers.Count -eq 0) {
-        Write-Log "No existing $Label driver packages found." -Level SKIP
-        return
-    }
-
-    foreach ($driver in $drivers) {
-        Write-Log "Deleting existing $Label driver package: $($driver.PublishedName) ($($driver.OriginalName))"
-        $output = & pnputil.exe /delete-driver $driver.PublishedName /uninstall /force 2>&1 | Out-String
-        if ($output.Trim()) { Write-Log $output.Trim() }
-        if ($LASTEXITCODE -ne 0) {
-            Write-Log "pnputil /delete-driver returned $LASTEXITCODE for $($driver.PublishedName)" -Level WARN
-        }
-    }
-}
-
-function Invoke-PnpRescan {
-    Write-Log "Scanning for hardware/device changes..."
-    $output = & pnputil.exe /scan-devices 2>&1 | Out-String
-    if ($output.Trim()) { Write-Log $output.Trim() }
-    if ($LASTEXITCODE -ne 0) {
-        Write-Log "pnputil /scan-devices returned $LASTEXITCODE" -Level WARN
-    }
-}
-
-function Reset-VddVadDrivers {
-    Write-Log "Removing existing VDD/VAD devices before fresh install..."
-    Remove-PnpDevicesByPattern -InstancePatterns @('DISPLAY\MTT1337*', 'ROOT\MttVDD*') `
-        -FriendlyNamePattern 'VDD|MttVDD|Virtual Display' -Label 'VDD'
-    Remove-PnpDevicesByPattern -InstancePatterns @('ROOT\VirtualAudioDriver*', 'ROOT\MEDIA*') `
-        -FriendlyNamePattern 'Virtual Audio Driver' -Label 'VAD'
-    Invoke-PnpRescan
-    Remove-DriverPackagesByOriginalName -OriginalNames @('MttVDD.inf', 'VirtualAudioDriver.inf') -Label 'VDD/VAD'
-}
-
 function Test-PnpDeviceReady {
     param(
         [Parameter(Mandatory)][string[]]$InstancePatterns,
@@ -329,7 +218,7 @@ function Test-PnpDeviceReady {
         [string]$Label = 'device',
         [bool]$Required = $true
     )
-    $devices = @(Get-PnpDevicesByPattern -InstancePatterns $InstancePatterns -FriendlyNamePattern $FriendlyNamePattern)
+    $devices = @(Get-PnpDevicesFiltered -InstancePatterns $InstancePatterns -FriendlyNameRegex $FriendlyNamePattern)
     foreach ($device in $devices) {
         $problem = if ($null -ne $device.Problem) { [string]$device.Problem } else { '' }
         if ($device.Status -eq 'OK' -and ($problem -eq '' -or $problem -eq 'CM_PROB_NONE')) {
@@ -407,6 +296,36 @@ function Test-NefconSuccess {
     return ($Code -eq 0) -or ($Code -eq 3010)
 }
 
+function Invoke-PreInstallCleanup {
+    param(
+        [bool]$InstallVdd,
+        [bool]$InstallVad,
+        [bool]$FullRefresh
+    )
+
+    if ($FullRefresh) {
+        Write-Log 'Removing existing VDD/VAD devices before refresh...'
+        Remove-VddVadStack -RemoveVdd -RemoveVad -LogAction $script:VddVadLogAction
+        return
+    }
+
+    if ($InstallVdd -and $InstallVad) {
+        Write-Log 'Removing existing VDD/VAD devices before install...'
+        Remove-VddVadStack -RemoveVdd -RemoveVad -LogAction $script:VddVadLogAction
+    }
+    elseif ($InstallVdd) {
+        Write-Log 'Removing existing VDD devices before install...'
+        Remove-VddVadStack -RemoveVdd -LogAction $script:VddVadLogAction
+    }
+    elseif ($InstallVad) {
+        Write-Log 'Removing existing VAD devices before install...'
+        Remove-VddVadStack -RemoveVad -LogAction $script:VddVadLogAction
+    }
+    else {
+        Write-Log 'No pre-install cleanup required.' -Level SKIP
+    }
+}
+
 # --- Auto elevation (hidden) ---
 if (-not (Test-Admin)) {
     Write-Log "Not admin; elevating and re-running hidden."
@@ -420,6 +339,7 @@ if (-not (Test-Admin)) {
     )
     if ($SkipIfInstalled) { $args += "-SkipIfInstalled" }
     if ($RequireVad) { $args += "-RequireVad" }
+    if ($Force) { $args += "-Force" }
     if (-not [string]::IsNullOrWhiteSpace($InstallDir)) { $args += "-InstallDir", "`"$InstallDir`"" }
     $proc = Start-Process powershell.exe -Verb RunAs -WindowStyle Hidden -WorkingDirectory $scriptRoot `
         -ArgumentList $args -Wait -PassThru
@@ -444,23 +364,42 @@ try {
     Write-Log "Host=$env:COMPUTERNAME User=$env:USERNAME Release=$ReleaseTag"
     Write-Log "InstallDir=$script:InstallDir"
     Write-Log "Virtual Driver Control URL=$VdcURL"
-    Write-Log "RequireVad=$($RequireVad.IsPresent)"
+    Write-Log "RequireVad=$($RequireVad.IsPresent) SkipIfInstalled=$($SkipIfInstalled.IsPresent) Force=$($Force.IsPresent)"
 
     New-Item -ItemType Directory -Path $script:InstallDir -Force | Out-Null
 
     $vddHwId = "Root\MttVDD"
     $vadHwId = "Root\VirtualAudioDriver"
-    Invoke-Phase "Pre-check"
-    $vddInstalled = Test-DriverPresent $vddHwId
-    $vadInstalled = Test-DriverPresent $vadHwId
-    Write-Log "Pre-check VDD=$vddInstalled VAD=$vadInstalled"
 
-    if ($SkipIfInstalled) {
-        Write-Log "-SkipIfInstalled is ignored. This installer always refreshes VDD/VAD to avoid stale or phantom devices." -Level WARN
+    Invoke-Phase "Pre-check"
+    $useSkipIfInstalled = $SkipIfInstalled.IsPresent -or (-not $Force.IsPresent)
+    $installPlan = Test-VddVadInstallNeeded -RequireVad:$RequireVad.IsPresent `
+        -Force:$Force.IsPresent -SkipIfInstalled:$useSkipIfInstalled
+    Write-Log "Pre-check: VDD ready=$($installPlan.VddHealth.Ready) primary VAD ready=$($installPlan.VadHealth.PrimaryReady.Count -gt 0)"
+    Write-Log "Install plan: Skip=$($installPlan.Skip) InstallVdd=$($installPlan.InstallVdd) InstallVad=$($installPlan.InstallVad) Reason=$($installPlan.Reason)"
+
+    if ($installPlan.Skip) {
+        Write-Log "SKIP: install not required ($($installPlan.Reason))." -Level SKIP
+        Invoke-Phase "Ensure Virtual Driver Control"
+        Install-VirtualDriverControl -Url $VdcURL
+        Ensure-VddSettingsLocation
+        Write-Log "SUCCESS: skipped install; drivers already ready." -Level OK
+        exit 0
     }
 
-    Invoke-Phase "Cleanup existing VDD/VAD"
-    Reset-VddVadDrivers
+    $fullRefresh = $Force.IsPresent -or ($installPlan.VadHealth.PrimaryBroken.Count -gt 0 -and $installPlan.VddHealth.BrokenDevices.Count -gt 0)
+    $needsCleanup = $installPlan.InstallVdd -or $installPlan.InstallVad
+    if ($needsCleanup) {
+        Invoke-Phase "Cleanup existing VDD/VAD"
+        $absent = Test-VddVadAbsent
+        if ($absent.AllClear -and -not $Force.IsPresent) {
+            Write-Log 'No existing VDD/VAD PnP devices; skipping pre-removal.' -Level SKIP
+        }
+        else {
+            Invoke-PreInstallCleanup -InstallVdd $installPlan.InstallVdd -InstallVad $installPlan.InstallVad `
+                -FullRefresh $fullRefresh
+        }
+    }
 
     Invoke-Phase "Install Virtual Driver Control"
     Install-VirtualDriverControl -Url $VdcURL
@@ -484,21 +423,30 @@ try {
         @{
             Name = "VDD"; Url = (Get-ReleaseAssetUrl "VirtualDisplayDriver-$archSuffix.Driver.Only.zip")
             Zip = "vdd.zip"; Folder = "VirtualDisplayDriver"; Cat = "mttvdd.cat"; Inf = "MttVDD.inf"
-            HwId = $vddHwId
+            HwId = $vddHwId; Install = $installPlan.InstallVdd
         },
         @{
             Name = "VAD"; Url = (Get-ReleaseAssetUrl "VirtualAudioDriver-x86.Driver.Only.zip")
             Zip = "vad.zip"; Folder = "VirtualAudioDriver"; Cat = "virtualaudiodriver.cat"; Inf = "VirtualAudioDriver.inf"
             HwId = $vadHwId
+            Install = ($installPlan.InstallVad -or (
+                (-not $RequireVad.IsPresent) -and
+                ($installPlan.VadHealth.PrimaryReady.Count -eq 0) -and
+                $installPlan.InstallVdd
+            ))
         }
     )
 
     foreach ($drv in $drivers) {
+        if (-not $drv.Install) {
+            Write-Log "Skipping $($drv.Name) install (already ready)." -Level SKIP
+            continue
+        }
+
         Invoke-Phase "Install $($drv.Name)"
         $driverRequired = ($drv.Name -eq "VDD") -or ($drv.Name -eq "VAD" -and $RequireVad.IsPresent)
         Expand-DriverPackage -Driver $drv
         $catFile = Join-Path $script:InstallDir "$($drv.Folder)\$($drv.Cat)"
-        $infFile = Join-Path $script:InstallDir "$($drv.Folder)\$($drv.Inf)"
         if ($drv.Name -eq "VDD") {
             Ensure-VddSettingsFile -SourceFile (Join-Path $script:InstallDir "$($drv.Folder)\vdd_settings.xml")
         }
@@ -524,22 +472,22 @@ try {
     }
 
     Invoke-Phase "Verify VDD/VAD readiness"
-    Invoke-PnpRescan
+    Invoke-PnpRescan -LogAction $script:VddVadLogAction
     Start-Sleep -Seconds 5
 
-    $vddPnpReady = Test-PnpDeviceReady -InstancePatterns @('DISPLAY\MTT1337*') -Label 'VDD'
+    $vddPnpReady = Test-PnpDeviceReady -InstancePatterns $script:VddInstancePatterns -Label 'VDD'
     $vddDisplayPathReady = Test-VddDisplayPathReady
     $vddReady = $vddPnpReady -or $vddDisplayPathReady
-    $vadReady = Test-PnpDeviceReady -InstancePatterns @('ROOT\VirtualAudioDriver*', 'ROOT\MEDIA*') `
-        -FriendlyNamePattern 'Virtual Audio Driver' -Label 'VAD' -Required:$RequireVad.IsPresent
+    $vadReady = Test-PnpDeviceReady -InstancePatterns $script:VadPrimaryInstancePatterns `
+        -FriendlyNamePattern $script:VadPrimaryFriendlyRegex -Label 'VAD' -Required:$RequireVad.IsPresent
 
     if (-not $vddReady) {
-        Write-Log "VDD is not ready after reinstall. Expected a non-phantom OK DISPLAY\MTT1337 device or a VDD display path from Get-DisplayDeviceId.ps1. Reboot may be required, then rerun this installer if still missing." -Level ERROR
+        Write-Log "VDD is not ready after install. Expected a non-phantom OK DISPLAY\MTT1337 device or a VDD display path from Get-DisplayDeviceId.ps1. Reboot may be required, then rerun this installer if still missing." -Level ERROR
         if ($exitCode -eq 0) { $exitCode = 3 }
     }
     if (-not $vadReady) {
         if ($RequireVad) {
-            Write-Log "VAD is not ready after reinstall. Expected an OK ROOT\VirtualAudioDriver device." -Level ERROR
+            Write-Log "VAD is not ready after install. Expected an OK ROOT\VirtualAudioDriver device." -Level ERROR
             Write-Log "Recommended fallback: run scripts\drivers\Install-VAD-Fallback.ps1, then check scripts\drivers\Get-VddVadStatus.ps1." -Level ERROR
             if ($exitCode -eq 0) { $exitCode = 4 }
         } else {

@@ -13,7 +13,9 @@ public partial class MainWindow : Window
         ["Dashboard"] = "Machine health, services, and quick links",
         ["Task Scheduler"] = "Heartbeat, auto-repair, auto-update, NVIDIA logon, and registration",
         ["User Storage (U:)"] = "One-click S3 setup — auto-mount U: on nextGPU sign-in",
-        ["User Experience"] = "Wallpaper, desktop cleanup, and game sync",
+        ["Setup Games & Apps"] = "Host setup (sync, layout, push)",
+        ["User Experience"] = "Wallpaper and desktop cleanup",
+        ["Bypass"] = "NextGPU-Admin, launcher service, Steam ACL, allowlist elevate, Clean Session",
         ["Sunshine"] = "Streaming host, display binding, and diagnostics",
         ["PlayNite"] = "Playnite setup, allowlist, Sunshine export, and verify",
         ["Moonlight"] = "Moonlight Web and tunnel controls",
@@ -34,7 +36,9 @@ public partial class MainWindow : Window
             NavDashboardBtn,
             NavTaskSchedulerBtn,
             NavUserStorageBtn,
+            NavSetupGamesAppsBtn,
             NavUserExperienceBtn,
+            NavBypassBtn,
             NavSunshineBtn,
             NavPlayniteBtn,
             NavMoonlightBtn,
@@ -80,8 +84,14 @@ public partial class MainWindow : Window
     private void NavUserStorage_Click(object sender, RoutedEventArgs e) =>
         NavigateToPage(new UserStoragePage(), NavUserStorageBtn, "User Storage (U:)");
 
+    private void NavSetupGamesApps_Click(object sender, RoutedEventArgs e) =>
+        NavigateToPage(new SetupGamesAppsPage(), NavSetupGamesAppsBtn, "Setup Games & Apps");
+
     private void NavUserExperience_Click(object sender, RoutedEventArgs e) =>
         NavigateToPage(new UserExperiencePage(), NavUserExperienceBtn, "User Experience");
+
+    private void NavBypass_Click(object sender, RoutedEventArgs e) =>
+        NavigateToPage(new BypassPage(), NavBypassBtn, "Bypass");
 
     private void NavSunshine_Click(object sender, RoutedEventArgs e) =>
         NavigateToPage(new SunshinePage(), NavSunshineBtn, "Sunshine");

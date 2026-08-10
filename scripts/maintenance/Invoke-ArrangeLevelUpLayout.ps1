@@ -35,6 +35,10 @@ function Get-ManifestGamePathMap {
             if (Test-LevelUpBundleManifestLeaf -LeafName $leaf) { continue }
         }
         elseif ($leaf -ieq 'LevelUp') { continue }
+        if (Get-Command Test-HoYoPlayBundleManifestLeaf -ErrorAction SilentlyContinue) {
+            if (Test-HoYoPlayBundleManifestLeaf -LeafName $leaf) { continue }
+        }
+        elseif ($leaf -ieq 'HoYoPlay') { continue }
         if (-not (Test-Path -LiteralPath $full -PathType Container)) { continue }
         # Manifest is append-only; later sessions win for the same game folder name.
         $map[$leaf] = $full

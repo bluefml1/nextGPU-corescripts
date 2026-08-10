@@ -9,7 +9,8 @@
 [CmdletBinding()]
 param(
     [string]$RepoRoot = "",
-    [switch]$RefreshPlayniteLibrary
+    [switch]$RefreshPlayniteLibrary,
+    [switch]$SkipVddBinding
 )
 
 $ErrorActionPreference = "Stop"
@@ -42,6 +43,20 @@ function Resolve-RepoRoot {
     return (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 }
 
+function Format-ExternalPsArgument {
+    param([string]$Value)
+
+    if ([string]::IsNullOrEmpty($Value)) {
+        return '""'
+    }
+
+    if ($Value -match '\s') {
+        return '"' + ($Value -replace '"', '""') + '"'
+    }
+
+    return $Value
+}
+
 function Invoke-ExternalPowerShell {
     param(
         [Parameter(Mandatory = $true)][string]$ScriptPath,
@@ -52,20 +67,17 @@ function Invoke-ExternalPowerShell {
         throw "Script not found: $ScriptPath"
     }
 
-    $params = @{
-        FilePath             = "powershell.exe"
-        ArgumentList         = @(
-            "-NoLogo",
-            "-NoProfile",
-            "-ExecutionPolicy", "Bypass",
-            "-File", $ScriptPath
-        ) + $ArgumentList
-        Wait                 = $true
-        PassThru             = $true
-        NoNewWindow          = $true
+    $psArgs = @(
+        '-NoLogo',
+        '-NoProfile',
+        '-ExecutionPolicy', 'Bypass',
+        '-File', (Format-ExternalPsArgument -Value $ScriptPath)
+    )
+    foreach ($arg in $ArgumentList) {
+        $psArgs += Format-ExternalPsArgument -Value $arg
     }
 
-    $process = Start-Process @params
+    $process = Start-Process -FilePath 'powershell.exe' -ArgumentList $psArgs -Wait -PassThru -NoNewWindow
     if ($process.ExitCode -ne 0) {
         throw "Script failed with exit code $($process.ExitCode): $ScriptPath"
     }
@@ -82,17 +94,22 @@ function Invoke-ExternalPowerShellAllowFailure {
     }
 
     $psArgs = @(
-        "-NoLogo",
-        "-NoProfile",
-        "-ExecutionPolicy", "Bypass",
-        "-File", $ScriptPath
-    ) + $ArgumentList
+        '-NoLogo',
+        '-NoProfile',
+        '-ExecutionPolicy', 'Bypass',
+        '-File', (Format-ExternalPsArgument -Value $ScriptPath)
+    )
+    foreach ($arg in $ArgumentList) {
+        $psArgs += Format-ExternalPsArgument -Value $arg
+    }
 
-    $process = Start-Process -FilePath "powershell.exe" -ArgumentList $psArgs -Wait -PassThru -NoNewWindow
+    $process = Start-Process -FilePath 'powershell.exe' -ArgumentList $psArgs -Wait -PassThru -NoNewWindow
     return $process.ExitCode
 }
 
 $repoRoot = Resolve-RepoRoot -Override $RepoRoot
+. (Join-Path $PSScriptRoot "MachineProfile.ps1")
+$vddEnabled = -not $SkipVddBinding.IsPresent -and (Get-NextGpuVddEnabled -RepoRoot $repoRoot)
 $installScriptsPs1 = Join-Path $PSScriptRoot "Install-SunshineScripts.ps1"
 $setVddOutputPs1 = Join-Path $PSScriptRoot "Set-SunshineVddOutput.ps1"
 $playnitePathFile = Join-Path $repoRoot "PlayNiteWatcher\PlayniteInstall.path"
@@ -101,16 +118,25 @@ $exportSunshinePs1 = Join-Path $repoRoot "PlayNiteWatcher\Export-SunshineFromPla
 
 Write-SetupMessage "=== Post-Sunshine setup started ==="
 Write-SetupMessage "Repo root: $repoRoot"
-
-Invoke-ExternalPowerShell -ScriptPath $installScriptsPs1
-
-Write-SetupMessage "[*] Resolving VDD output_name (retries + sunshine.log)..."
-$vddExit = Invoke-ExternalPowerShellAllowFailure -ScriptPath $setVddOutputPs1 -ArgumentList @("-RepoRoot", $repoRoot)
-if ($vddExit -eq 0) {
-    Write-SetupMessage "[*] VDD output_name configured (see logs\sunshine-vdd-setup.log)"
+if (-not $vddEnabled) {
+    Write-SetupMessage "[*] VDD binding skipped (machine-profile: vdd.enabled=false)"
 }
-else {
-    Write-SetupMessage "[!] VDD output_name not resolved; Sunshine update continues. See logs\sunshine-vdd-setup.log" "WARN"
+
+$installScriptsArgs = @()
+if (-not $vddEnabled) {
+    $installScriptsArgs += '-SkipVddBinding'
+}
+Invoke-ExternalPowerShell -ScriptPath $installScriptsPs1 -ArgumentList $installScriptsArgs
+
+if ($vddEnabled) {
+    Write-SetupMessage "[*] Resolving VDD output_name (retries + sunshine.log)..."
+    $vddExit = Invoke-ExternalPowerShellAllowFailure -ScriptPath $setVddOutputPs1 -ArgumentList @("-RepoRoot", $repoRoot)
+    if ($vddExit -eq 0) {
+        Write-SetupMessage "[*] VDD output_name configured (see logs\sunshine-vdd-setup.log)"
+    }
+    else {
+        Write-SetupMessage "[!] VDD output_name not resolved; Sunshine update continues. See logs\sunshine-vdd-setup.log" "WARN"
+    }
 }
 
 if (-not (Test-Path -LiteralPath $playnitePathFile)) {

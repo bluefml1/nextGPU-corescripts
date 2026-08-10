@@ -333,10 +333,144 @@ function Get-PlayniteInstallRootFromExe {
     return (Split-Path -Path $PlayniteExe -Parent)
 }
 
+function Get-ProcessByExecutablePath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ExePath,
+        [int]$TimeoutSeconds = 45
+    )
+
+    $procName = [System.IO.Path]::GetFileName($ExePath)
+    if ([string]::IsNullOrWhiteSpace($procName)) {
+        return $null
+    }
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        $match = Get-CimInstance -ClassName Win32_Process -Filter "Name='$procName'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.ExecutablePath -and ($_.ExecutablePath -ieq $ExePath) } |
+            Select-Object -First 1
+        if ($match) {
+            return Get-Process -Id $match.ProcessId -ErrorAction SilentlyContinue
+        }
+        Start-Sleep -Milliseconds 250
+    }
+
+    return $null
+}
+
+function Start-LimitedUserProcess {
+    <#
+        Start a process at the interactive user's non-elevated (Limited) run level.
+        Used when setup scripts run elevated but must not launch Playnite as admin.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [string[]]$ArgumentList = @(),
+        [string]$WorkingDirectory = '',
+        [ValidateSet('Normal', 'Hidden', 'Minimized', 'Maximized')]
+        [string]$WindowStyle = 'Normal',
+        [switch]$PassThru,
+        [switch]$Wait
+    )
+
+    if (-not (Test-IsAdministrator)) {
+        $params = @{
+            FilePath = $FilePath
+        }
+        if ($ArgumentList -and $ArgumentList.Count -gt 0) {
+            $params.ArgumentList = $ArgumentList
+        }
+        if ($WorkingDirectory) {
+            $params.WorkingDirectory = $WorkingDirectory
+        }
+        if ($PassThru) {
+            $params.PassThru = $true
+        }
+        if ($Wait) {
+            $params.Wait = $true
+        }
+        if ($PSBoundParameters.ContainsKey('WindowStyle')) {
+            $params.WindowStyle = $WindowStyle
+        }
+        return Start-Process @params
+    }
+
+    $userId = if ($env:USERDOMAIN -and $env:USERNAME) {
+        "$env:USERDOMAIN\$env:USERNAME"
+    }
+    else {
+        $env:USERNAME
+    }
+
+    $taskName = "NextGPU-LimitedLaunch-$([guid]::NewGuid().ToString('N'))"
+    $useHiddenLaunch = $PSBoundParameters.ContainsKey('WindowStyle') -and $WindowStyle -eq 'Hidden'
+
+    if ($useHiddenLaunch) {
+        $escapedExe = $FilePath.Replace("'", "''")
+        $escapedWd = $WorkingDirectory.Replace("'", "''")
+        $argLiteral = ($ArgumentList | ForEach-Object { "'$($_.Replace("'", "''"))'" }) -join ','
+        if (-not $argLiteral) {
+            $argLiteral = '@()'
+        }
+        else {
+            $argLiteral = "@($argLiteral)"
+        }
+
+        $launchScript = @"
+Set-Location -LiteralPath '$escapedWd'
+Start-Process -FilePath '$escapedExe' -ArgumentList $argLiteral -WindowStyle Hidden
+"@
+        $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($launchScript))
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -EncodedCommand $encoded"
+    }
+    else {
+        $actionParams = @{
+            Execute = $FilePath
+        }
+        if ($ArgumentList -and $ArgumentList.Count -gt 0) {
+            $actionParams.Argument = ($ArgumentList -join ' ')
+        }
+        if ($WorkingDirectory) {
+            $actionParams.WorkingDirectory = $WorkingDirectory
+        }
+        $action = New-ScheduledTaskAction @actionParams
+    }
+
+    $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Limited
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+
+    Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings -Force | Out-Null
+    try {
+        Start-ScheduledTask -TaskName $taskName | Out-Null
+        $proc = $null
+        if ($PassThru -or $Wait) {
+            $proc = Get-ProcessByExecutablePath -ExePath $FilePath -TimeoutSeconds 60
+        }
+        if ($Wait -and $proc) {
+            try { $proc.WaitForExit() } catch { }
+            return $proc
+        }
+        if ($PassThru) {
+            return $proc
+        }
+    }
+    finally {
+        Start-Sleep -Milliseconds 300
+        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+    }
+
+    return $null
+}
+
 function Start-PlayniteProcess {
     <#
         Launch Playnite with install folder as working directory.
-        Uses Push-Location because Start-Process -WorkingDirectory requires PowerShell 6+.
+        When the caller is elevated, launches at the interactive user's limited (non-admin) token
+        so Playnite does not show the elevated-privileges warning.
+        Uses Push-Location on non-elevated paths because Start-Process -WorkingDirectory requires PowerShell 6+.
     #>
     [CmdletBinding()]
     param(
@@ -350,6 +484,23 @@ function Start-PlayniteProcess {
     )
 
     $playniteRoot = Get-PlayniteInstallRootFromExe -PlayniteExe $PlayniteExe
+
+    if (Test-IsAdministrator) {
+        $limitedParams = @{
+            FilePath = $PlayniteExe
+            WorkingDirectory = $playniteRoot
+            PassThru = $PassThru
+            Wait = $Wait
+        }
+        if ($ArgumentList -and $ArgumentList.Count -gt 0) {
+            $limitedParams.ArgumentList = $ArgumentList
+        }
+        if ($PSBoundParameters.ContainsKey('WindowStyle')) {
+            $limitedParams.WindowStyle = $WindowStyle
+        }
+        return Start-LimitedUserProcess @limitedParams
+    }
+
     Push-Location -LiteralPath $playniteRoot
     try {
         $params = @{
@@ -420,6 +571,263 @@ function Test-IsAdministrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+$script:PlayniteRentalAccessGroup = 'BUILTIN\Users'
+$script:PlayniteRentalAdminGroup = 'BUILTIN\Administrators'
+
+function Write-PlayniteRentalAccessLog {
+    param(
+        [string]$Message,
+        [string]$Level = 'INFO',
+        [scriptblock]$LogAction
+    )
+
+    if ($LogAction) {
+        & $LogAction $Message $Level
+        return
+    }
+    Write-Verbose $Message
+}
+
+function Get-PlayniteRentalWritableRelativePaths {
+    <#
+        Folders under portable Playnite that nextGPU must Modify.
+        Includes CEF/web-view caches (browsercache/cache/JITProfiles) — RX-only causes
+        "Failed to initialize web view component". Binaries/Extensions stay volume RX.
+    #>
+    return @(
+        'library',
+        'ExtensionsData',
+        'browsercache',
+        'cache',
+        'JITProfiles'
+    )
+}
+
+function Resolve-NextGpuSteamExePath {
+    <#
+        Locate steam.exe without hardcoding a data-drive letter.
+        Delegates to Playnite-Path.psm1 (registry, then PreferNearPath drive, then all fixed volumes).
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$PreferNearPath = ''
+    )
+
+    $pathMod = Join-Path $PSScriptRoot 'src\Playnite-Path.psm1'
+    if (Test-Path -LiteralPath $pathMod) {
+        Import-Module $pathMod -Force
+        $cmd = Get-Command -Name Resolve-NextGpuSteamExePath -Module Playnite-Path -ErrorAction SilentlyContinue
+        if ($cmd) {
+            return & $cmd -PreferNearPath $PreferNearPath
+        }
+    }
+    return $null
+}
+
+function Reset-PlayniteToVolumeRentalAcl {
+    <#
+        Reset portable Playnite tree to inherit data-volume rental ACL (Users RX +
+        NextGPURestricted deny). Strips any prior Users Modify grant. Playnite must
+        run as NextGPU-Admin (elevated logon); nextGPU does not write this folder.
+        Requires an elevated session (icacls).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InstallDir,
+        [scriptblock]$LogAction
+    )
+
+    $normalized = Expand-PlayniteInstallDirectory -Path $InstallDir
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        Write-PlayniteRentalAccessLog "Playnite install path is empty: $InstallDir" 'ERROR' $LogAction
+        return $false
+    }
+
+    if ($normalized -match '^[A-Za-z]:\\?$') {
+        Write-PlayniteRentalAccessLog "Rejecting bare drive root as install path: $normalized. Supply the Playnite subfolder path." 'ERROR' $LogAction
+        return $false
+    }
+
+    if (-not (Test-Path -LiteralPath $normalized)) {
+        Write-PlayniteRentalAccessLog "Playnite install folder not found: $InstallDir" 'ERROR' $LogAction
+        return $false
+    }
+
+    if (-not (Test-IsAdministrator)) {
+        Write-PlayniteRentalAccessLog 'Reset-PlayniteToVolumeRentalAcl requires Administrator (elevated setup).' 'WARN' $LogAction
+        return $false
+    }
+
+    Write-PlayniteRentalAccessLog "Resetting Playnite ACL to volume inherit (Users RX): $normalized" 'INFO' $LogAction
+
+    $ok = $true
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & icacls.exe $normalized /reset /T /C /Q 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-PlayniteRentalAccessLog "icacls /reset reported errors on $normalized (locked files may remain)." 'WARN' $LogAction
+            $ok = $false
+        }
+    }
+    finally {
+        $ErrorActionPreference = $prevEap
+    }
+
+    if ($ok) {
+        Write-PlayniteRentalAccessLog 'Playnite ACL reset to volume inheritance (no nextGPU write grant).' 'INFO' $LogAction
+    }
+    else {
+        Write-PlayniteRentalAccessLog 'One or more icacls steps failed while resetting Playnite ACL.' 'ERROR' $LogAction
+    }
+
+    return $ok
+}
+
+function Grant-PlayniteRentalAccess {
+    <#
+        Deprecated: nextGPU no longer receives Users Modify on Playnite.
+        Resets Playnite to volume inheritance (Users RX). Prefer Reset-PlayniteToVolumeRentalAcl.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InstallDir,
+        [scriptblock]$LogAction
+    )
+
+    Write-PlayniteRentalAccessLog 'Grant-PlayniteRentalAccess is deprecated; resetting Playnite to volume RX inherit (elevated Playnite only).' 'WARN' $LogAction
+    return (Reset-PlayniteToVolumeRentalAcl -InstallDir $InstallDir -LogAction $LogAction)
+}
+
+function Get-PlayniteUsersAceFromIcacls {
+    param([string]$IcaclsText)
+
+    if ([string]::IsNullOrWhiteSpace($IcaclsText)) {
+        return $null
+    }
+
+    foreach ($line in ($IcaclsText -split "`r?`n")) {
+        $trimmed = $line.Trim()
+        if ([string]::IsNullOrWhiteSpace($trimmed)) { continue }
+
+        if ($trimmed -match '(?i)BUILTIN\\Users:(\([^)]*\))+') {
+            return $Matches[0]
+        }
+        if ($trimmed -match '(?i)(?:^|\s)Users:(\([^)]*\))+') {
+            return "BUILTIN\$($Matches[0].Trim())"
+        }
+    }
+
+    return $null
+}
+
+function Test-PlayniteUsersAceAllowsRentalWrite {
+    param([string]$UsersAce)
+
+    if ([string]::IsNullOrWhiteSpace($UsersAce)) {
+        return $false
+    }
+
+    return ($UsersAce -match '\(M\)' -or $UsersAce -match '\(W\)' -or $UsersAce -match '\(F\)')
+}
+
+function Get-PlayniteRentalAclStatus {
+    <#
+        Elevated-Playnite model: Pass when Users does not have Modify on Playnite (volume RX inherit).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InstallDir
+    )
+
+    $normalized = Expand-PlayniteInstallDirectory -Path $InstallDir
+    if ([string]::IsNullOrWhiteSpace($normalized) -or -not (Test-Path -LiteralPath $normalized)) {
+        return [PSCustomObject]@{
+            InstallDir   = $normalized
+            UsersAce     = $null
+            Granted      = $false
+            Detail       = 'Playnite install folder not found'
+            CurrentWrite = $false
+        }
+    }
+
+    $icaclsOut = @(& icacls.exe $normalized 2>&1)
+    $text = ($icaclsOut | Out-String).Trim()
+    $usersAce = Get-PlayniteUsersAceFromIcacls -IcaclsText $text
+    $hasModify = Test-PlayniteUsersAceAllowsRentalWrite -UsersAce $usersAce
+    $currentWrite = Test-PlayniteRentalAccess -InstallDir $normalized
+
+    # Elevated-only: nextGPU should not have Modify / live write on the tree.
+    $ok = (-not $hasModify)
+    $detail = if ($ok) {
+        "Playnite uses volume rental ACL (Users RX / no Modify). Start Playnite elevated as NextGPU-Admin. ($usersAce)"
+    }
+    elseif ($usersAce) {
+        "Users still has write on Playnite ($usersAce). Run Reset-PlayniteToVolumeRentalAcl / Register elevated logon."
+    }
+    else {
+        "Users ACE not found on $normalized. Reset Playnite ACL to volume inherit, then register elevated logon."
+    }
+
+    return [PSCustomObject]@{
+        InstallDir   = $normalized
+        UsersAce     = $usersAce
+        Granted      = $ok
+        Detail       = $detail
+        CurrentWrite = $currentWrite
+    }
+}
+
+function Test-PlayniteRentalAclGranted {
+    <#
+        True when Playnite has no Users Modify grant (elevated-Playnite / volume RX model).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InstallDir
+    )
+
+    return (Get-PlayniteRentalAclStatus -InstallDir $InstallDir).Granted
+}
+
+function Test-PlayniteRentalAccess {
+    <#
+        True when the current user can write and delete under Playnite library (games.db tree).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InstallDir
+    )
+
+    $normalized = Expand-PlayniteInstallDirectory -Path $InstallDir
+    if ([string]::IsNullOrWhiteSpace($normalized) -or -not (Test-Path -LiteralPath $normalized)) {
+        return $false
+    }
+
+    $libraryPath = Join-Path $normalized 'library'
+    if (-not (Test-Path -LiteralPath $libraryPath)) {
+        $libraryPath = $normalized
+    }
+
+    $probePath = Join-Path $libraryPath '.nextgpu-acl-probe'
+    try {
+        [System.IO.File]::WriteAllText($probePath, 'ok')
+        Remove-Item -LiteralPath $probePath -Force -ErrorAction Stop
+        return $true
+    }
+    catch {
+        if (Test-Path -LiteralPath $probePath) {
+            Remove-Item -LiteralPath $probePath -Force -ErrorAction SilentlyContinue
+        }
+        return $false
+    }
 }
 
 function Get-DefaultSunshineConfigPath {
@@ -750,6 +1158,61 @@ function Install-PlayniteExtensionFromPextFile {
     }
 }
 
+function Get-NextGpuSteamExtensionsBuildRoot {
+    param([string]$RepoRoot)
+
+    $root = Resolve-PlayNiteWatcherRepoRoot -Candidate $RepoRoot
+    return Join-Path $root 'SteamExtensions\build'
+}
+
+function Install-NextGpuSteamExtensions {
+    param(
+        [string]$InstallDir,
+        [string]$RepoRoot,
+        [scriptblock]$LogAction
+    )
+
+    if ([string]::IsNullOrWhiteSpace($InstallDir)) {
+        throw 'InstallDir is required.'
+    }
+    if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
+        throw 'RepoRoot is required.'
+    }
+
+    $buildRoot = Get-NextGpuSteamExtensionsBuildRoot -RepoRoot $RepoRoot
+    $steamSource = Join-Path $buildRoot 'SteamLibrary_NextGPU'
+
+    if (-not (Test-Path -LiteralPath (Join-Path $steamSource 'SteamLibrary.dll'))) {
+        throw "NextGPU Steam extension build not found: $steamSource. Run PlayNiteWatcher\SteamExtensions\Build-SteamExtensions.ps1 first."
+    }
+
+    $extensionsDir = Join-Path $InstallDir 'Extensions'
+    if (-not (Test-Path -LiteralPath $extensionsDir)) {
+        New-Item -ItemType Directory -Path $extensionsDir -Force | Out-Null
+    }
+
+    $legacySteam = Join-Path $extensionsDir 'SteamLibrary_Builtin'
+    if (Test-Path -LiteralPath $legacySteam) {
+        if ($LogAction) {
+            & $LogAction "Migrating away from official Steam extension: removing $legacySteam" "INFO"
+        }
+        Remove-Item -LiteralPath $legacySteam -Recurse -Force
+    }
+
+    $dest = Join-Path $extensionsDir 'SteamLibrary_NextGPU'
+    if (Test-Path -LiteralPath $dest) {
+        Remove-Item -LiteralPath $dest -Recurse -Force
+    }
+    Copy-Item -LiteralPath $steamSource -Destination $dest -Recurse -Force
+    if ($LogAction) {
+        & $LogAction "Installed NextGPU extension: $dest"
+    }
+
+    if ($LogAction) {
+        & $LogAction "Installed NextGPU Steam extension (SteamLibrary_NextGPU)"
+    }
+}
+
 function Install-PlayniteBuiltinLibraryExtensions {
     param(
         [string]$InstallDir,
@@ -763,6 +1226,8 @@ function Install-PlayniteBuiltinLibraryExtensions {
     if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
         throw 'RepoRoot is required.'
     }
+
+    Install-NextGpuSteamExtensions -InstallDir $InstallDir -RepoRoot $RepoRoot -LogAction $LogAction
 
     $configPath = Join-Path $RepoRoot 'config\playnite\builtin-library-extensions.json'
     if (-not (Test-Path -LiteralPath $configPath)) {
@@ -1000,6 +1465,34 @@ function Get-PlayniteLiteDbInvalidReason {
             return "locked"
         }
         return "unreadable"
+    }
+}
+
+function Ensure-PlayniteLibraryDatabaseUnlocked {
+    param(
+        [string]$InstallDir,
+        [int]$WaitSeconds = 30,
+        [scriptblock]$LogAction
+    )
+
+    $playniteExe = Get-PlayniteDesktopExe -InstallDir $InstallDir
+    if ($LogAction) {
+        & $LogAction "Stopping Playnite so games.db can be updated..."
+    }
+    Stop-PlayniteApplication -PlayniteExe $playniteExe -InstallDir $InstallDir -WaitSeconds $WaitSeconds -Force
+
+    $dbPath = Get-PlayniteLibraryGamesDbPath -InstallDir $InstallDir
+    $reason = Get-PlayniteLiteDbInvalidReason -Path $dbPath
+    if ($reason -eq 'locked') {
+        if ($LogAction) {
+            & $LogAction "games.db still locked; forcing Playnite to close..." "WARN"
+        }
+        Stop-PlayniteApplication -PlayniteExe $playniteExe -InstallDir $InstallDir -WaitSeconds $WaitSeconds -Force
+        Start-Sleep -Seconds 2
+        $reason = Get-PlayniteLiteDbInvalidReason -Path $dbPath
+        if ($reason -eq 'locked') {
+            throw "Playnite library database is locked: $dbPath Close Playnite manually and try again."
+        }
     }
 }
 
@@ -1699,6 +2192,7 @@ function Get-DesktopAppAllowlist {
         $nameId = if ($entry.nameId) { $entry.nameId.ToString().Trim() } else { "" }
         $title = if ($entry.title) { $entry.title.ToString().Trim() } else { "" }
         $type = if ($entry.type) { $entry.type.ToString().Trim() } else { "" }
+        $skipAcl = if ($null -ne $entry.runAsAdmin) { [bool]$entry.runAsAdmin } elseif ($null -ne $entry.skipAcl) { [bool]$entry.skipAcl } else { $false }
 
         if ([string]::IsNullOrWhiteSpace($exe) -or [string]::IsNullOrWhiteSpace($nameId)) {
             throw "Each allowlist app requires exe and nameId: $path"
@@ -1730,10 +2224,11 @@ function Get-DesktopAppAllowlist {
         }
 
         [void]$normalized.Add([PSCustomObject]@{
-                Exe    = $exe
-                NameId = $nameId
-                Title  = $title
-                Type   = $type
+                Exe          = $exe
+                NameId       = $nameId
+                Title        = $title
+                Type         = $type
+                SkipAclGrant = $skipAcl
             })
     }
 
@@ -1801,13 +2296,7 @@ function Import-NextGpuGamesAppsManifest {
     $manifestScript = Join-Path $coreRepo 'scripts\maintenance\GamesApps-Manifest.ps1'
     if (-not (Test-Path -LiteralPath $manifestScript)) { return $false }
 
-    if ([string]::IsNullOrWhiteSpace($env:NEXTGPU_REPO_ROOT)) {
-        $env:NEXTGPU_REPO_ROOT = $coreRepo
-    }
-
-    . $manifestScript
-    $script:GamesAppsManifestImported = $true
-    return $true
+    return $false
 }
 
 function Test-PlayniteSteamClientPath {
@@ -1849,7 +2338,18 @@ function Resolve-PlayniteSteamFromR2Manifest {
         return $null
     }
 
-    $entries = @(Read-DownloadManifestEntries)
+    if (-not (Get-Command Read-DownloadManifestEntries -ErrorAction SilentlyContinue)) {
+        & $write 'R2 manifest helpers unavailable; skipping Steam discovery.' 'WARN'
+        return $null
+    }
+
+    try {
+        $entries = @(Read-DownloadManifestEntries)
+    }
+    catch {
+        & $write "R2 manifest read failed; skipping Steam: $($_.Exception.Message)" 'WARN'
+        return $null
+    }
     if ($entries.Count -eq 0) {
         & $write 'No R2 sync manifest entries (sync-games-apps-downloaded.txt).' 'WARN'
         return $null
@@ -1983,7 +2483,15 @@ function Ensure-PlayniteSteamForLibraryScan {
         [scriptblock]$LogAction = $null
     )
 
-    $resolved = Resolve-PlayniteSteamInstallPath -OverridePath $OverridePath -WatcherRoot $WatcherRoot -LogAction $LogAction
+    try {
+        $resolved = Resolve-PlayniteSteamInstallPath -OverridePath $OverridePath -WatcherRoot $WatcherRoot -LogAction $LogAction
+    }
+    catch {
+        if ($LogAction) {
+            & $LogAction "Steam discovery failed; skipping Steam library import: $($_.Exception.Message)" 'WARN'
+        }
+        return $null
+    }
     if (-not $resolved -or [string]::IsNullOrWhiteSpace($resolved.Path)) {
         if ($LogAction) {
             & $LogAction 'Steam not found (machine or R2 manifest). Steam library import will be skipped.' 'WARN'
@@ -3304,12 +3812,17 @@ function New-PlayniteGameRecordFromBsonDocument {
 function Get-PlayniteGamesWithPlayActions {
     param(
         [string]$InstallDir,
-        [scriptblock]$LogAction
+        [scriptblock]$LogAction,
+        [switch]$StopPlayniteFirst
     )
 
     $dbPath = Get-PlayniteLibraryGamesDbPath -InstallDir $InstallDir
     if (-not (Test-Path -LiteralPath $dbPath)) {
         throw "Playnite library database not found: $dbPath"
+    }
+
+    if ($StopPlayniteFirst.IsPresent) {
+        Ensure-PlayniteLibraryDatabaseUnlocked -InstallDir $InstallDir -LogAction $LogAction
     }
 
     Initialize-LiteDbFromPlayniteInstall -InstallDir $InstallDir
@@ -3336,6 +3849,35 @@ function Get-PlayniteGamesWithPlayActions {
     }
 
     return , $records.ToArray()
+}
+
+function Normalize-PlayniteGamesArray {
+    param([object]$Games)
+
+    if ($null -eq $Games) {
+        return @()
+    }
+
+    $arr = @($Games)
+    while ($arr.Count -eq 1 -and ($arr[0] -is [object[]] -or $arr[0] -is [System.Array])) {
+        $arr = @($arr[0])
+    }
+
+    return $arr
+}
+
+function Get-SinglePlayniteGameRecord {
+    param([object]$Game)
+
+    if ($null -eq $Game) {
+        return $null
+    }
+
+    if ($Game -is [object[]] -or $Game -is [System.Array] -or $Game -is [System.Collections.IList]) {
+        return @($Game) | Where-Object { $_ -and $_.Id } | Select-Object -First 1
+    }
+
+    return $Game
 }
 
 function Copy-LiteDbBsonValue {
@@ -3442,7 +3984,7 @@ function Get-PlayniteNativeGameBsonTemplateDocument {
 
         $actions = Get-RawPlayActionDocumentsFromGameDocument -Doc $doc
         if ($actions.Count -gt 0) {
-            return $doc
+            return , $doc
         }
     }
 
@@ -3493,11 +4035,11 @@ function Get-PlayniteTemplatePlayActionDocument {
     foreach ($action in $actions) {
         $path = Get-BsonValueAsString -Value $action['Path']
         if (-not [string]::IsNullOrWhiteSpace($path)) {
-            return $action
+            return , $action
         }
     }
 
-    return $actions[0]
+    return , $actions[0]
 }
 
 function New-LiteDbGuidBsonDocument {
@@ -3533,6 +4075,7 @@ function New-PlayniteFilePlayActionBson {
         Set-LiteDbBsonField -Document $action -Name 'TrackingFrequency' -Value 2000
     }
 
+    Set-LiteDbBsonField -Document $action -Name 'Type' -Value 'File'
     Set-LiteDbBsonField -Document $action -Name 'Path' -Value $ExePath
     Set-LiteDbBsonField -Document $action -Name 'WorkingDir' -Value $work
     Set-LiteDbBsonField -Document $action -Name 'IsPlayAction' -Value $true
@@ -3594,6 +4137,12 @@ function Update-PlayniteGamePlayActionInDocument {
     )
 
     $installDir = Split-Path -Path $ExePath -Parent
+    $leaf = [System.IO.Path]::GetFileName($ExePath)
+    if ($leaf -match '\.(cmd|bat|ps1)$') {
+        if ([string]::IsNullOrWhiteSpace($installDir)) {
+            $installDir = Split-Path -Path $ExePath -Parent
+        }
+    }
     Set-LiteDbBsonField -Document $Doc -Name 'Name' -Value $Title
     Set-LiteDbBsonField -Document $Doc -Name 'InstallDirectory' -Value $installDir
     Set-LiteDbBsonField -Document $Doc -Name 'IsInstalled' -Value $true
@@ -3618,7 +4167,7 @@ function Remove-PlayniteManualGamesFromLiteDb {
     )
 
     $playniteExe = Get-PlayniteDesktopExe -InstallDir $InstallDir
-    Stop-PlayniteApplication -PlayniteExe $playniteExe
+    Stop-PlayniteApplication -PlayniteExe $playniteExe -InstallDir $InstallDir -WaitSeconds 30 -Force
 
     $dbPath = Get-PlayniteLibraryGamesDbPath -InstallDir $InstallDir
     if (-not (Test-Path -LiteralPath $dbPath)) {
@@ -3662,13 +4211,30 @@ function Find-PlayniteGameForAllowlistExe {
         [string]$ScanRoot = ""
     )
 
+    $Games = Normalize-PlayniteGamesArray -Games $Games
+    if ([string]::IsNullOrWhiteSpace($ExeName)) {
+        return $null
+    }
+
     $exeKey = $ExeName.ToLowerInvariant()
     $candidates = New-Object System.Collections.Generic.List[object]
 
     foreach ($game in $Games) {
         $path = $game.PrimaryPlayPath
-        if ([string]::IsNullOrWhiteSpace($path)) { continue }
-        if (([System.IO.Path]::GetFileName($path)).ToLowerInvariant() -ne $exeKey) { continue }
+        $matched = $false
+        if (-not [string]::IsNullOrWhiteSpace($path) -and
+            (([System.IO.Path]::GetFileName($path)).ToLowerInvariant() -eq $exeKey)) {
+            $matched = $true
+        }
+        # Elevate-wrapper play actions rewrite Path to powershell.exe; still match via install dir + allowlist exe.
+        if (-not $matched -and -not [string]::IsNullOrWhiteSpace($game.InstallDirectory)) {
+            $underInstall = Join-Path $game.InstallDirectory $ExeName
+            if (Test-Path -LiteralPath $underInstall) {
+                $matched = $true
+                $path = $underInstall
+            }
+        }
+        if (-not $matched) { continue }
         if ($ScanRoot -and -not (Test-PathUnderScanRoot -Path $path -ScanRoot $ScanRoot)) { continue }
         [void]$candidates.Add($game)
     }
@@ -3677,9 +4243,14 @@ function Find-PlayniteGameForAllowlistExe {
         return $null
     }
 
-    return @($candidates | Sort-Object {
-            if ($_.PrimaryPlayPath -and (Test-Path -LiteralPath $_.PrimaryPlayPath)) {
-                (Get-Item -LiteralPath $_.PrimaryPlayPath).LastWriteTimeUtc
+    return Get-SinglePlayniteGameRecord -Game ($candidates | Sort-Object {
+            $p = $_.PrimaryPlayPath
+            if (-not $p -or -not (Test-Path -LiteralPath $p)) {
+                $alt = if ($_.InstallDirectory) { Join-Path $_.InstallDirectory $ExeName } else { $null }
+                if ($alt -and (Test-Path -LiteralPath $alt)) { $p = $alt }
+            }
+            if ($p -and (Test-Path -LiteralPath $p)) {
+                (Get-Item -LiteralPath $p).LastWriteTimeUtc
             }
             else { [datetime]::MinValue }
         } -Descending | Select-Object -First 1)
@@ -3690,6 +4261,7 @@ function Sync-PlayniteDesktopAppsToAllowlist {
         [string]$InstallDir,
         [string]$ScanRoot,
         [object[]]$Allowlist,
+        [string]$RepoRoot = "",
         [switch]$WhatIf,
         [switch]$Prune,
         [scriptblock]$LogAction
@@ -3720,7 +4292,18 @@ function Sync-PlayniteDesktopAppsToAllowlist {
     }
 
     $playniteExe = Get-PlayniteDesktopExe -InstallDir $InstallDir
-    Stop-PlayniteApplication -PlayniteExe $playniteExe
+    Stop-PlayniteApplication -PlayniteExe $playniteExe -InstallDir $InstallDir -WaitSeconds 30 -Force
+
+    $bypassBindings = @()
+    $bypassesPath = ""
+    if (-not [string]::IsNullOrWhiteSpace($RepoRoot)) {
+        try {
+            $bypassWrapper = Get-BypassShortcutsConfig -RepoRoot $RepoRoot
+            $bypassBindings = @(Get-BypassBindingsFromConfig -Config $bypassWrapper.Config)
+            $bypassesPath = $bypassWrapper.Config.bypassesPath
+        }
+        catch { }
+    }
 
     $dbPath = Get-PlayniteLibraryGamesDbPath -InstallDir $InstallDir
     Initialize-LiteDbFromPlayniteInstall -InstallDir $InstallDir
@@ -3751,6 +4334,10 @@ function Sync-PlayniteDesktopAppsToAllowlist {
             $existing = Find-PlayniteGameForAllowlistExe -Games $allGames -ExeName $entry.Exe -ScanRoot $ScanRoot
 
             if ($existing) {
+                if (Test-PlayniteGameHasActiveBypassBinding -Game $existing -Bindings $bypassBindings -BypassesPath $bypassesPath) {
+                    if ($LogAction) { & $LogAction "Skipped (bypass active): $($entry.Title)" }
+                    continue
+                }
                 Update-PlayniteGamePlayActionInDocument -Doc $existing.LiteDbDocument -ExePath $exePath -Title $entry.Title
                 [void]$collection.Update($existing.LiteDbDocument)
                 $stats.Updated++
@@ -3791,7 +4378,7 @@ function Sync-PlayniteDesktopAppsToAllowlist {
     }
     finally {
         $db.Dispose()
-        Stop-PlayniteApplication -PlayniteExe $playniteExe
+        Stop-PlayniteApplication -PlayniteExe $playniteExe -InstallDir $InstallDir -WaitSeconds 15 -Force
     }
 
     return $stats
@@ -3806,11 +4393,37 @@ function Get-ExportableDesktopPlayniteGames {
     )
 
     $allowlist = Get-DesktopAppAllowlist -RepoRoot $RepoRoot -AllowlistPath $AllowlistPath
-    $games = Get-PlayniteGamesWithPlayActions -InstallDir $InstallDir -LogAction $LogAction
+    $games = Normalize-PlayniteGamesArray -Games (Get-PlayniteGamesWithPlayActions -InstallDir $InstallDir -LogAction $LogAction)
     $export = New-Object System.Collections.Generic.List[object]
+    $bypassBindings = @()
+    $bypassesPath = ""
+    if (Get-Command Get-BypassShortcutsConfig -ErrorAction SilentlyContinue) {
+        try {
+            $bypassWrapper = Get-BypassShortcutsConfig -RepoRoot $RepoRoot
+            $bypassBindings = @($bypassWrapper.Config.bindings)
+            $bypassesPath = $bypassWrapper.Config.bypassesPath
+        }
+        catch { }
+    }
 
     foreach ($entry in $allowlist) {
-        $match = Find-PlayniteGameForAllowlistExe -Games $games -ExeName $entry.Exe
+        $match = $null
+        $binding = @($bypassBindings) | Where-Object {
+            ($_.nameId -and $entry.NameId -and $_.nameId -ieq $entry.NameId) -or
+            ($_.title -and $entry.Title -and $_.title -ieq $entry.Title)
+        } | Select-Object -First 1
+
+        if ($binding -and $binding.playniteId) {
+            $match = Get-SinglePlayniteGameRecord -Game ($games | Where-Object { $_.Id -ieq $binding.playniteId } | Select-Object -First 1)
+        }
+        if (-not $match -and $binding -and $binding.launchPath) {
+            $match = Get-SinglePlayniteGameRecord -Game ($games | Where-Object {
+                    $_.PrimaryPlayPath -and $_.PrimaryPlayPath -ieq $binding.launchPath
+                } | Select-Object -First 1)
+        }
+        if (-not $match) {
+            $match = Find-PlayniteGameForAllowlistExe -Games $games -ExeName $entry.Exe
+        }
         if (-not $match) {
             if ($LogAction) {
                 & $LogAction "Desktop export skipped (no Playnite match): nameId=$($entry.NameId) exe=$($entry.Exe)" "WARN"
@@ -3818,9 +4431,44 @@ function Get-ExportableDesktopPlayniteGames {
             continue
         }
 
-        if ([string]::IsNullOrWhiteSpace($match.PrimaryPlayPath)) {
+        if ([string]::IsNullOrWhiteSpace($match.PrimaryPlayPath) -and
+            -not (Test-Path -LiteralPath (Join-Path $match.InstallDirectory $entry.Exe))) {
             if ($LogAction) {
                 & $LogAction "Desktop export skipped (no play path): nameId=$($entry.NameId)" "WARN"
+            }
+            continue
+        }
+
+        # Prefer the real game/app exe for Moonlight. Elevate-wrapper play actions point at powershell.exe —
+        # recover allowlist exe under InstallDirectory (or keep PrimaryPlayPath when it already is that exe).
+        $playPath = [string]$match.PrimaryPlayPath
+        $leaf = if ($playPath) { [System.IO.Path]::GetFileName($playPath) } else { '' }
+        if ([string]::IsNullOrWhiteSpace($playPath) -or
+            $leaf -ieq 'powershell.exe' -or
+            $leaf -ieq 'pwsh.exe' -or
+            $playPath -match '(?i)NextGPU-PlayElevated' -or
+            ($entry.Exe -and $leaf -ine $entry.Exe)) {
+            $candidate = $null
+            if ($match.InstallDirectory -and $entry.Exe) {
+                $candidate = Join-Path $match.InstallDirectory $entry.Exe
+            }
+            if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+                $playPath = $candidate
+            }
+            elseif ($entry.Exe -and $leaf -ine $entry.Exe) {
+                # Keep PrimaryPlayPath only if we could not find allowlist exe (e.g. shortcut/.cmd launchers).
+                if ($leaf -ieq 'powershell.exe' -or $leaf -ieq 'pwsh.exe') {
+                    if ($LogAction) {
+                        & $LogAction "Desktop export skipped (elevate wrapper, exe missing): nameId=$($entry.NameId) exe=$($entry.Exe) dir=$($match.InstallDirectory)" "WARN"
+                    }
+                    continue
+                }
+            }
+        }
+
+        if ([string]::IsNullOrWhiteSpace($playPath)) {
+            if ($LogAction) {
+                & $LogAction "Desktop export skipped (no resolvable exe): nameId=$($entry.NameId)" "WARN"
             }
             continue
         }
@@ -3829,10 +4477,13 @@ function Get-ExportableDesktopPlayniteGames {
                 Id               = $match.Id
                 GameId           = if ($match.GameId) { $match.GameId } else { $match.Id }
                 Name             = $entry.Title
-                InstallDirectory = $match.InstallDirectory
+                InstallDirectory = if ($match.InstallDirectory) { $match.InstallDirectory } elseif ($match.PrimaryWorkingDir) { $match.PrimaryWorkingDir } else { '' }
                 SourceLabel      = "Desktop"
                 NameId           = $entry.NameId
                 Exe              = $entry.Exe
+                PrimaryPlayPath  = $playPath
+                PrimaryPlayArgs  = ''
+                SkipAclGrant     = [bool]$entry.SkipAclGrant
             })
     }
 
@@ -4187,6 +4838,7 @@ function Invoke-HeadlessDesktopAppImport {
             -InstallDir $InstallDir `
             -ScanRoot $root `
             -Allowlist $allowlist `
+            -RepoRoot $RepoRoot `
             -LogAction $LogAction
         $totals.Added += $stats.Added
         $totals.Updated += $stats.Updated
@@ -4198,7 +4850,20 @@ function Invoke-HeadlessDesktopAppImport {
     }
 
     $playniteExe = Get-PlayniteDesktopExe -InstallDir $InstallDir
-    Stop-PlayniteApplication -PlayniteExe $playniteExe
+    Stop-PlayniteApplication -PlayniteExe $playniteExe -InstallDir $InstallDir -WaitSeconds 15 -Force
 
     return $totals
 }
+
+try {
+    $gamesAppsCoreRepo = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..') -ErrorAction Stop).Path
+    $gamesAppsManifestScript = Join-Path $gamesAppsCoreRepo 'scripts\maintenance\GamesApps-Manifest.ps1'
+    if (Test-Path -LiteralPath $gamesAppsManifestScript) {
+        if ([string]::IsNullOrWhiteSpace($env:NEXTGPU_REPO_ROOT)) {
+            $env:NEXTGPU_REPO_ROOT = $gamesAppsCoreRepo
+        }
+        . $gamesAppsManifestScript
+        $script:GamesAppsManifestImported = $true
+    }
+}
+catch { }

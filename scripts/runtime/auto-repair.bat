@@ -43,9 +43,12 @@ if /i "!DOMAIN_STATUS!"=="updating" (
 echo [*] Running health check...
 set "REPAIR_NEEDED=0"
 set "REPAIR_REASON="
+set "PAIR_NEEDED=0"
+set "SUN_CREDS_NEEDED=0"
 
 :: ==============================
 :: CHECK 1: cloudflared service
+:: Never triggers Sunshine/Moonlight ForceReinstall — tunnel-only recovery.
 :: ==============================
 sc query cloudflared | find "RUNNING" >nul
 if errorlevel 1 (
@@ -54,9 +57,8 @@ if errorlevel 1 (
     timeout /t 3 /nobreak >nul
     sc query cloudflared | find "RUNNING" >nul
     if errorlevel 1 (
-        echo [!] cloudflared restart failed.
-        set "REPAIR_NEEDED=1"
-        set "REPAIR_REASON=cloudflared down"
+        echo [!] cloudflared restart failed - leaving Sunshine/Moonlight alone.
+        echo [!] Fix cloudflared separately; will not ForceReinstall streaming stack.
     ) else (
         echo [*] cloudflared restarted OK.
     )
@@ -128,26 +130,90 @@ if "!HTTP_STATUS!"=="200" (
 )
 
 :: ==============================
-:: ALL OK - SKIP
+:: CHECK 5: Sunshine credentials + Moonlight pairing material
+:: Missing creds/pair => restore/re-pair only (no ForceReinstall unless stack is down).
 :: ==============================
+set "CRED_TEST_PS1=%SCRIPT_DIR%\scripts\provisioning\Test-StreamingCredentials.ps1"
+set "RESTORE_CREDS_PS1=%SCRIPT_DIR%\scripts\provisioning\Restore-SunshineCredentials.ps1"
 if "!REPAIR_NEEDED!"=="0" (
-    echo [*] All checks passed.
+    if exist "!CRED_TEST_PS1!" (
+        powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "!CRED_TEST_PS1!" -RepoRoot "!SCRIPT_DIR!"
+        if errorlevel 3 (
+            echo [!] Sunshine credentials AND Moonlight pairing material missing.
+            set "SUN_CREDS_NEEDED=1"
+            set "PAIR_NEEDED=1"
+        ) else if errorlevel 2 (
+            echo [!] Sunshine API credentials deleted or empty.
+            set "SUN_CREDS_NEEDED=1"
+            set "PAIR_NEEDED=1"
+        ) else if errorlevel 1 (
+            echo [!] Moonlight pairing credentials deleted or incomplete.
+            set "PAIR_NEEDED=1"
+        ) else (
+            echo [*] Streaming credentials / pairing: OK
+        )
+    ) else (
+        echo [!] Credential test script missing: !CRED_TEST_PS1!
+        set "PAIR_NEEDED=1"
+    )
+) else (
+    echo [*] Skipping credential check ^(full repair will restore creds + pair^).
+)
+
+:: ==============================
+:: FULL REPAIR (Sunshine + Moonlight + pairing)
+:: Only for Sunshine / Moonlight / HTTP failures — NOT cloudflared.
+:: ==============================
+if "!REPAIR_NEEDED!"=="1" (
+    echo.
+    echo [!] Health check failed. Reason: !REPAIR_REASON!
+    echo [!] Starting full repair...
+    echo ====================================================================
+    echo.
+    call "%~dp0Run-StreamingStackUpdate.bat" ForceReinstall ForceReinstall ForcePairing
+    if errorlevel 1 goto repair_failed
+    echo [*] Repair complete.
     exit /b 0
 )
 
-echo.
-echo [!] Health check failed. Reason: !REPAIR_REASON!
-echo [!] Starting full repair...
-echo ====================================================================
+:: ==============================
+:: RESTORE SUNSHINE CREDENTIALS (no reinstall)
+:: ==============================
+if "!SUN_CREDS_NEEDED!"=="1" (
+    echo.
+    echo [!] Restoring Sunshine credentials ^(no stack reinstall^)...
+    echo ====================================================================
+    if not exist "!RESTORE_CREDS_PS1!" (
+        echo [!] Missing !RESTORE_CREDS_PS1!
+        goto repair_failed
+    )
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "!RESTORE_CREDS_PS1!" -RepoRoot "!SCRIPT_DIR!"
+    if errorlevel 1 (
+        echo [!] Sunshine credential restore failed.
+        goto repair_failed
+    )
+    echo [*] Sunshine credentials restored.
+    set "PAIR_NEEDED=1"
+)
 
-:: ===================================================================
-:: Reinstall Sunshine + Moonlight + pairing (shared stack script)
-:: ===================================================================
-echo.
-call "%~dp0Run-StreamingStackUpdate.bat" ForceReinstall ForceReinstall ForcePairing
-if errorlevel 1 goto repair_failed
-echo [*] Repair complete.
+:: ==============================
+:: PAIRING-ONLY REPAIR (restores deleted Moonlight pair_info)
+:: ==============================
+if "!PAIR_NEEDED!"=="1" (
+    echo.
+    echo [!] Pairing / credential material needs repair.
+    echo [!] Re-pairing Moonlight with Sunshine ^(no stack reinstall^)...
+    echo ====================================================================
+    echo.
+    call "%~dp0Run-StreamingStackUpdate.bat" Skip Skip ForcePairing
+    if errorlevel 1 goto repair_failed
+    echo [*] Pairing repair complete.
+    exit /b 0
+)
+
+echo [*] All checks passed.
 exit /b 0
+
 :repair_failed
 echo [!] Repair failed.
 taskkill /f /im curl.exe >nul 2>&1

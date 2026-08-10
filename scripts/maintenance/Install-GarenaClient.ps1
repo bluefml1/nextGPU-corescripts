@@ -44,18 +44,73 @@ function Write-GarenaInstallLog {
     }
 }
 
+function Get-GarenaConfigFolderSourcePath {
+    param([Parameter(Mandatory)][string]$BundleRoot)
+    $configRoot = Join-Path $BundleRoot 'Config'
+    if (-not (Test-Path -LiteralPath $configRoot -PathType Container)) { return $null }
+
+    foreach ($child in @(Get-ChildItem -LiteralPath $configRoot -Directory -ErrorAction SilentlyContinue)) {
+        # Only accept folders nested directly under Config\ (e.g. Config\Garena), never bundle-root\Garena.
+        $gxxDat = Join-Path $child.FullName 'gxx\config\gxx.dat'
+        if (Test-Path -LiteralPath $gxxDat -PathType Leaf) {
+            return [System.IO.Path]::GetFullPath($child.FullName)
+        }
+    }
+
+    return $null
+}
+
+function Test-GarenaPathIsUnderConfig {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$BundleRoot
+    )
+    try {
+        $configRoot = [System.IO.Path]::GetFullPath((Join-Path $BundleRoot 'Config')).TrimEnd('\')
+        $full = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    }
+    catch { return $false }
+    if ($full -ieq $configRoot) { return $true }
+    return $full.StartsWith(($configRoot + '\'), [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Resolve-GarenaClientDirUnderBundle {
+    param([Parameter(Mandatory)][string]$BundleRoot)
+    if ([string]::IsNullOrWhiteSpace($BundleRoot)) { return $null }
+    if (-not (Test-Path -LiteralPath $BundleRoot -PathType Container)) { return $null }
+
+    # Find Garena.exe under the bundle, but never under Config\ (that tree is session/config data only).
+    $hit = Get-ChildItem -LiteralPath $BundleRoot -Filter $script:GarenaClientExeName -File -Recurse -Depth 6 -ErrorAction SilentlyContinue |
+        Where-Object { -not (Test-GarenaPathIsUnderConfig -Path $_.DirectoryName -BundleRoot $BundleRoot) } |
+        Sort-Object { $_.FullName.Length } |
+        Select-Object -First 1
+    if ($hit) {
+        return [System.IO.Path]::GetFullPath($hit.DirectoryName)
+    }
+    return $null
+}
+
 function Test-GarenaBundleLayout {
     param([string]$Dir)
     if ([string]::IsNullOrWhiteSpace($Dir)) { return $false }
     if (-not (Test-Path -LiteralPath $Dir -PathType Container)) { return $false }
-    $clientExe = Join-Path $Dir (Join-Path $script:GarenaClientSubfolderName $script:GarenaClientExeName)
-    $gxxDat = Join-Path $Dir 'Config\Garena\gxx\config\gxx.dat'
-    return (Test-Path -LiteralPath $clientExe -PathType Leaf) -and (Test-Path -LiteralPath $gxxDat -PathType Leaf)
+    # Cheap gate: require Config before searching for client exe.
+    if (-not (Test-Path -LiteralPath (Join-Path $Dir 'Config') -PathType Container)) { return $false }
+    if (-not (Get-GarenaConfigFolderSourcePath -BundleRoot $Dir)) { return $false }
+    return [bool](Resolve-GarenaClientDirUnderBundle -BundleRoot $Dir)
 }
 
 function Find-GarenaBundleRootUnderExtract {
     param([Parameter(Mandatory)]$ExtractPath)
-    $ExtractPath = Resolve-ManifestExtractPathString -Path $ExtractPath
+    if (Get-Command Resolve-ManifestExtractPathString -ErrorAction SilentlyContinue) {
+        $ExtractPath = Resolve-ManifestExtractPathString -Path $ExtractPath
+    }
+    else {
+        $ExtractPath = [string]$ExtractPath
+        if (-not [string]::IsNullOrWhiteSpace($ExtractPath)) {
+            $ExtractPath = $ExtractPath.Trim().Trim('"').TrimEnd('\')
+        }
+    }
     if ([string]::IsNullOrWhiteSpace($ExtractPath)) { return $null }
     if (-not (Test-Path -LiteralPath $ExtractPath -PathType Container)) { return $null }
     if (Test-GarenaBundleLayout -Dir $ExtractPath) {
@@ -71,17 +126,54 @@ function Find-GarenaBundleRootUnderExtract {
 
 function Get-GarenaGxxSourcePath {
     param([Parameter(Mandatory)][string]$BundleRoot)
-    return Join-Path $BundleRoot 'Config\Garena\gxx'
+    $configFolder = Get-GarenaConfigFolderSourcePath -BundleRoot $BundleRoot
+    if (-not $configFolder) { return $null }
+    return Join-Path $configFolder 'gxx'
 }
 
 function Get-GarenaClientSourcePath {
     param([Parameter(Mandatory)][string]$BundleRoot)
-    return Join-Path $BundleRoot $script:GarenaClientSubfolderName
+    $resolved = Resolve-GarenaClientDirUnderBundle -BundleRoot $BundleRoot
+    if ($resolved) { return $resolved }
+    return $null
+}
+
+function Get-GarenaBundleLeafName {
+    return [System.IO.Path]::GetFileNameWithoutExtension($script:GarenaBundleArchiveName)
+}
+
+function Get-GarenaProgramDataRootPath {
+    param([string]$BundleRoot = '')
+
+    $folderName = $null
+    $roots = @()
+    if (-not [string]::IsNullOrWhiteSpace($BundleRoot)) { $roots += $BundleRoot }
+    try {
+        $onDisk = Find-GarenaBundleRootOnDisk
+        if ($onDisk) { $roots += $onDisk }
+    }
+    catch { }
+
+    foreach ($root in $roots) {
+        $cfg = Get-GarenaConfigFolderSourcePath -BundleRoot $root
+        if ($cfg) {
+            $folderName = Split-Path -Leaf $cfg
+            break
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($folderName)) {
+        $folderName = Get-GarenaBundleLeafName
+    }
+    if ([string]::IsNullOrWhiteSpace($env:ProgramData)) { return $null }
+    return Join-Path $env:ProgramData $folderName
 }
 
 function Get-GarenaProgramDataGxxPath {
-    if ([string]::IsNullOrWhiteSpace($env:ProgramData)) { return $null }
-    return Join-Path $env:ProgramData 'Garena\gxx'
+    param([string]$BundleRoot = '')
+    $root = Get-GarenaProgramDataRootPath -BundleRoot $BundleRoot
+    if (-not $root) { return $null }
+    return Join-Path $root 'gxx'
 }
 
 function Get-GarenaManifestEntry {
@@ -104,11 +196,26 @@ function Get-GarenaManifestEntry {
 function Find-ExistingGarenaSyncPath {
     param([object[]]$Entries = @())
     if ($null -eq $Entries -or $Entries.Count -eq 0) {
-        $Entries = @(Read-DownloadManifestEntries)
+        if (Get-Command Read-DownloadManifestEntries -ErrorAction SilentlyContinue) {
+            try {
+                $Entries = @(Read-DownloadManifestEntries)
+            }
+            catch {
+                $Entries = @()
+            }
+        }
+        else {
+            $Entries = @()
+        }
     }
     $hit = Get-GarenaManifestEntry -Entries $Entries
     if (-not $hit) { return $null }
-    $extractPath = Resolve-ManifestExtractPathString -Path $hit.ExtractPath
+    $extractPath = if (Get-Command Resolve-ManifestExtractPathString -ErrorAction SilentlyContinue) {
+        Resolve-ManifestExtractPathString -Path $hit.ExtractPath
+    }
+    else {
+        [string]$hit.ExtractPath
+    }
     if ([string]::IsNullOrWhiteSpace($extractPath)) { return $null }
     if (-not (Test-Path -LiteralPath $extractPath -PathType Container)) { return $null }
     if (-not (Find-GarenaBundleRootUnderExtract -ExtractPath $extractPath)) { return $null }
@@ -137,6 +244,59 @@ function Get-GarenaInstallPathFile {
     return Join-Path $PSScriptRoot 'GarenaInstall.path'
 }
 
+function Read-SavedGarenaInstallRoot {
+    $pathFile = Get-GarenaInstallPathFile
+    if (-not (Test-Path -LiteralPath $pathFile)) { return $null }
+    $line = (Get-Content -LiteralPath $pathFile -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if ([string]::IsNullOrWhiteSpace($line)) { return $null }
+    try {
+        return [System.IO.Path]::GetFullPath($line.Trim().Trim('"'))
+    }
+    catch { return $null }
+}
+
+function Find-GarenaBundleRootOnDisk {
+    param([object[]]$Entries = @())
+
+    $saved = Read-SavedGarenaInstallRoot
+    if ($saved) {
+        $fromSaved = Find-GarenaBundleRootUnderExtract -ExtractPath $saved
+        if ($fromSaved) { return $fromSaved }
+    }
+
+    if (Get-Command Find-ExistingGarenaSyncPath -ErrorAction SilentlyContinue) {
+        try {
+            $syncPath = Find-ExistingGarenaSyncPath -Entries $Entries
+            if ($syncPath) {
+                $fromSync = Find-GarenaBundleRootUnderExtract -ExtractPath $syncPath
+                if ($fromSync) { return $fromSync }
+            }
+        }
+        catch { }
+    }
+
+    $bundleLeaf = Get-GarenaBundleLeafName
+    foreach ($letter in @('Z', 'H', 'D', 'E', 'G', 'F', 'C')) {
+        $driveRoot = "${letter}:\"
+        if (-not (Test-Path -LiteralPath $driveRoot -PathType Container)) { continue }
+
+        $preferred = Join-Path $driveRoot $bundleLeaf
+        if (Test-Path -LiteralPath $preferred -PathType Container) {
+            $fromPreferred = Find-GarenaBundleRootUnderExtract -ExtractPath $preferred
+            if ($fromPreferred) { return $fromPreferred }
+        }
+
+        foreach ($child in @(Get-ChildItem -LiteralPath $driveRoot -Directory -ErrorAction SilentlyContinue)) {
+            if ($child.Name -ieq $bundleLeaf) { continue }
+            if (-not (Test-Path -LiteralPath (Join-Path $child.FullName 'Config') -PathType Container)) { continue }
+            $fromChild = Find-GarenaBundleRootUnderExtract -ExtractPath $child.FullName
+            if ($fromChild) { return $fromChild }
+        }
+    }
+
+    return $null
+}
+
 function Get-ResolvedGarenaClientExePath {
     param([object[]]$Entries = @())
     $pathFile = Get-GarenaInstallPathFile
@@ -144,28 +304,34 @@ function Get-ResolvedGarenaClientExePath {
         $line = (Get-Content -LiteralPath $pathFile -ErrorAction SilentlyContinue | Select-Object -First 1)
         if (-not [string]::IsNullOrWhiteSpace($line)) {
             try {
-                $exe = Join-Path ([System.IO.Path]::GetFullPath($line.Trim().Trim('"'))) 'Garena\Garena.exe'
-                if (Test-Path -LiteralPath $exe) { return $exe }
+                $savedRoot = [System.IO.Path]::GetFullPath($line.Trim().Trim('"'))
+                $clientDir = Resolve-GarenaClientDirUnderBundle -BundleRoot $savedRoot
+                if (-not $clientDir) {
+                    $bundle = Find-GarenaBundleRootUnderExtract -ExtractPath $savedRoot
+                    if ($bundle) { $clientDir = Resolve-GarenaClientDirUnderBundle -BundleRoot $bundle }
+                }
+                if ($clientDir) {
+                    $exe = Join-Path $clientDir $script:GarenaClientExeName
+                    if (Test-Path -LiteralPath $exe) { return $exe }
+                }
             }
             catch { }
         }
     }
-    if ($null -eq $Entries -or $Entries.Count -eq 0) {
-        $Entries = @(Read-DownloadManifestEntries)
+
+    $bundleRoot = $null
+    try {
+        $bundleRoot = Find-GarenaBundleRootOnDisk -Entries $Entries
     }
-    $syncPath = Find-ExistingGarenaSyncPath -Entries $Entries
-    if ($syncPath) {
-        $root = Find-GarenaBundleRootUnderExtract -ExtractPath $syncPath
-        if ($root) {
-            $exe = Join-Path (Get-GarenaClientSourcePath -BundleRoot $root) $script:GarenaClientExeName
+    catch { }
+    if ($bundleRoot) {
+        $clientDir = Get-GarenaClientSourcePath -BundleRoot $bundleRoot
+        if ($clientDir) {
+            $exe = Join-Path $clientDir $script:GarenaClientExeName
             if (Test-Path -LiteralPath $exe) { return $exe }
         }
     }
-    $driveLetter = Get-GamesDriveLetter -Entries $Entries
-    if ($driveLetter) {
-        $exe = Join-Path "${driveLetter}:\Garena\Garena" $script:GarenaClientExeName
-        if (Test-Path -LiteralPath $exe) { return $exe }
-    }
+
     return $null
 }
 
@@ -223,6 +389,29 @@ function Install-GarenaClientSilent {
 
     $entries = @(Read-DownloadManifestEntries -ManifestPath $ManifestPath)
     $extractPath = Find-ExistingGarenaSyncPath -Entries $entries
+    if (-not $extractPath) {
+        $bundleRoot = Find-GarenaBundleRootOnDisk -Entries $entries
+        if ($bundleRoot) {
+            $extractPath = $bundleRoot
+        }
+    }
+    if (-not $extractPath) {
+        $guessLeaf = Get-GarenaBundleLeafName
+        $guess = Join-Path $TargetFolder $guessLeaf
+        if (Test-Path -LiteralPath $guess -PathType Container) {
+            $bundleRoot = Find-GarenaBundleRootUnderExtract -ExtractPath $guess
+            if ($bundleRoot) { $extractPath = $bundleRoot }
+        }
+        if (-not $extractPath -and (Test-Path -LiteralPath $TargetFolder -PathType Container)) {
+            foreach ($child in @(Get-ChildItem -LiteralPath $TargetFolder -Directory -ErrorAction SilentlyContinue)) {
+                $bundleRoot = Find-GarenaBundleRootUnderExtract -ExtractPath $child.FullName
+                if ($bundleRoot) {
+                    $extractPath = $bundleRoot
+                    break
+                }
+            }
+        }
+    }
     if (-not $extractPath) {
         throw 'Garena install finished but extract path was not found in manifest or on disk.'
     }

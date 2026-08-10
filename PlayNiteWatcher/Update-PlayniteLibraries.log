@@ -1,8 +1,0 @@
-﻿[2026-05-24 16:01:59] [INFO] === Update-PlayniteLibraries started ===
-[2026-05-24 16:01:59] [INFO] Windows user: tuanv | Profile: C:\Users\tuanv\AppData\Roaming\Playnite
-[2026-05-24 16:01:59] [INFO] Using: C:\Users\tuanv\AppData\Local\Playnite\Playnite.DesktopApp.exe
-[2026-05-24 16:02:03] [INFO] Launch: C:\Users\tuanv\AppData\Local\Playnite\Playnite.DesktopApp.exe --startdesktop --hidesplashscreen --updatelibraries --updatemetadata
-[2026-05-24 16:02:03] [INFO] Watching C:\Users\tuanv\AppData\Roaming\Playnite\playnite.log (lines after 16:02:03, up to 20 min)...
-[2026-05-24 16:22:04] [WARN] Timed out (Steam: False, Epic: False). Open Playnite, log in to Steam/Epic, then Update All.
-[2026-05-24 16:22:04] [WARN] Playnite may still be open - check for wizard or login dialogs.
-[2026-05-24 16:22:08] [WARN] No Steam/Epic import in log. In Playnite: Add-ons - Libraries - Steam/Epic - log in - Update Game Library - Update All.

@@ -36,9 +36,11 @@ public sealed class ScriptRunner
             return (false, $"Not found: {full}");
 
         var prefix = keepConsoleOpen ? "-NoExit " : "";
-        var args = $"{prefix}-NoLogo -NoProfile -ExecutionPolicy Bypass -File \"{full}\" {psArguments}".Trim();
+        var psCommand = $"{prefix}-NoLogo -NoProfile -ExecutionPolicy Bypass -File \"{full}\" {psArguments}".Trim();
         _audit.Write($"Run PowerShell: {relativePath} {psArguments} keepConsole={keepConsoleOpen}");
-        return RunProcess("powershell.exe", elevated, args, isExecutablePath: false, keepConsoleOpen);
+        if (elevated)
+            return RunElevatedPowerShellViaCmd(full, psCommand, keepConsoleOpen);
+        return RunProcess("powershell.exe", false, psCommand, isExecutablePath: false, keepConsoleOpen);
     }
 
     public (bool Success, string Message) RunPowerShellCapture(string relativePath, string psArguments)
@@ -64,9 +66,14 @@ public sealed class ScriptRunner
             var stdout = p.StandardOutput.ReadToEnd();
             var stderr = p.StandardError.ReadToEnd();
             p.WaitForExit(600_000);
-            var text = string.IsNullOrWhiteSpace(stdout) ? stderr : stdout + stderr;
+            if (!string.IsNullOrWhiteSpace(stderr))
+                _audit.Write($"PowerShell capture stderr: {stderr.Trim()}");
+            // JSON capture scripts write payload to stdout; stderr often has Write-Warning lines that break parsers.
+            var text = p.ExitCode == 0
+                ? stdout.Trim()
+                : (string.IsNullOrWhiteSpace(stderr) ? stdout : stderr).Trim();
             _audit.Write($"PowerShell capture exit={p.ExitCode}");
-            return (p.ExitCode == 0, text.Trim());
+            return (p.ExitCode == 0, text);
         }
         catch (Exception ex)
         {
@@ -83,6 +90,18 @@ public sealed class ScriptRunner
         return combined;
     }
 
+    /// <summary>
+    /// Elevated PowerShell via UAC often drops -File/-ExecutionPolicy when started directly.
+    /// Launch through cmd.exe so scripts run reliably on Restricted execution policy hosts.
+    /// </summary>
+    private (bool Success, string Message) RunElevatedPowerShellViaCmd(string scriptFullPath, string psCommand, bool keepConsoleOpen)
+    {
+        var scriptDir = Path.GetDirectoryName(scriptFullPath) ?? _repoRoot;
+        var cmdFlag = keepConsoleOpen ? "/k" : "/c";
+        var cmdArgs = $"{cmdFlag} cd /d \"{scriptDir}\" && powershell.exe {psCommand}";
+        return RunProcess("cmd.exe", elevated: true, cmdArgs, isExecutablePath: true, keepConsoleOpen);
+    }
+
     private (bool Success, string Message) RunProcess(string fileName, bool elevated, string? arguments, bool isExecutablePath = true, bool keepConsoleOpen = false)
     {
         try
@@ -90,8 +109,9 @@ public sealed class ScriptRunner
             ProcessStartInfo psi;
             if (isExecutablePath && fileName.EndsWith(".bat", StringComparison.OrdinalIgnoreCase))
             {
+                var batDir = Path.GetDirectoryName(fileName) ?? _repoRoot;
                 var cmdFlag = keepConsoleOpen ? "/k" : "/c";
-                var cmdArgs = $"{cmdFlag} \"\"{fileName}\" {arguments ?? ""}\"".Trim();
+                var cmdArgs = $"{cmdFlag} cd /d \"{batDir}\" && \"{fileName}\" {arguments ?? ""}".Trim();
                 psi = new ProcessStartInfo("cmd.exe", cmdArgs)
                 {
                     WorkingDirectory = _repoRoot
@@ -117,10 +137,15 @@ public sealed class ScriptRunner
                 psi.Verb = "runas";
                 psi.UseShellExecute = true;
             }
+            else if (keepConsoleOpen)
+            {
+                // Shell execute opens a real console from the WPF host; UseShellExecute=false often yields an empty window.
+                psi.UseShellExecute = true;
+            }
             else
             {
                 psi.UseShellExecute = false;
-                psi.CreateNoWindow = !keepConsoleOpen;
+                psi.CreateNoWindow = true;
             }
 
             var p = Process.Start(psi);
@@ -130,7 +155,9 @@ public sealed class ScriptRunner
                 p.WaitForExit(600_000);
             _audit.Write($"Started: {fileName}");
             var hint = keepConsoleOpen ? " Console stays open (/k or -NoExit); close it when finished." : "";
-            return (true, elevated ? $"Launched elevated window.{hint}" : $"Finished with exit {p.ExitCode}.{hint}");
+            if (elevated || keepConsoleOpen)
+                return (true, elevated ? $"Launched elevated window.{hint}" : $"Launched console window.{hint}");
+            return (true, $"Finished with exit {p.ExitCode}.{hint}");
         }
         catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {

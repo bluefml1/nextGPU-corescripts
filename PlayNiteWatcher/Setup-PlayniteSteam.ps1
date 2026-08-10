@@ -8,9 +8,7 @@
     Install path is saved to PlayniteInstall.path in this repo folder.
     Library and settings live in the install folder - all Windows users share the same Playnite when using that path.
     Default run: portable install, Steam/Epic disk-scan config, and --updatelibraries only.
-    Steam discovery: machine registry/paths first, then R2 sync manifest (sync-games-apps-downloaded.txt).
     Sunshine/Moonlight export and PlayNiteWatcher are separate; use -WithSunshine to include them in setup.
-    With -WithSunshine, also pushes the Moonlight app list to AWS using domain.txt after export.
 .PARAMETER WithSunshine
     Also run headless Sunshine export and PlayNiteWatcher install (and copy SunshineAppExport when -FullSetup).
 .PARAMETER SkipInstall
@@ -23,8 +21,6 @@
     Do not run Export-SunshineFromPlaynite.ps1.
 .PARAMETER SkipWatcherInstall
     Do not run Install-PlayniteWatcher.ps1.
-.PARAMETER SkipAwsPush
-    Do not push Moonlight games to AWS after Sunshine export (default: push when -WithSunshine).
 .PARAMETER SunshineConfigDir
     Sunshine config folder (default: C:\Program Files\Sunshine\config).
 .PARAMETER LaunchPlaynite
@@ -58,7 +54,6 @@ param(
     [switch]$WithSunshine,
     [switch]$SkipSunshineExport,
     [switch]$SkipWatcherInstall,
-    [switch]$SkipAwsPush,
     [switch]$SkipSunshineExtension,
     [switch]$SkipDesktopImport,
     [switch]$LaunchPlaynite,
@@ -111,7 +106,6 @@ else {
 
 $script:RunSunshinePipeline = (-not $SkipSunshineExport) -or (-not $SkipWatcherInstall)
 $script:RunDesktopImport = (-not $SkipDesktopImport)
-$script:RunAwsPush = $WithSunshine -and (-not $SkipAwsPush)
 
 $script:SteamPluginId = "CB91DFC9-B977-43BF-8E70-55F46E410FAB"
 $script:EpicPluginId = "00000002-DBD1-46C6-B5D0-B1BA559D10E4"
@@ -140,6 +134,38 @@ function Get-SavedPlayniteInstallPath {
     return Read-SavedPlayniteInstallPath -RepoRoot $script:PlayNiteWatcherRepoRoot
 }
 
+function Show-PlayniteInstallFolderDialog {
+    param([string]$InitialDirectory)
+
+    Add-Type -AssemblyName System.Windows.Forms | Out-Null
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.Description = "Select a parent folder for Playnite portable. A Playnite subfolder is created automatically inside your selection."
+    $dialog.ShowNewFolderButton = $true
+
+    $start = $InitialDirectory
+    if ([string]::IsNullOrWhiteSpace($start)) {
+        $start = [Environment]::GetFolderPath('MyDocuments')
+    }
+    $root = [System.IO.Path]::GetPathRoot($start)
+    if ($root -and (Test-Path -LiteralPath $root)) {
+        if (Test-Path -LiteralPath $start) {
+            $dialog.SelectedPath = $start
+        }
+        else {
+            $parent = Split-Path -Path $start -Parent
+            if ($parent -and (Test-Path -LiteralPath $parent)) {
+                $dialog.SelectedPath = $parent
+            }
+        }
+    }
+
+    $result = $dialog.ShowDialog()
+    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+        return $dialog.SelectedPath
+    }
+    return $null
+}
+
 function Resolve-PlayniteInstallDirectory {
     if (-not [string]::IsNullOrWhiteSpace($PlayniteInstallDir)) {
         $expanded = Expand-PlayniteInstallDirectory -Path $PlayniteInstallDir
@@ -154,24 +180,15 @@ function Resolve-PlayniteInstallDirectory {
         }
     }
 
-    $defaultStart = ""
+    $defaultStart = [Environment]::GetFolderPath('MyDocuments')
     $savedForDialog = Get-SavedPlayniteInstallPath
     if ($savedForDialog) {
         $defaultStart = $savedForDialog
     }
 
     Write-SetupLog "Choose a folder for Playnite portable (program + library data)."
-    $picked = Show-PlayniteInstallFolderDialog `
-        -InitialDirectory $defaultStart `
-        -AnchorInitialToDriveRoot
+    $picked = Show-PlayniteInstallFolderDialog -InitialDirectory $defaultStart
     if ($picked) {
-        if (Test-PlayniteInstallParentInsideWatcherScripts -ParentPath $picked -WatcherScriptsRoot $script:SetupScriptRoot) {
-            throw @"
-Playnite cannot be installed inside the PlayNiteWatcher scripts folder.
-Pick a parent folder on a local drive (for example C:\Playnite or Z:\Playnite), then run setup again.
-"@
-        }
-
         $expanded = Expand-PlayniteInstallDirectory -Path $picked
         Write-SetupLog "Selected: $picked -> Install folder: $expanded"
         return $expanded
@@ -629,6 +646,47 @@ function Set-PlayniteAppDataFromInstallDir {
     Write-SetupLog "Playnite data directory (portable): $script:PlayniteAppData"
 }
 
+function Get-SteamInstallPathFromRegistry {
+    $paths = @(
+        "HKLM:\SOFTWARE\WOW6432Node\Valve\Steam",
+        "HKLM:\SOFTWARE\Valve\Steam"
+    )
+    foreach ($keyPath in $paths) {
+        try {
+            $installPath = (Get-ItemProperty -LiteralPath $keyPath -Name InstallPath -ErrorAction Stop).InstallPath
+            if ($installPath -and (Test-Path (Join-Path $installPath "steam.exe"))) {
+                return $installPath.TrimEnd('\')
+            }
+        }
+        catch { }
+    }
+    return $null
+}
+
+function Resolve-SteamInstallPath {
+    param([string]$OverridePath)
+    if (-not [string]::IsNullOrWhiteSpace($OverridePath) -and (Test-Path (Join-Path $OverridePath "steam.exe"))) {
+        return $OverridePath.TrimEnd('\')
+    }
+
+    $prefer = ''
+    if ($script:PlayniteAppData) { $prefer = $script:PlayniteAppData }
+    elseif ($script:PlayNiteWatcherRepoRoot) {
+        $prefer = Resolve-PlayniteInstallPathFromConfig -RepoRoot $script:PlayNiteWatcherRepoRoot -OverrideDir ''
+    }
+
+    $steamExe = $null
+    if (Get-Command Resolve-NextGpuSteamExePath -ErrorAction SilentlyContinue) {
+        $steamExe = Resolve-NextGpuSteamExePath -PreferNearPath $prefer
+    }
+    if (-not $steamExe) {
+        $fromReg = Get-SteamInstallPathFromRegistry
+        if ($fromReg) { return $fromReg }
+        return $null
+    }
+    return (Split-Path -Parent $steamExe)
+}
+
 function Merge-JsonSettingsFile {
     param(
         [string]$TargetPath,
@@ -826,20 +884,10 @@ function Start-PlayniteDesktop {
 function Start-PlayniteLibraryUpdate {
     param(
         [string]$PlayniteExe,
-        [int]$WaitMinutes,
-        [string]$SteamInstallPathParam = ""
+        [int]$WaitMinutes
     )
 
     Write-SetupLog "Start-PlayniteLibraryUpdate: waiting up to $WaitMinutes minute(s) for Steam/Epic import in playnite.log"
-
-    $steamLog = { param($Message, $Level) Write-SetupLog $Message $Level }
-    $steamResolved = Ensure-PlayniteSteamForLibraryScan `
-        -WatcherRoot $script:PlayNiteWatcherRepoRoot `
-        -OverridePath $SteamInstallPathParam `
-        -LogAction $steamLog
-    if ($steamResolved) {
-        Write-SetupLog "Steam ready for library scan ($($steamResolved.Source)): $($steamResolved.Path)"
-    }
 
     Stop-PlayniteProcess -PlayniteExe $PlayniteExe
 
@@ -911,7 +959,6 @@ function Invoke-HeadlessSunshinePipeline {
         if (-not [string]::IsNullOrWhiteSpace($AllowlistPathParam)) {
             $exportParams.AllowlistPath = $AllowlistPathParam
         }
-        $exportParams.SkipWatcherInstall = $true
         Invoke-SunshineExportFromPlaynite @exportParams
     }
     else {
@@ -946,67 +993,6 @@ function Invoke-HeadlessSunshinePipeline {
     else {
         Write-SetupLog "Skipped (-SkipWatcherInstall)."
     }
-}
-
-function Invoke-PushMoonlightGamesToAws {
-    $coreRepo = Get-NextGpuCoreRepoRootFromWatcher -WatcherRoot $script:PlayNiteWatcherRepoRoot
-    if (-not $coreRepo) {
-        Write-SetupLog "AWS game push skipped: could not resolve nextGPU repo root." "WARN"
-        return $false
-    }
-
-    $domainFile = Join-Path $coreRepo "domain.txt"
-    if (-not (Test-Path -LiteralPath $domainFile)) {
-        Write-SetupLog "AWS game push skipped: domain.txt not found (run RegisterMachine first)." "WARN"
-        return $false
-    }
-
-    $computerName = $null
-    $publicIp = $null
-    foreach ($line in Get-Content -LiteralPath $domainFile) {
-        if (-not $computerName -and $line -match "^COMPUTER_NAME=(.+)") { $computerName = $matches[1].Trim() }
-        if (-not $publicIp -and $line -match "^PUBLIC_IP=(.+)") { $publicIp = $matches[1].Trim() }
-    }
-
-    if ([string]::IsNullOrWhiteSpace($computerName) -or [string]::IsNullOrWhiteSpace($publicIp)) {
-        Write-SetupLog "AWS game push skipped: domain.txt missing COMPUTER_NAME or PUBLIC_IP." "WARN"
-        return $false
-    }
-
-    $updateScript = Join-Path $coreRepo "scripts\maintenance\Update-Games.ps1"
-    if (-not (Test-Path -LiteralPath $updateScript)) {
-        Write-SetupLog "AWS game push skipped: Update-Games.ps1 not found at $updateScript" "WARN"
-        return $false
-    }
-
-    $mlSvc = Get-Service -Name 'moonlight-web' -ErrorAction SilentlyContinue
-    if (-not $mlSvc -or $mlSvc.Status -ne 'Running') {
-        Write-SetupLog "AWS game push skipped: moonlight-web service is not running." "WARN"
-        return $false
-    }
-
-    $env:NEXTGPU_REPO_ROOT = $coreRepo
-    Write-SetupLog "Pushing Moonlight games to AWS (computer_name=$computerName, publicIP=$publicIp)..."
-
-    # Sunshine restart during export can lag Moonlight's app cache; wait and force refresh.
-    Start-Sleep -Seconds 5
-
-    $maxAttempts = 3
-    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-        if ($attempt -gt 1) {
-            Write-SetupLog "Retrying AWS game push (attempt $attempt/$maxAttempts)..." "WARN"
-            Start-Sleep -Seconds 5
-        }
-
-        & $updateScript -ComputerName $computerName -PublicIP $publicIp -ForceMoonlightRefresh
-        if ($LASTEXITCODE -eq 0) {
-            Write-SetupLog "Moonlight games pushed to AWS successfully." "INFO"
-            return $true
-        }
-    }
-
-    Write-SetupLog "AWS game push failed after $maxAttempts attempt(s). Re-run Push Moonlight Games to AWS from the User Experience tab." "WARN"
-    return $false
 }
 
 function Invoke-SetupDesktopAppImport {
@@ -1049,6 +1035,58 @@ function Invoke-SetupDesktopAppImport {
             $result.RootsScanned, $result.Added, $result.Updated)
 }
 
+function Invoke-RegisterPlayniteLogonTask {
+    param([string]$PlayniteInstallDirParam = '')
+
+    if (-not (Test-IsAdministrator)) {
+        Write-SetupLog "Skipped Playnite logon task registration (requires elevated setup)." "WARN"
+        return
+    }
+
+    $registerScript = Join-Path $script:PlayNiteWatcherRepoRoot 'Register-PlayniteLogonTask.ps1'
+    if (-not (Test-Path -LiteralPath $registerScript)) {
+        Write-SetupLog "Register-PlayniteLogonTask.ps1 not found: $registerScript" "WARN"
+        return
+    }
+
+    try {
+        $regParams = @{}
+        if (-not [string]::IsNullOrWhiteSpace($PlayniteInstallDirParam)) {
+            $regParams.PlayniteInstallDir = $PlayniteInstallDirParam
+        }
+        & $registerScript @regParams
+        Write-SetupLog "Registered nextGPU-PlayniteLogon (Playnite starts at user logon)."
+    }
+    catch {
+        Write-SetupLog "Playnite logon task registration failed: $($_.Exception.Message)" "WARN"
+    }
+}
+
+function Invoke-ApplyPlayniteElevatedPlayActions {
+    param([string]$PlayniteInstallDirParam = '')
+
+    $applyScript = Join-Path $script:PlayNiteWatcherRepoRoot 'Apply-PlayniteElevatedPlayActions.ps1'
+    if (-not (Test-Path -LiteralPath $applyScript)) {
+        Write-SetupLog "Apply-PlayniteElevatedPlayActions.ps1 not found: $applyScript" "WARN"
+        return
+    }
+
+    try {
+        $applyParams = @{}
+        if (-not [string]::IsNullOrWhiteSpace($PlayniteInstallDirParam)) {
+            $applyParams.PlayniteInstallDir = $PlayniteInstallDirParam
+        }
+        if (-not [string]::IsNullOrWhiteSpace($AllowlistPath)) {
+            $applyParams.AllowlistPath = $AllowlistPath
+        }
+        & $applyScript @applyParams
+        Write-SetupLog "Applied elevated Play actions (Steam always; Desktop runAsAdmin/@ADMIN)."
+    }
+    catch {
+        Write-SetupLog "Apply elevated Play actions failed: $($_.Exception.Message)" "WARN"
+    }
+}
+
 function Show-DiskScanNextSteps {
     param(
         [string]$PlayniteExe,
@@ -1058,7 +1096,9 @@ function Show-DiskScanNextSteps {
     $text = @"
 === Setup complete (Playnite) ===
 Playnite path: $PlayniteExe
+Logon task: nextGPU-PlayniteLogon (elevated Playnite as NextGPU-Admin via NextGPUService)
 Re-scan after new installs: .\Update-PlayniteLibraries.ps1
+Playnite folder: volume Users RX only — do not grant nextGPU Modify; UI is Always elevated
 Optional online library sync: Add-ons - Extension settings - Libraries - Steam/Epic - Log in
 "@
     if ($script:RunDesktopImport) {
@@ -1072,11 +1112,6 @@ Desktop apps: imported from config\playnite\desktop-apps.allowlist.json (Everyth
 
 Sunshine/Moonlight (ran during setup): desktop + Steam/Epic export and PlayNiteWatcher install completed.
 "@
-        if ($script:RunAwsPush) {
-            $text += @"
-AWS: Moonlight game list was pushed to nextGPU servers using domain.txt.
-"@
-        }
     }
     else {
         $text += @"
@@ -1105,11 +1140,12 @@ try {
     Write-SetupLog "Parameters: SkipInstall=$SkipInstall FullSetup=$FullSetup SkipLegacyCleanup=$SkipLegacyCleanup PickInstallFolder=$PickInstallFolder"
 
     if (-not $FullSetup) {
-        $script:SetupStepTotal = 6
+        $script:SetupStepTotal = 7
         if ($script:RunDesktopImport) { $script:SetupStepTotal++ }
+        $script:SetupStepTotal++ # Apply elevated Play actions (Steam + Desktop Admin)
         if (-not $SkipSunshineExtension) { $script:SetupStepTotal++ }
         if ($script:RunSunshinePipeline) { $script:SetupStepTotal++ }
-        if ($script:RunAwsPush) { $script:SetupStepTotal++ }
+        $script:SetupStepTotal++ # Register Playnite logon task
         if ($LaunchPlaynite) { $script:SetupStepTotal++ }
         $step = 1
 
@@ -1138,6 +1174,13 @@ try {
         Set-PlayniteAppDataFromInstallDir -InstallDir $playniteDir
         Write-SetupLog "Using Playnite executable: $playniteExe"
 
+        Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Reset Playnite ACL to volume inherit (elevated Playnite only)"
+        $step++
+        $aclOk = Reset-PlayniteToVolumeRentalAcl -InstallDir $playniteDir -LogAction { param($Message, $Level) Write-SetupLog $Message $Level }
+        if (-not $aclOk) {
+            Write-SetupLog "Playnite ACL reset failed or skipped (requires elevated setup)." "WARN"
+        }
+
         Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Write disk-scan Steam/Epic plugin config"
         $step++
         Set-PlayniteBootstrapConfig -SteamUserIdParam $SteamUserId -SteamApiKeyParam $SteamApiKey
@@ -1157,7 +1200,7 @@ try {
             Write-SetupLog "Skipped (-SkipLibraryUpdate)."
         }
         else {
-            Start-PlayniteLibraryUpdate -PlayniteExe $playniteExe -WaitMinutes $MaxWaitMinutes -SteamInstallPathParam $SteamInstallPath
+            Start-PlayniteLibraryUpdate -PlayniteExe $playniteExe -WaitMinutes $MaxWaitMinutes
         }
         Stop-PlayniteProcess -PlayniteExe $playniteExe
 
@@ -1174,6 +1217,11 @@ try {
         else {
             Write-SetupLog "Skipped desktop allowlist import (-SkipDesktopImport or setup without -WithSunshine)."
         }
+
+        Stop-PlayniteProcess -PlayniteExe $playniteExe
+        Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Apply elevated Play actions (Steam + Desktop Admin)"
+        $step++
+        Invoke-ApplyPlayniteElevatedPlayActions -PlayniteInstallDirParam $playniteDir
 
         if (-not $SkipSunshineExtension) {
             Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Copy Sunshine App Export extension"
@@ -1193,11 +1241,9 @@ try {
             Write-SetupLog "Skipped Sunshine/Moonlight steps (use -WithSunshine to include export + PlayNiteWatcher)."
         }
 
-        if ($script:RunAwsPush) {
-            Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Push Moonlight games to AWS"
-            $step++
-            Invoke-PushMoonlightGamesToAws | Out-Null
-        }
+        Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Register elevated Playnite logon task"
+        $step++
+        Invoke-RegisterPlayniteLogonTask -PlayniteInstallDirParam $playniteDir
 
         Stop-PlayniteProcess -PlayniteExe $playniteExe
         Write-SetupLog "Ensured Playnite is closed so games.db is not locked (only one instance may use the library)."
@@ -1218,11 +1264,12 @@ try {
         Write-SetupLog "Playnite setup completed. All users launch: $playniteExe" "INFO"
     }
     else {
-        $script:SetupStepTotal = 8
+        $script:SetupStepTotal = 9
         if ($script:RunDesktopImport) { $script:SetupStepTotal++ }
+        $script:SetupStepTotal++ # Apply elevated Play actions (Steam + Desktop Admin)
         if (-not $SkipSunshineExtension) { $script:SetupStepTotal++ }
         if ($script:RunSunshinePipeline) { $script:SetupStepTotal++ }
-        if ($script:RunAwsPush) { $script:SetupStepTotal++ }
+        $script:SetupStepTotal++ # Register Playnite logon task
         $step = 1
 
         Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Resolve Playnite portable install folder"
@@ -1234,15 +1281,12 @@ try {
 
         Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Detect Steam"
         $step++
-        $steamResolved = Ensure-PlayniteSteamForLibraryScan `
-            -WatcherRoot $script:PlayNiteWatcherRepoRoot `
-            -OverridePath $SteamInstallPath `
-            -LogAction { param($Message, $Level) Write-SetupLog $Message $Level }
-        if ($steamResolved) {
-            Write-SetupLog "Steam install path ($($steamResolved.Source)): $($steamResolved.Path)"
+        $steamPath = Resolve-SteamInstallPath -OverridePath $SteamInstallPath
+        if ($steamPath) {
+            Write-SetupLog "Steam install path: $steamPath"
         }
         else {
-            Write-SetupLog "Steam not detected on machine or in R2 manifest. Installed-game import may be limited." "WARN"
+            Write-SetupLog "Steam not detected. Installed-game import may be limited." "WARN"
         }
 
         Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Install Playnite portable"
@@ -1263,6 +1307,13 @@ try {
         Set-PlayniteAppDataFromInstallDir -InstallDir $playniteDir
         Write-SetupLog "Using Playnite executable: $playniteExe"
 
+        Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Reset Playnite ACL to volume inherit (elevated Playnite only)"
+        $step++
+        $aclOk = Reset-PlayniteToVolumeRentalAcl -InstallDir $playniteDir -LogAction { param($Message, $Level) Write-SetupLog $Message $Level }
+        if (-not $aclOk) {
+            Write-SetupLog "Playnite ACL reset failed or skipped (requires elevated setup)." "WARN"
+        }
+
         Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Write disk-scan Steam/Epic plugin config"
         $step++
         Set-PlayniteBootstrapConfig -SteamUserIdParam $SteamUserId -SteamApiKeyParam $SteamApiKey
@@ -1282,7 +1333,7 @@ try {
             Write-SetupLog "Skipped (-SkipLibraryUpdate)."
         }
         else {
-            Start-PlayniteLibraryUpdate -PlayniteExe $playniteExe -WaitMinutes $MaxWaitMinutes -SteamInstallPathParam $SteamInstallPath
+            Start-PlayniteLibraryUpdate -PlayniteExe $playniteExe -WaitMinutes $MaxWaitMinutes
         }
         Stop-PlayniteProcess -PlayniteExe $playniteExe
 
@@ -1311,6 +1362,11 @@ try {
             Write-SetupLog "Skipped desktop allowlist import (-SkipDesktopImport or setup without -WithSunshine)."
         }
 
+        Stop-PlayniteProcess -PlayniteExe $playniteExe
+        Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Apply elevated Play actions (Steam + Desktop Admin)"
+        $step++
+        Invoke-ApplyPlayniteElevatedPlayActions -PlayniteInstallDirParam $playniteDir
+
         Show-DiskScanNextSteps -PlayniteExe $playniteExe -Stats $stats
 
         if (-not $SkipSunshineExtension) {
@@ -1331,11 +1387,9 @@ try {
             Write-SetupLog "Skipped Sunshine/Moonlight steps (use -WithSunshine to include export + PlayNiteWatcher)."
         }
 
-        if ($script:RunAwsPush) {
-            Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Push Moonlight games to AWS"
-            $step++
-            Invoke-PushMoonlightGamesToAws | Out-Null
-        }
+        Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Register elevated Playnite logon task"
+        $step++
+        Invoke-RegisterPlayniteLogonTask -PlayniteInstallDirParam $playniteDir
 
         Stop-PlayniteProcess -PlayniteExe $playniteExe
         Write-SetupLog "Ensured Playnite is closed so games.db is not locked (only one instance may use the library)."

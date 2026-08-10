@@ -21,6 +21,10 @@ public partial class DiskManagementPage : Page
 
         ActionPageTools.AddPowerShellButton(PartitionPanel, "Shrink Volume (Extend Existing or Create New)",
             @"scripts\maintenance\Create-Z-Partition.ps1", "", keepConsoleOpen: true,
-            tooltip: "Shrink any fixed drive; extend an existing volume (e.g. Z:) or create a new partition with a new letter.");
+            tooltip: "Shrink any fixed drive; extend an existing volume (e.g. Z:) or create a new partition with a new letter. Always re-applies rental ACL (Users RX on whole tree including Steam/Playnite).");
+
+        ActionPageTools.AddPowerShellButton(PartitionPanel, "Re-apply Rental ACL (Users RX on whole drive)",
+            @"scripts\maintenance\Create-Z-Partition.ps1", "-RentalAclOnly", keepConsoleOpen: true,
+            tooltip: "No shrink. Pick a data drive (e.g. Z:), set Users RX + NextGPURestricted deny-delete on root, then /reset /T all folders so Steam/Playnite match Garena.");
     }
 }

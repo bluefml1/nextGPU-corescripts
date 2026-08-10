@@ -10,7 +10,8 @@
 [CmdletBinding()]
 param(
     [string]$RepoRoot = "",
-    [switch]$Quiet
+    [switch]$Quiet,
+    [switch]$SkipVddBinding
 )
 
 $ErrorActionPreference = "Stop"
@@ -63,7 +64,8 @@ function Set-SunshineConfLine {
 
 function Install-SunshineConfigFromRepo {
     param(
-        [string]$SourceFolder
+        [string]$SourceFolder,
+        [switch]$SkipVddBinding
     )
 
     $sunshineConfigDir = 'C:\Program Files\Sunshine\config'
@@ -95,12 +97,17 @@ function Install-SunshineConfigFromRepo {
     Copy-Item -LiteralPath $confSource -Destination $confDest -Force
     Write-SetupMessage "  OK sunshine.conf copied to config from $confSource"
 
-    $content = Get-Content -Raw -LiteralPath $confDest
-    $content = Set-SunshineConfLine -Content $content -Name 'dd_configuration_option' -Value 'ensure_only_display'
-    $content = Set-SunshineConfLine -Content $content -Name 'dd_config_revert_on_disconnect' -Value 'enabled'
+    if (-not $SkipVddBinding.IsPresent) {
+        $content = Get-Content -Raw -LiteralPath $confDest
+        $content = Set-SunshineConfLine -Content $content -Name 'dd_configuration_option' -Value 'ensure_only_display'
+        $content = Set-SunshineConfLine -Content $content -Name 'dd_config_revert_on_disconnect' -Value 'enabled'
 
-    [System.IO.File]::WriteAllText($confDest, $content, [Text.UTF8Encoding]::new($false))
-    Write-SetupMessage '  OK applied dd_configuration_option and dd_config_revert_on_disconnect'
+        [System.IO.File]::WriteAllText($confDest, $content, [Text.UTF8Encoding]::new($false))
+        Write-SetupMessage '  OK applied dd_configuration_option and dd_config_revert_on_disconnect'
+    }
+    else {
+        Write-SetupMessage '  SKIP dd_* VDD display settings (VDD binding disabled)'
+    }
     return $true
 }
 
@@ -159,7 +166,7 @@ if (-not (Test-Path -LiteralPath $sourceFolder)) {
     exit 0
 }
 
-$confOk = Install-SunshineConfigFromRepo -SourceFolder $sourceFolder
+$confOk = Install-SunshineConfigFromRepo -SourceFolder $sourceFolder -SkipVddBinding:$SkipVddBinding.IsPresent
 if (-not $confOk) {
     Write-SetupMessage 'Continuing with script deploy only.' 'WARN'
 }

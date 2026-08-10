@@ -8,6 +8,7 @@ using System.Windows.Media;
 using Microsoft.Win32;
 using NextGPU.App;
 using NextGPU.Core;
+using NextGPU.Core.Models;
 
 namespace NextGPU.App.Pages;
 
@@ -24,8 +25,10 @@ public partial class PlaynitePage : Page
     ];
 
     private readonly List<PlayniteAllowlistEntry> _allAllowlistEntries = [];
+    private readonly List<PlayniteLibraryEntry> _allLibraryEntries = [];
     private bool _allowlistViewerVisible;
     private bool _allowlistAddFormVisible;
+    private bool _libraryViewerVisible;
     private Button? _viewAllowlistBtn;
 
     public PlaynitePage()
@@ -37,9 +40,12 @@ public partial class PlaynitePage : Page
     private void OnLoaded()
     {
         PopulateAllowlistTypeCombos();
+        PopulateLibrarySourceFilter();
         BuildButtons();
         BuildAllowlistActionButtons();
+        BuildLibraryActionButtons();
         BuildVerifyActionButtons();
+        BuildNextGpuServiceUi();
         ApplyAllowlistAddFormVisibility();
         LoadAllowlistSummary();
         UpdateNameIdPreview();
@@ -72,24 +78,32 @@ public partial class PlaynitePage : Page
 
         ActionPageTools.AddPrimaryBatchButton(SetupPanel, "Run Full PlayNite Setup",
             @"PlayNiteWatcher\Setup-PlayniteSteam.bat", keepConsoleOpen: true,
-            helpText: "End-to-end first-time setup: installs portable Playnite, configures Steam/Epic disk scan, updates libraries, exports to Sunshine, installs PlayNiteWatcher, and pushes Moonlight games to AWS from domain.txt. Run after RegisterMachine when Sunshine is already present.");
+            helpText: "End-to-end setup: installs portable Playnite, resets Playnite ACL to data-volume Users RX (no nextGPU write), Steam/Epic import, elevated Playnite logon via NextGPUService (NextGPU-Admin), Sunshine export (Steam = elevated steam -applaunch), PlayNiteWatcher. Run elevated after RegisterMachine.");
         ActionPageTools.AddPowerShellButton(SetupPanel, "Setup Playnite Only",
             @"PlayNiteWatcher\Setup-PlayniteSteam.ps1", "-PickInstallFolder", keepConsoleOpen: true,
-            helpText: "Installs or configures portable Playnite only. Prompts for install folder. Does not run the full Sunshine export + watcher pipeline.");
+            helpText: "Installs or configures portable Playnite only (volume ACL reset + elevated nextGPU-PlayniteLogon). Prompts for install folder. Does not run the full Sunshine export + watcher pipeline.");
         ActionPageTools.AddPowerShellButton(SetupPanel, "Re-run Setup (Skip Install)",
             @"PlayNiteWatcher\Setup-PlayniteSteam.ps1", "-PickInstallFolder -WithSunshine -SkipInstall", keepConsoleOpen: true,
-            helpText: "Re-applies Playnite configuration and Sunshine integration without re-downloading Playnite. Use when extensions, library config, or games.db need repair.");
+            helpText: "Re-applies Playnite configuration, volume ACL reset, elevated logon task, and Sunshine integration without re-downloading Playnite.");
+        ActionPageTools.AddPowerShellButton(SetupPanel, "Register Playnite Logon Task",
+            @"PlayNiteWatcher\Register-PlayniteLogonTask.ps1", "", keepConsoleOpen: true,
+            helpText: "Registers nextGPU-PlayniteLogon: at nextGPU logon, elevates Playnite.DesktopApp --startdesktop as NextGPU-Admin via NextGPUService (requires service + admin credential). Playnite folder stays Users RX.");
         ActionPageTools.AddBatchButton(SetupPanel, "Update Libraries",
             @"PlayNiteWatcher\Update-PlayniteLibraries.bat", keepConsoleOpen: true,
-            helpText: "Scans installed Steam and Epic games on disk and imports them into Playnite's games.db. Run after new games are installed or when library is empty.");
+            helpText: "Scans installed Steam and Epic games on disk and imports them into Playnite's games.db, then re-applies elevated Steam Play actions. Run after new games are installed or when library is empty.");
         ActionPageTools.AddPowerShellButton(SetupPanel, "Update Libraries (Skip Metadata)",
             @"PlayNiteWatcher\Update-PlayniteLibraries.ps1", "-SkipMetadata", keepConsoleOpen: true,
-            helpText: "Same as Update Libraries but skips metadata enrichment for a faster refresh when only game presence needs updating.");
-        ActionPageTools.AddPowerShellButton(SetupPanel, "Import Desktop Apps",
-            @"PlayNiteWatcher\Import-PlayniteDesktopApps.ps1", keepConsoleOpen: true,
+            helpText: "Same as Update Libraries but skips metadata enrichment for a faster refresh when only game presence needs updating. Also re-applies elevated Steam Play actions.");
+        ActionPageTools.AddPowerShellButton(SetupPanel, "Apply Elevated Play Actions",
+            @"PlayNiteWatcher\Apply-PlayniteElevatedPlayActions.ps1", "", keepConsoleOpen: true,
+            helpText: "Close Playnite first. Rewrites Steam games so Play deploys NextGPU-PlayElevated (elevated steam.exe -applaunch as NextGPU-Admin). Desktop apps elevate only when allowlist runAsAdmin or @ADMIN. Requires NextGPUService.");
+        ActionPageTools.AddBatchButton(SetupPanel, "Import Desktop Apps",
+            @"PlayNiteWatcher\Import-PlayniteDesktopApps.bat", ImportDesktopAppsHeadlessArgs, keepConsoleOpen: true,
+            elevated: false,
             helpText: "Imports allowlisted desktop apps (Adobe, Autodesk, etc.) into Playnite using Everything (es.exe) to locate executables. Run after editing the allowlist.");
-        ActionPageTools.AddPowerShellButton(SetupPanel, "Import Desktop Apps (Directory Walk)",
-            @"PlayNiteWatcher\Import-PlayniteDesktopApps.ps1", "-SkipEverythingInstall", keepConsoleOpen: true,
+        ActionPageTools.AddBatchButton(SetupPanel, "Import Desktop Apps (Directory Walk)",
+            @"PlayNiteWatcher\Import-PlayniteDesktopApps.bat", ImportDesktopAppsDirectoryWalkArgs, keepConsoleOpen: true,
+            elevated: false,
             helpText: "Imports allowlisted desktop apps without Everything by walking install directories. Slower but works when es.exe is unavailable.");
 
         AddSetupActionButton(SetupPanel, "Launch Playnite", (_, _) => LaunchPlaynite(),
@@ -125,9 +139,14 @@ public partial class PlaynitePage : Page
             "Opens Install-PlayniteWatcher.log — prep-cmd injection and Sunshine restart results.");
         AddOpenPlayniteLogButton(ExportPanel, "Open Library Update Log", RepoCatalog.PlayniteLibraryUpdateLog,
             "Opens Update-PlayniteLibraries.log — Steam/Epic disk scan and import completion lines.");
+        AddOpenPlayniteLogButton(ExportPanel, "Open Desktop Import Log", RepoCatalog.PlayniteDesktopImportLog,
+            "Opens Import-PlayniteDesktopApps.log — allowlist scan, Everything search, and games.db sync results.");
         AddOpenPlayniteLogButton(ExportPanel, "Open Watcher Runtime Log", RepoCatalog.PlayniteWatcherRuntimeLog,
             "Opens PlayNiteWatcher runtime log — session start/stop and cleanup events during Moonlight streaming.");
     }
+
+    private const string ImportDesktopAppsHeadlessArgs = "-Headless -DesktopImportScanMode AllDrives";
+    private const string ImportDesktopAppsDirectoryWalkArgs = "-Headless -DesktopImportScanMode AllDrives -SkipEverythingInstall";
 
     private void BuildAllowlistActionButtons()
     {
@@ -161,7 +180,7 @@ public partial class PlaynitePage : Page
     {
         VerifyActionsPanel.Children.Clear();
         AddInlineActionButton(VerifyActionsPanel, "Verify PlayNite Status", VerifyStatus_Click, "PrimaryButton",
-            "Runs Test-PlayniteHostStatus.ps1 and shows a checklist: Playnite install, Steam/Epic library, allowlist, Sunshine export, and watcher hooks. Failed rows include fix actions.");
+            "Runs Test-PlayniteHostStatus.ps1 checklist: Playnite install, volume ACL (no nextGPU write), Steam/Epic library, allowlist, Sunshine export, watcher. Failed rows include fix actions.");
         AddInlineActionButton(VerifyActionsPanel, "Re-verify", VerifyStatus_Click, "GhostButton",
             "Runs the same host status check again after you apply fixes.");
     }
@@ -233,8 +252,11 @@ public partial class PlaynitePage : Page
         var pathFile = Path.Combine(repo, RepoCatalog.PlayNiteWatcherRelativeDir, RepoCatalog.PlayniteInstallPathFile);
         if (!File.Exists(pathFile))
             return "";
-        var parent = File.ReadAllText(pathFile).Trim();
-        return string.IsNullOrWhiteSpace(parent) ? "" : Path.Combine(parent, "Playnite");
+        var saved = File.ReadAllText(pathFile).Trim();
+        if (string.IsNullOrWhiteSpace(saved))
+            return "";
+        // PlayniteInstall.path stores the full portable folder (e.g. Z:\Playnite), not the parent.
+        return saved.TrimEnd('\\', '/');
     }
 
     private void LaunchPlaynite()
@@ -457,12 +479,15 @@ public partial class PlaynitePage : Page
                 var type = app.TryGetProperty("type", out var typeEl) ? typeEl.GetString() ?? "" : "";
                 if (string.IsNullOrWhiteSpace(type) && long.TryParse(nameId, out var nid))
                     type = InferTypeFromNameId(nid) ?? "";
+                var runAsAdmin = app.TryGetProperty("runAsAdmin", out var raEl) && raEl.ValueKind == JsonValueKind.True
+                    || app.TryGetProperty("skipAcl", out var skipEl) && skipEl.ValueKind == JsonValueKind.True;
                 _allAllowlistEntries.Add(new PlayniteAllowlistEntry
                 {
                     Exe = exe,
                     NameId = nameId,
                     Title = title,
-                    Type = type
+                    Type = type,
+                    RunAsAdmin = runAsAdmin
                 });
             }
         }
@@ -510,6 +535,22 @@ public partial class PlaynitePage : Page
     }
 
     private void AllowlistFilter_Changed(object sender, RoutedEventArgs e) => ApplyAllowlistFilter();
+
+    private void AllowlistSkipAcl_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox cb) return;
+        if (cb.DataContext is not PlayniteAllowlistEntry entry) return;
+
+        try
+        {
+            SaveAllowlistToDisk(_allAllowlistEntries);
+            AllowlistGridFooter.Text = $"runAsAdmin updated for '{entry.Title}'. Re-export to Sunshine so the @ADMIN marker is emitted into resolved-appids.txt.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to save allowlist with runAsAdmin change: {ex.Message}", "Allowlist");
+        }
+    }
 
     private void RefreshAllowlistGrid_Click(object sender, RoutedEventArgs e)
     {
@@ -578,13 +619,14 @@ public partial class PlaynitePage : Page
 
         var payload = new
         {
-            _comment = "List executable filenames only (exe), not install paths. Setup uses voidtools es.exe to find the real path and writes it into Playnite.",
+            _comment = "List executable filenames only (exe), not install paths. Setup uses voidtools es.exe to find the real path (e.g. Z:\\Adobe\\...\\Lightroom.exe) and writes it into Playnite. Set runAsAdmin=true on Desktop apps to launch with admin privilege (High IL, via nextGPU-Admin account). Steam and Epic games always use admin launch.",
             apps = entries.Select(e => new
             {
                 exe = e.Exe,
                 nameId = e.NameId,
                 title = e.Title,
-                type = e.Type
+                type = e.Type,
+                runAsAdmin = e.RunAsAdmin
             }).ToArray()
         };
 
@@ -753,7 +795,8 @@ public partial class PlaynitePage : Page
             exe = e.Exe,
             nameId = e.NameId,
             title = e.Title,
-            type = e.Type
+            type = e.Type,
+            runAsAdmin = e.RunAsAdmin
         }).ToArray();
 
         var payload = new { apps };
@@ -764,10 +807,10 @@ public partial class PlaynitePage : Page
     private static void WriteAllowlistCsv(string destinationPath, IEnumerable<PlayniteAllowlistEntry> entries)
     {
         using var writer = new StreamWriter(destinationPath);
-        writer.WriteLine("exe,nameId,title,type");
+        writer.WriteLine("exe,nameId,title,type,runAsAdmin");
         foreach (var entry in entries)
         {
-            writer.WriteLine($"{CsvEscape(entry.Exe)},{CsvEscape(entry.NameId)},{CsvEscape(entry.Title)},{CsvEscape(entry.Type)}");
+            writer.WriteLine($"{CsvEscape(entry.Exe)},{CsvEscape(entry.NameId)},{CsvEscape(entry.Title)},{CsvEscape(entry.Type)},{(entry.RunAsAdmin ? "true" : "false")}");
         }
     }
 
@@ -945,8 +988,16 @@ public partial class PlaynitePage : Page
             case "UpdateLibraries":
                 App.Session.Scripts.RunBatchRelative(@"PlayNiteWatcher\Update-PlayniteLibraries.bat", elevated: true, keepConsoleOpen: true);
                 break;
+            case "GrantPlayniteRentalAccess":
+                // Deprecated: nextGPU no longer gets Playnite write ACL — reset to volume inherit + elevate logon.
+                App.Session.Scripts.RunPowerShellRelative(@"PlayNiteWatcher\Register-PlayniteLogonTask.ps1", "", elevated: true, keepConsoleOpen: true);
+                break;
+            case "RegisterPlayniteLogonTask":
+                App.Session.Scripts.RunPowerShellRelative(@"PlayNiteWatcher\Register-PlayniteLogonTask.ps1", "", elevated: true, keepConsoleOpen: true);
+                break;
             case "ImportDesktopApps":
-                App.Session.Scripts.RunPowerShellRelative(@"PlayNiteWatcher\Import-PlayniteDesktopApps.ps1", "", elevated: true, keepConsoleOpen: true);
+                App.Session.Scripts.RunBatchRelative(@"PlayNiteWatcher\Import-PlayniteDesktopApps.bat",
+                    elevated: false, arguments: ImportDesktopAppsHeadlessArgs, keepConsoleOpen: true);
                 break;
             case "ExportSunshine":
                 App.Session.Scripts.RunPowerShellRelative(@"PlayNiteWatcher\Export-SunshineFromPlaynite.ps1", "", elevated: true, keepConsoleOpen: true);
@@ -998,6 +1049,563 @@ public partial class PlaynitePage : Page
         catch (Exception ex)
         {
             MessageBox.Show(ex.Message, "NextGPU");
+        }
+    }
+
+    private void PopulateLibrarySourceFilter()
+    {
+        LibrarySourceFilterCombo.Items.Clear();
+        LibrarySourceFilterCombo.Items.Add("All");
+        foreach (var source in new[] { "Steam", "Epic", "Manual" })
+            LibrarySourceFilterCombo.Items.Add(source);
+        LibrarySourceFilterCombo.SelectedIndex = 0;
+    }
+
+    private void BuildLibraryActionButtons()
+    {
+        LibraryActionsPanel.Children.Clear();
+        LibraryGridActionsPanel.Children.Clear();
+
+        LibraryGridActionsPanel.Children.Add(LibraryFilterBox);
+        LibraryGridActionsPanel.Children.Add(LibrarySourceFilterCombo);
+        AddPlainInlineActionButton(LibraryGridActionsPanel, "Refresh Library", RefreshLibraryGrid_Click, "GhostButton");
+    }
+
+    private void LibraryHelp_Click(object sender, RoutedEventArgs e) =>
+        MessageBox.Show(LibraryHelpText, "Playnite Library", MessageBoxButton.OK, MessageBoxImage.Information);
+
+    private const string LibraryHelpText =
+        """
+        Browse all games in Playnite games.db (Steam, Epic, Manual).
+
+        If Playnite is open, Refresh Library closes it briefly to read games.db, then you can reopen Playnite.
+
+        Source is read-only. gameId is set for store games; nameId is resolved from the desktop allowlist for Manual entries.
+        """;
+
+    private void ToggleLibraryViewer_Click(object sender, RoutedEventArgs e)
+    {
+        _libraryViewerVisible = !_libraryViewerVisible;
+        LibraryViewerPanel.Visibility = _libraryViewerVisible ? Visibility.Visible : Visibility.Collapsed;
+        ToggleLibraryViewerBtn.Content = _libraryViewerVisible ? "Hide Library" : "View Library";
+        if (_libraryViewerVisible)
+            LoadLibrarySummary();
+    }
+
+    private void LoadLibrarySummary()
+    {
+        ReloadLibraryEntries();
+        LibraryCountText.Text = _allLibraryEntries.Count == 0
+            ? (_libraryLoadError ?? "Library not loaded or Playnite install missing.")
+            : $"{_allLibraryEntries.Count} games in Playnite library";
+        ApplyLibraryFilter();
+    }
+
+    private string? _libraryLoadError;
+
+    private void ReloadLibraryEntries()
+    {
+        _allLibraryEntries.Clear();
+        _libraryLoadError = null;
+        if (App.Session.Scripts is null)
+        {
+            _libraryLoadError = "Repo not configured.";
+            return;
+        }
+
+        var r = App.Session.Scripts.RunPowerShellCapture(@"PlayNiteWatcher\Get-PlayniteLibraryCatalog.ps1", "");
+        if (!r.Success)
+        {
+            _libraryLoadError = string.IsNullOrWhiteSpace(r.Message)
+                ? "Failed to read Playnite library."
+                : r.Message.Trim();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(r.Message))
+        {
+            _libraryLoadError = "Library catalog returned no data.";
+            return;
+        }
+
+        try
+        {
+            var json = ExtractJsonPayload(r.Message);
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                _libraryLoadError = "Library catalog returned no JSON payload.";
+                return;
+            }
+
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("games", out var games) || games.ValueKind != JsonValueKind.Array)
+            {
+                _libraryLoadError = "Library catalog JSON is missing a games array.";
+                return;
+            }
+
+            foreach (var game in games.EnumerateArray())
+            {
+                _allLibraryEntries.Add(new PlayniteLibraryEntry
+                {
+                    Name = game.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "",
+                    Source = game.TryGetProperty("source", out var s) ? s.GetString() ?? "" : "",
+                    GameId = game.TryGetProperty("gameId", out var g) ? g.GetString() ?? "" : "",
+                    NameId = game.TryGetProperty("nameId", out var id) ? id.GetString() ?? "" : "",
+                    PlayniteId = game.TryGetProperty("playniteId", out var p) ? p.GetString() ?? "" : "",
+                    PlayPath = game.TryGetProperty("playPath", out var pp) ? pp.GetString() ?? "" : "",
+                    Exe = game.TryGetProperty("exe", out var e) ? e.GetString() ?? "" : ""
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _libraryLoadError = $"Could not parse library catalog: {ex.Message}";
+        }
+    }
+
+    private static string? ExtractJsonPayload(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var trimmed = text.Trim();
+        if (trimmed.StartsWith('{') || trimmed.StartsWith('['))
+            return trimmed;
+
+        var start = trimmed.IndexOf('{');
+        var end = trimmed.LastIndexOf('}');
+        if (start < 0 || end <= start)
+            return null;
+
+        return trimmed[start..(end + 1)];
+    }
+
+    private void ApplyLibraryFilter()
+    {
+        var query = (LibraryFilterBox.Text ?? "").Trim();
+        var sourceFilter = LibrarySourceFilterCombo.SelectedItem as string ?? "All";
+
+        IEnumerable<PlayniteLibraryEntry> filtered = _allLibraryEntries;
+        if (!string.Equals(sourceFilter, "All", StringComparison.OrdinalIgnoreCase))
+            filtered = filtered.Where(e => string.Equals(e.Source, sourceFilter, StringComparison.OrdinalIgnoreCase));
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            filtered = filtered.Where(e =>
+                e.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                e.GameId.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                e.NameId.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                e.Source.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                e.Exe.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                e.PlayPath.Contains(query, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var list = filtered.ToList();
+        LibraryGrid.ItemsSource = new ObservableCollection<PlayniteLibraryEntry>(list);
+        LibraryGridFooter.Text = list.Count == _allLibraryEntries.Count
+            ? $"{_allLibraryEntries.Count} games"
+            : $"Showing {list.Count} of {_allLibraryEntries.Count} games";
+    }
+
+    private void LibraryFilter_Changed(object sender, RoutedEventArgs e) => ApplyLibraryFilter();
+
+    private void RefreshLibraryGrid_Click(object sender, RoutedEventArgs e) => LoadLibrarySummary();
+
+    // -----------------------------------------------------------------------
+    // NextGPUService management (auto-register launcher service on the machine)
+    // -----------------------------------------------------------------------
+
+    private const string NextGpuServiceName = "NextGPUService";
+    private const string NextGpuServiceDisplayName = "NextGPU Game Launcher Service";
+    private const string NextGpuServiceInstallRoot = @"C:\Program Files\NextGPU\Service";
+    private const string NextGpuServiceBinaryName = "NextGPUService.exe";
+    private const string NextGpuServiceInstallScript = @"apps\NextGPU\NextGPU.Service\Install-NextGPUService.ps1";
+    private const string NextGpuServiceUninstallScript = @"apps\NextGPU\NextGPU.Service\Uninstall-NextGPUService.ps1";
+    private const string NextGpuServiceSmokeTestScript = @"scripts\runtime\Test-NextGPUService.ps1";
+    private const string NextGpuPipeName = "NextGPUControl";
+
+    private void NextGpuServiceHelp_Click(object sender, RoutedEventArgs e) =>
+        MessageBox.Show(NextGpuServiceHelpText, "NextGPU Launcher Service", MessageBoxButton.OK, MessageBoxImage.Information);
+
+    private const string NextGpuServiceHelpText =
+        """
+        NextGPUService is a Windows Service that runs in the background and launches games (Steam/Epic, Playnite launches, desktop apps) inside your interactive session — something the dashboard can't do directly because it runs as the regular user.
+
+        The service:
+        • Hosts a named pipe (\\.\pipe\NextGPUControl) the dashboard uses to request launches.
+        • Locates the active console session and calls CreateProcessAsUserW so the new process lands on your interactive desktop.
+        • Can optionally call LogonUserW as the nextGPU-Admin account for high-IL (Run as admin) launches.
+
+        Typical state matrix:
+        • Not installed → run Install/Register (this card), or build with apps\NextGPU\build-publish.bat
+        • Stopped → Start (or Restart)
+        • Running → optional Smoke Test (ping), or Uninstall when removing
+
+        Without this service, Moonlight launches from Sunshine will not be able to start the requested game in your session.
+        """;
+
+    private void BuildNextGpuServiceUi()
+    {
+        NextGpuServiceActionsPanel.Children.Clear();
+        _ = RefreshNextGpuServiceAsync(showProgress: false);
+    }
+
+    private void RefreshNextGpuService_Click(object sender, RoutedEventArgs e) =>
+        _ = RefreshNextGpuServiceAsync(showProgress: true);
+
+    private async Task RefreshNextGpuServiceAsync(bool showProgress)
+    {
+        if (showProgress)
+            SetNextGpuServiceProgress("Checking service state…");
+
+        try
+        {
+            var snapshot = await Task.Run(CollectNextGpuServiceSnapshot);
+            RenderNextGpuServiceSnapshot(snapshot);
+        }
+        catch (Exception ex)
+        {
+            NextGpuServiceStateText.Text = $"Error: {ex.Message}";
+            NextGpuServiceStateText.Foreground = (Brush)FindResource("ErrBrush");
+            NextGpuServicePathText.Text = "";
+        }
+        finally
+        {
+            HideNextGpuServiceProgress();
+        }
+    }
+
+    private sealed record NextGpuServiceSnapshot(
+        bool BinaryPresent,
+        string BinaryPath,
+        long? BinarySizeBytes,
+        DateTime? BinaryLastWrite,
+        ServiceRunState ServiceState,
+        string? StartupType,
+        string? ServiceAccount,
+        bool PipeResponsive,
+        string? PipeDetail);
+
+    private static NextGpuServiceSnapshot CollectNextGpuServiceSnapshot()
+    {
+        var installedPath = Path.Combine(NextGpuServiceInstallRoot, NextGpuServiceBinaryName);
+        var publishedPath = ResolvePublishedServiceBinary();
+
+        var primaryPath = File.Exists(installedPath) ? installedPath
+            : File.Exists(publishedPath) ? publishedPath
+            : null;
+
+        bool binaryPresent = primaryPath is not null;
+        long? size = null;
+        DateTime? lastWrite = null;
+        if (primaryPath is not null)
+        {
+            var fi = new FileInfo(primaryPath);
+            size = fi.Length;
+            lastWrite = fi.LastWriteTime;
+        }
+
+        var state = TryReadServiceState(NextGpuServiceName, out var startupType, out var serviceAccount);
+        var (pipeOk, pipeDetail) = state == ServiceRunState.Running
+            ? TryPingService()
+            : (false, "Service is not running");
+
+        return new NextGpuServiceSnapshot(
+            BinaryPresent: binaryPresent,
+            BinaryPath: primaryPath ?? $"Expected at: {installedPath}",
+            BinarySizeBytes: size,
+            BinaryLastWrite: lastWrite,
+            ServiceState: state,
+            StartupType: startupType,
+            ServiceAccount: serviceAccount,
+            PipeResponsive: pipeOk,
+            PipeDetail: pipeDetail);
+    }
+
+    private static string? ResolvePublishedServiceBinary()
+    {
+        var repo = App.Session?.RepoRoot;
+        if (string.IsNullOrWhiteSpace(repo))
+            return null;
+        var path = Path.Combine(repo, "apps", "NextGPU", "publish", "Service", NextGpuServiceBinaryName);
+        return File.Exists(path) ? path : null;
+    }
+
+    private static ServiceRunState TryReadServiceState(string serviceName, out string? startupType, out string? account)
+    {
+        startupType = null;
+        account = null;
+        try
+        {
+            var psi = new ProcessStartInfo("sc.exe", $"query \"{serviceName}\"")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var p = Process.Start(psi);
+            if (p is null) return ServiceRunState.Unknown;
+            var stdout = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(5000);
+            if (stdout.Contains("does not exist", StringComparison.OrdinalIgnoreCase) ||
+                stdout.Contains("1060", StringComparison.OrdinalIgnoreCase))
+                return ServiceRunState.NotInstalled;
+            if (stdout.Contains("RUNNING", StringComparison.OrdinalIgnoreCase))
+            {
+                ParseScQuery(stdout, out startupType, out account);
+                return ServiceRunState.Running;
+            }
+            if (stdout.Contains("STOPPED", StringComparison.OrdinalIgnoreCase))
+            {
+                ParseScQuery(stdout, out startupType, out account);
+                return ServiceRunState.Stopped;
+            }
+            ParseScQuery(stdout, out startupType, out account);
+            return ServiceRunState.Unknown;
+        }
+        catch
+        {
+            return ServiceRunState.Unknown;
+        }
+    }
+
+    private static void ParseScQuery(string output, out string? startupType, out string? account)
+    {
+        startupType = null;
+        account = null;
+        foreach (var raw in output.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.StartsWith("START_TYPE", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("START_TYPE ", StringComparison.OrdinalIgnoreCase))
+            {
+                var parts = line.Split(':', 2);
+                if (parts.Length == 2) startupType = parts[1].Trim();
+            }
+            else if (line.StartsWith("SERVICE_START_NAME", StringComparison.OrdinalIgnoreCase))
+            {
+                var parts = line.Split(':', 2);
+                if (parts.Length == 2) account = parts[1].Trim();
+            }
+        }
+    }
+
+    private static (bool Ok, string Detail) TryPingService()
+    {
+        try
+        {
+            using var pipe = new System.IO.Pipes.NamedPipeClientStream(
+                ".", NextGpuPipeName, System.IO.Pipes.PipeDirection.InOut, System.IO.Pipes.PipeOptions.Asynchronous);
+            pipe.Connect(2000);
+
+            var request = "{\"version\":1,\"op\":\"ping\"}";
+            var reqBytes = System.Text.Encoding.UTF8.GetBytes(request);
+            var lenBytes = BitConverter.GetBytes(reqBytes.Length);
+            pipe.Write(lenBytes, 0, 4);
+            pipe.Write(reqBytes, 0, reqBytes.Length);
+            pipe.WaitForPipeDrain();
+
+            var lenBuf = new byte[4];
+            var read = pipe.Read(lenBuf, 0, 4);
+            if (read < 4) return (false, "Pipe responded with short header");
+            var len = BitConverter.ToUInt32(lenBuf, 0);
+            if (len == 0 || len > 64 * 1024) return (false, $"Pipe returned implausible length {len}");
+
+            var respBuf = new byte[len];
+            var total = 0;
+            while (total < len)
+            {
+                var r = pipe.Read(respBuf, total, (int)len - total);
+                if (r == 0) break;
+                total += r;
+            }
+            var resp = System.Text.Encoding.UTF8.GetString(respBuf, 0, total);
+            return resp.Contains("\"ok\":true", StringComparison.OrdinalIgnoreCase)
+                ? (true, "ok=true")
+                : (false, $"unexpected response: {resp}");
+        }
+        catch (TimeoutException)
+        {
+            return (false, "Pipe connect timed out (2s)");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    private void RenderNextGpuServiceSnapshot(NextGpuServiceSnapshot s)
+    {
+        // Header line
+        var (label, brushKey) = s.ServiceState switch
+        {
+            ServiceRunState.Running => (s.PipeResponsive
+                    ? "Running — pipe responsive"
+                    : "Running — pipe NOT responsive",
+                s.PipeResponsive ? "OkBrush" : "WarnBrush"),
+            ServiceRunState.Stopped => ("Stopped", "WarnBrush"),
+            ServiceRunState.NotInstalled => ("Not installed", "ErrBrush"),
+            _ => ("Unknown", "MutedBrush")
+        };
+
+        var extra = s.ServiceState == ServiceRunState.Running && !s.PipeResponsive
+            ? $" ({s.PipeDetail})"
+            : "";
+
+        NextGpuServiceStateText.Text = $"Status: {label}{extra}";
+        NextGpuServiceStateText.Foreground = (Brush)FindResource(brushKey);
+
+        // Path + version line
+        var lines = new List<string> { s.BinaryPath };
+        if (s.BinarySizeBytes is long bytes)
+        {
+            var sizeKb = bytes / 1024.0;
+            lines.Add($"size: {sizeKb:F1} KB  ·  updated: {s.BinaryLastWrite:yyyy-MM-dd HH:mm}");
+        }
+        if (!string.IsNullOrWhiteSpace(s.StartupType))
+            lines.Add($"start type: {s.StartupType}");
+        if (!string.IsNullOrWhiteSpace(s.ServiceAccount))
+            lines.Add($"account: {s.ServiceAccount}");
+        NextGpuServicePathText.Text = string.Join(Environment.NewLine, lines);
+
+        NextGpuServiceActionsPanel.Children.Clear();
+
+        if (s.ServiceState == ServiceRunState.NotInstalled)
+        {
+            AddServiceActionButton("Install / Register", "Install / register NextGPUService as a Windows Service (auto start).", NextGpuServiceInstallScript, "PrimaryButton", isPowerShell: true);
+        }
+        else
+        {
+            if (s.ServiceState == ServiceRunState.Stopped)
+                AddServiceActionButton("Start Service", "Start the NextGPUService Windows Service.", "");
+
+            if (s.ServiceState == ServiceRunState.Running)
+            {
+                AddServiceActionButton("Stop Service", "Stop the NextGPUService Windows Service.", "");
+                AddServiceActionButton("Restart Service", "Stop and then start the NextGPUService Windows Service.", "");
+                AddServiceActionButton("Smoke Test (ping)", "Send a ping to the NextGPUService named pipe to verify it responds.", NextGpuServiceSmokeTestScript, "SecondaryButton", isPowerShell: true, returnsImmediately: true);
+            }
+
+            AddServiceActionButton("Re-register (repair)", "Re-run Install-NextGPUService.ps1 to refresh the service registration (recovers stale installs).", NextGpuServiceInstallScript, "SecondaryButton", isPowerShell: true);
+            AddServiceActionButton("Uninstall", "Stop and remove the NextGPUService Windows Service.", NextGpuServiceUninstallScript, "SecondaryButton", isPowerShell: true, confirm: "Uninstall NextGPUService? Active Moonlight sessions will fail to launch games until reinstall.");
+        }
+
+        if (!s.BinaryPresent)
+        {
+            AddServiceActionButton("Build Service", "Run apps\\NextGPU\\build-publish.bat to publish NextGPUService.exe.", "apps\\NextGPU\\build-publish.bat", "PrimaryButton", isPowerShell: false);
+        }
+    }
+
+    private void AddServiceActionButton(
+        string label,
+        string helpText,
+        string scriptRelativePath,
+        string styleKey = "SecondaryButton",
+        bool isPowerShell = true,
+        bool returnsImmediately = false,
+        string? confirm = null)
+    {
+        var btn = new Button
+        {
+            Content = label,
+            Style = (Style)FindResource(styleKey),
+            Padding = new Thickness(styleKey == "GhostButton" ? 10 : 14, styleKey == "GhostButton" ? 6 : 10,
+                styleKey == "GhostButton" ? 10 : 14, styleKey == "GhostButton" ? 6 : 10),
+            Margin = new Thickness(0, 0, 8, 8),
+            ToolTip = helpText
+        };
+
+        if (label == "Start Service" || label == "Stop Service" || label == "Restart Service")
+        {
+            btn.Click += (_, _) => _ = RunServiceControlAsync(label);
+        }
+        else if (isPowerShell)
+        {
+            btn.Click += (_, _) =>
+            {
+                if (App.Session.Scripts is null)
+                {
+                    MessageBox.Show("Repo not configured.", "NextGPU");
+                    return;
+                }
+                if (!string.IsNullOrWhiteSpace(confirm) &&
+                    MessageBox.Show(confirm, "NextGPU", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                    return;
+                var args = ""; // Install/Uninstall scripts take no args
+                var r = App.Session.Scripts.RunPowerShellRelative(scriptRelativePath, args, elevated: true, keepConsoleOpen: true);
+                MessageBox.Show(r.Message, "NextGPU Service", MessageBoxButton.OK,
+                    r.Success ? MessageBoxImage.Information : MessageBoxImage.Warning);
+                if (returnsImmediately)
+                    _ = RefreshNextGpuServiceAsync(showProgress: false);
+            };
+        }
+        else
+        {
+            btn.Click += (_, _) =>
+            {
+                if (App.Session.Scripts is null)
+                {
+                    MessageBox.Show("Repo not configured.", "NextGPU");
+                    return;
+                }
+                var r = App.Session.Scripts.RunBatchRelative(scriptRelativePath, elevated: true, keepConsoleOpen: true);
+                MessageBox.Show(r.Message, "NextGPU Service", MessageBoxButton.OK,
+                    r.Success ? MessageBoxImage.Information : MessageBoxImage.Warning);
+            };
+        }
+
+        NextGpuServiceActionsPanel.Children.Add(btn);
+    }
+
+    private async Task RunServiceControlAsync(string action)
+    {
+        if (App.Session.Services is null)
+        {
+            MessageBox.Show("Repo not configured.", "NextGPU");
+            return;
+        }
+        SetNextGpuServiceProgress($"{action}…");
+        try
+        {
+            (bool Success, string Message) r = action switch
+            {
+                "Start Service" => await Task.Run(() => App.Session.Services.Start(NextGpuServiceName, elevated: true)),
+                "Stop Service" => await Task.Run(() => App.Session.Services.Stop(NextGpuServiceName, elevated: true)),
+                "Restart Service" => await Task.Run(() => App.Session.Services.Restart(NextGpuServiceName, elevated: true)),
+                _ => (false, $"Unknown action: {action}")
+            };
+            if (!r.Success)
+                MessageBox.Show(r.Message, "NextGPU Service", MessageBoxButton.OK, MessageBoxImage.Warning);
+            await Task.Delay(800);
+        }
+        finally
+        {
+            await RefreshNextGpuServiceAsync(showProgress: false);
+        }
+    }
+
+    private void SetNextGpuServiceProgress(string message)
+    {
+        NextGpuServiceProgressText.Text = message;
+        NextGpuServiceProgressPanel.Visibility = Visibility.Visible;
+        RefreshNextGpuServiceBtn.IsEnabled = false;
+        SetNextGpuServiceButtonsEnabled(false);
+    }
+
+    private void HideNextGpuServiceProgress()
+    {
+        NextGpuServiceProgressPanel.Visibility = Visibility.Collapsed;
+        RefreshNextGpuServiceBtn.IsEnabled = true;
+        SetNextGpuServiceButtonsEnabled(true);
+    }
+
+    private void SetNextGpuServiceButtonsEnabled(bool enabled)
+    {
+        foreach (var child in NextGpuServiceActionsPanel.Children)
+        {
+            if (child is Button b) b.IsEnabled = enabled;
         }
     }
 }

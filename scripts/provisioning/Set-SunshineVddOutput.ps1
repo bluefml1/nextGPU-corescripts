@@ -5,7 +5,7 @@
 .DESCRIPTION
     Retries up to 6 times with Sunshine restart between attempts. Display-path ID from
     Get-DisplayDeviceId.ps1; sunshine.log ID from Get-SunshineDeviceIdFromLog.ps1 overrides
-    when present (same priority as RegisterMachine_Beta.bat :capture_display_device_id).
+    when a usable complete entry exists (scored by display_name / info); otherwise display paths.
     Exit 0 when output_name is written; exit 1 when not resolved (non-fatal for callers).
 #>
 [CmdletBinding()]
@@ -121,25 +121,64 @@ function Get-VddDeviceIdFromDisplayPaths {
 
 function Get-VddDeviceIdFromSunshineLog {
     $scriptPath = Join-Path $PSScriptRoot 'Get-SunshineDeviceIdFromLog.ps1'
-    return Invoke-ProvisioningScriptStdout -ScriptPath $scriptPath
+    if (-not (Test-Path -LiteralPath $scriptPath)) {
+        return [PSCustomObject]@{ DeviceId = $null; IncompleteCandidates = 0 }
+    }
+
+    $outFile = [System.IO.Path]::GetTempFileName()
+    $errFile = [System.IO.Path]::GetTempFileName()
+    try {
+        $null = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+            '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptPath
+        ) -Wait -PassThru -NoNewWindow -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+
+        $deviceId = $null
+        if (Test-Path -LiteralPath $outFile) {
+            foreach ($line in Get-Content -LiteralPath $outFile -ErrorAction SilentlyContinue) {
+                if (Test-DeviceIdLine -Line $line) {
+                    $deviceId = $line.Trim()
+                    break
+                }
+            }
+        }
+
+        $incompleteCount = 0
+        if (Test-Path -LiteralPath $errFile) {
+            foreach ($line in Get-Content -LiteralPath $errFile -ErrorAction SilentlyContinue) {
+                if ($line -match '(\d+) incomplete candidate') {
+                    $incompleteCount = [int]$Matches[1]
+                }
+            }
+        }
+
+        return [PSCustomObject]@{
+            DeviceId              = $deviceId
+            IncompleteCandidates  = $incompleteCount
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $outFile, $errFile -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Resolve-VddDeviceId {
     $displayId = Get-VddDeviceIdFromDisplayPaths
-    $logId = Get-VddDeviceIdFromSunshineLog
+    $logInfo = Get-VddDeviceIdFromSunshineLog
 
-    if ($logId) {
+    if ($logInfo.DeviceId) {
         return [PSCustomObject]@{
-            DeviceId = $logId
-            Source   = 'sunshine.log'
-            DisplayPathId = $displayId
+            DeviceId                 = $logInfo.DeviceId
+            Source                   = 'sunshine.log'
+            DisplayPathId            = $displayId
+            LogIncompleteCandidates  = 0
         }
     }
     if ($displayId) {
         return [PSCustomObject]@{
-            DeviceId = $displayId
-            Source   = 'display-path'
-            DisplayPathId = $displayId
+            DeviceId                 = $displayId
+            Source                   = 'display-path'
+            DisplayPathId            = $displayId
+            LogIncompleteCandidates  = $logInfo.IncompleteCandidates
         }
     }
     return $null
@@ -244,8 +283,14 @@ for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
     $resolved = Resolve-VddDeviceId
 
     if ($resolved) {
-        if ($resolved.DisplayPathId -and $resolved.Source -eq 'sunshine.log' -and $resolved.DisplayPathId -ne $resolved.DeviceId) {
+        if ($resolved.Source -eq 'display-path' -and $resolved.LogIncompleteCandidates -gt 0) {
+            Write-VddMessage "Resolved device_id=$($resolved.DeviceId) source=display-path (log had $($resolved.LogIncompleteCandidates) VDD entries but none usable)"
+        }
+        elseif ($resolved.DisplayPathId -and $resolved.Source -eq 'sunshine.log' -and $resolved.DisplayPathId -ne $resolved.DeviceId) {
             Write-VddMessage "Using sunshine.log device_id=$($resolved.DeviceId) (display-path had $($resolved.DisplayPathId))"
+        }
+        elseif ($resolved.Source -eq 'sunshine.log') {
+            Write-VddMessage "Resolved device_id=$($resolved.DeviceId) source=sunshine.log (scored complete entry)"
         }
         else {
             Write-VddMessage "Resolved device_id=$($resolved.DeviceId) source=$($resolved.Source)"

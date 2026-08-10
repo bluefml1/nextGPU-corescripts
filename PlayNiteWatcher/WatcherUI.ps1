@@ -314,7 +314,6 @@ $window.FindName("InstallButton").Add_Click({
                     if (-not [string]::IsNullOrWhiteSpace($configPathTextBox.Text)) {
                         $exportParams.SunshineConfigDir = $configPathTextBox.Text
                     }
-                    $exportParams.SkipWatcherInstall = $true
                     Invoke-SunshineExportFromPlaynite @exportParams
                 }
             }

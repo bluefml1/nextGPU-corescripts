@@ -6,9 +6,14 @@
 .DESCRIPTION
     Stops and removes Windows services, removes Sunshine/Moonlight/NSSM/cloudflared
     files, uninstalls VDD/VAD and ViGEmBus drivers, unregisters scheduled tasks
-    (including nextGPU-*), removes wallpaper/shutdown policy and Default-user hive
+    (including nextGPU-*), optional portable Playnite folder cleanup,
+    wallpaper/shutdown policy and Default-user hive
     keys, releases stale NTUSER mounts, removes CLOUDFLARE_TUNNEL_TOKEN, optional
     nextGPU local user, and generated setup/runtime logs.
+
+    If machine-profile.json has vdd.enabled=false (register skipped VDD/VAD),
+    VDD/VAD/VB-CABLE removal is skipped automatically; ViGEmBus is still removed.
+    Use -SkipDrivers to skip all driver removal.
 
     Run with -WhatIf first to preview actions:
         powershell -ExecutionPolicy Bypass -File .\scripts\maintenance\Uninstall-NextGPU.ps1 -WhatIf
@@ -18,6 +23,7 @@ param(
     [switch]$Force,
     [switch]$SkipDrivers,
     [switch]$SkipGeneratedFiles,
+    [switch]$SkipPlaynite,
     [switch]$KeepLocalUsers,
     [string]$RepoRoot = ''
 )
@@ -195,11 +201,12 @@ function Remove-ScheduledTaskSafe {
 
 function Remove-AllNextGpuScheduledTasks {
     $known = @(
-        'EndSession', 'auto game launch',
+        'EndSession', 'auto game launch', 'nextGPU-PlayniteLogon',
             'nextGPU-Heartbeat', 'nextGPU-AutoRepair', 'nextGPU-AutoUpdate', 'nextGPU-NvidiaLogon',
             'nextGPU-ShutdownPolicyLogon', 'nextGPU-SunshineLogon',
-        'nextGPU-DesktopCleanupLogon', 'nextGPU-WallpaperFitLogon',
-        'nextGPU-UserStorageMount', 'nextGPU-UserStorageUnmount', 'nextGPU-UserStorageEnsureBindings'
+            'nextGPU-DesktopCleanupLogon', 'nextGPU-WallpaperFitLogon',
+        'nextGPU-UserStorageMount', 'nextGPU-UserStorageUnmount', 'nextGPU-UserStorageEnsureBindings',
+        'nextGPU-SessionFolderRulesLogoff', 'nextGPU-SessionFolderRulesLogon'
     )
     foreach ($name in $known) {
         Remove-ScheduledTaskSafe -TaskName $name
@@ -872,6 +879,39 @@ function Remove-WallpaperPolicy {
     }
 }
 
+function Remove-OptionalPlayniteInstall {
+    param([string]$RepoRoot)
+
+    $pathFile = Join-Path $RepoRoot 'PlayNiteWatcher\PlayniteInstall.path'
+    if (-not (Test-Path -LiteralPath $pathFile)) {
+        Write-Log 'Skip portable Playnite cleanup (PlayniteInstall.path not present).' -Level SKIP
+        return
+    }
+
+    $installDir = (Get-Content -LiteralPath $pathFile -Raw -ErrorAction SilentlyContinue).Trim().TrimEnd('\')
+    if ([string]::IsNullOrWhiteSpace($installDir)) {
+        Write-Log 'Skip portable Playnite cleanup (PlayniteInstall.path empty).' -Level SKIP
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath $installDir)) {
+        Write-Log "Portable Playnite folder not present: $installDir" -Level SKIP
+        return
+    }
+
+    Stop-ProcessSafe -Names @('Playnite.DesktopApp', 'Playnite.FullscreenApp')
+    Start-Sleep -Seconds 2
+
+    if ($PSCmdlet.ShouldProcess($installDir, 'Remove portable Playnite install folder')) {
+        Remove-PathSafe -Path $installDir
+        if (Test-Path -LiteralPath $installDir) {
+            Write-Log "Portable Playnite folder still present (files may be locked): $installDir" -Level WARN
+        } else {
+            Write-Log "Removed portable Playnite install folder: $installDir" -Level OK
+        }
+    }
+}
+
 function Remove-Sunshine {
     Stop-ProcessSafe -Names @('sunshine', 'Sunshine')
     $sunshineInstall = 'C:\Program Files\Sunshine'
@@ -886,10 +926,48 @@ function Remove-Sunshine {
 }
 
 function Remove-Drivers {
-    Remove-PnpDevicesByPattern -Pattern 'DISPLAY\MTT1337*' -Label 'VDD display (MTT1337)'
-    Remove-PnpDevicesByPattern -Pattern 'ROOT\MttVDD*' -Label 'Virtual Display Driver'
-    Remove-PnpDevicesByPattern -Pattern 'ROOT\VirtualAudioDriver*' -Label 'Virtual Audio Driver'
-    Remove-DriverPackagesByOriginalName -OriginalNames @('MttVDD.inf', 'VirtualAudioDriver.inf') -Label 'VDD/VAD'
+    param(
+        [switch]$SkipVdd
+    )
+
+    if ($SkipVdd) {
+        Write-Log 'VDD/VAD removal skipped (machine-profile: vdd.enabled=false; not installed at register).' -Level SKIP
+    }
+    else {
+        $vddVadCommon = Join-Path $ScriptRoot 'scripts\drivers\VddVadCommon.ps1'
+        if (-not (Test-Path -LiteralPath $vddVadCommon)) {
+            Write-Log "VddVadCommon.ps1 not found at $vddVadCommon" -Level WARN
+        }
+        else {
+            . $vddVadCommon
+
+            $logAction = {
+                param([string]$Message, [string]$Level)
+                Write-Log -Message $Message -Level $Level
+            }
+
+            if ($PSCmdlet.ShouldProcess('VDD/VAD/VB-CABLE stack', 'Remove drivers and PnP devices')) {
+                Write-Log 'Removing VDD, VAD, and VB-CABLE drivers...'
+                Remove-VddVadStack -IncludeVbCable -RemoveVddSettings -LogAction $logAction
+                $absent = Test-VddVadAbsent -IncludeVbCable
+                if (-not $absent.AllClear) {
+                    Write-Log 'Remnant VDD/VAD/VB-CABLE devices found; running second removal pass...' -Level WARN
+                    Remove-VddVadStack -IncludeVbCable -LogAction $logAction
+                    $absent = Test-VddVadAbsent -IncludeVbCable
+                }
+                if (-not $absent.AllClear) {
+                    Write-Log "VDD/VAD/VB-CABLE still visible in PnP: $($absent.Summary). Reboot recommended." -Level WARN
+                    foreach ($dev in $absent.Remaining) {
+                        Write-Log "  Remaining: $($dev.InstanceId) [$($dev.FriendlyName)]" -Level WARN
+                    }
+                }
+                else {
+                    Write-Log 'VDD/VAD/VB-CABLE removed from PnP (AllClear).' -Level OK
+                }
+            }
+        }
+    }
+
     Uninstall-ViGEmBus
 }
 
@@ -899,6 +977,7 @@ if (-not (Test-Admin)) {
     if ($Force) { $args += '-Force' }
     if ($SkipDrivers) { $args += '-SkipDrivers' }
     if ($SkipGeneratedFiles) { $args += '-SkipGeneratedFiles' }
+    if ($SkipPlaynite) { $args += '-SkipPlaynite' }
     if ($KeepLocalUsers) { $args += '-KeepLocalUsers' }
     if ($RepoRoot) { $args += '-RepoRoot'; $args += "`"$RepoRoot`"" }
     if ($WhatIfPreference) { $args += '-WhatIf' }
@@ -911,7 +990,7 @@ Write-Log "ScriptRoot=$ScriptRoot"
 Write-Log "LogPath=$LogPath"
 
 if (-not $Force -and -not $WhatIfPreference) {
-    Write-Warning 'This will remove nextGPU services, installed components, drivers, scheduled tasks, policy settings, environment variables, and generated logs.'
+    Write-Warning 'This will remove nextGPU services, installed components, drivers, scheduled tasks, optional Playnite folders, policy settings, environment variables, and generated logs.'
     $answer = Read-Host 'Type UNINSTALL to continue'
     if ($answer -ne 'UNINSTALL') {
         Write-Log 'Uninstall cancelled by user.' -Level WARN
@@ -930,10 +1009,10 @@ Write-Log 'Releasing stale Default-user registry hives...'
 Release-StaleDefaultUserHivesSafe
 
 Write-Log 'Removing Windows services...'
-foreach ($serviceName in @('auto-repair', 'gpu-heartbeat', 'gpu-sunshine', 'moonlight-web')) {
+foreach ($serviceName in @('auto-repair', 'gpu-heartbeat', 'gpu-sunshine', 'moonlight-web', 'NextGPUService')) {
     Remove-ServiceSafe -Name $serviceName -NssmExe $nssmExe -CloudflaredExe ''
 }
-Stop-ProcessSafe -Names @('sunshine', 'Sunshine', 'web-server', 'cloudflared', 'curl', 'nssm')
+    Stop-ProcessSafe -Names @('sunshine', 'Sunshine', 'web-server', 'cloudflared', 'curl', 'nssm', 'Playnite.DesktopApp', 'Playnite.FullscreenApp')
 Start-Sleep -Seconds 2
 
 Write-Log 'Unmounting per-user S3 storage (if mounted)...'
@@ -949,8 +1028,31 @@ if (Test-Path -LiteralPath $unmountScript) {
     Write-Log "Unmount-UserStorage.ps1 not found at $unmountScript" -Level SKIP
 }
 
+Write-Log 'Removing NextGPUService registry metadata...'
+$svcRegPath = 'HKLM:\SOFTWARE\NextGPU\Service'
+if (Test-Path -LiteralPath $svcRegPath) {
+    Remove-Item -LiteralPath $svcRegPath -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Log 'Removed HKLM\SOFTWARE\NextGPU\Service' -Level OK
+}
+
+Write-Log 'Removing NextGPUService binary...'
+$svcBinPath = 'C:\Program Files\NextGPU\Service\NextGPUService.exe'
+Remove-PathSafe -Path $svcBinPath
+$svcBinDir = Split-Path -Parent $svcBinPath
+if (Test-Path -LiteralPath $svcBinDir) {
+    Remove-PathSafe -Path $svcBinDir
+}
+
 Write-Log 'Removing scheduled tasks...'
 Remove-AllNextGpuScheduledTasks
+
+if ($SkipPlaynite) {
+    Write-Log 'Optional Playnite folder removal skipped by -SkipPlaynite.' -Level SKIP
+}
+else {
+    Write-Log 'Removing optional portable Playnite folder...'
+    Remove-OptionalPlayniteInstall -RepoRoot $ScriptRoot
+}
 
 Write-Log 'Removing Sunshine...'
 Remove-Sunshine
@@ -964,8 +1066,28 @@ Remove-CloudflaredArtifacts
 if ($SkipDrivers) {
     Write-Log 'Driver removal skipped by -SkipDrivers.' -Level SKIP
 } else {
-    Write-Log 'Removing VDD/VAD and ViGEmBus drivers...'
-    Remove-Drivers
+    $machineProfileScript = Join-Path $ScriptRoot 'scripts\provisioning\MachineProfile.ps1'
+    $skipVddFromProfile = $false
+    if (Test-Path -LiteralPath $machineProfileScript) {
+        . $machineProfileScript
+        $vddEnabled = Get-NextGpuVddEnabled -RepoRoot $ScriptRoot
+        if (-not $vddEnabled) {
+            $skipVddFromProfile = $true
+            Write-Log 'machine-profile.json has vdd.enabled=false; VDD/VAD will not be removed.' -Level SKIP
+        }
+    }
+    else {
+        Write-Log "MachineProfile.ps1 not found at $machineProfileScript; assuming VDD was installed." -Level WARN
+    }
+
+    if ($skipVddFromProfile) {
+        Write-Log 'Removing ViGEmBus (VDD/VAD skipped per machine profile)...'
+        Remove-Drivers -SkipVdd
+    }
+    else {
+        Write-Log 'Removing VDD/VAD and ViGEmBus drivers...'
+        Remove-Drivers
+    }
 }
 
 Write-Log 'Removing shutdown lock policy...'

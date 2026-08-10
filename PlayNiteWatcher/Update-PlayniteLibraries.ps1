@@ -49,13 +49,7 @@ try {
     $extLogAction = { param($Message, $Level) Write-MigrationLog $Message $Level }
     Install-PlayniteBuiltinLibraryExtensions -InstallDir $installDir -RepoRoot $PSScriptRoot -LogAction $extLogAction
 
-    $steamLog = { param($Message, $Level) Write-MigrationLog $Message $Level }
-    $steamResolved = Ensure-PlayniteSteamForLibraryScan -WatcherRoot $PSScriptRoot -LogAction $steamLog
-    if ($steamResolved) {
-        Write-MigrationLog "Steam ready for library scan ($($steamResolved.Source)): $($steamResolved.Path)"
-    }
-
-    Stop-PlayniteApplication -PlayniteExe $playniteExe -InstallDir $installDir -WaitSeconds 30 -Force
+    Stop-PlayniteApplication -PlayniteExe $playniteExe
 
     $playniteLog = Join-Path $script:PlayniteAppData "playnite.log"
     $startedAfter = Get-Date
@@ -74,13 +68,23 @@ try {
         Write-MigrationLog "Playnite may still be open - check for first-run wizard dialogs." "WARN"
     }
 
-    Stop-PlayniteApplication -PlayniteExe $playniteExe -InstallDir $installDir -WaitSeconds 30 -Force
+    Stop-PlayniteApplication -PlayniteExe $playniteExe
 
     if ($ok) {
-        Write-MigrationLog "Done. Library update finished. Re-run Setup-PlayniteSteam.ps1 -WithSunshine or run Export/Install scripts if you use Sunshine/Moonlight." "INFO"
+        Write-MigrationLog "Done. Library update finished. Applying elevated Play actions (Steam + Desktop Admin)..." "INFO"
     }
     else {
         Write-MigrationLog "No Steam/Epic import in log. Ensure Steam/Epic clients are installed and games are on disk, then Update All in Playnite or re-run this script." "WARN"
+        Write-MigrationLog "Still applying elevated Play actions for any Steam games already in games.db..." "INFO"
+    }
+
+    $applyScript = Join-Path $PSScriptRoot 'Apply-PlayniteElevatedPlayActions.ps1'
+    if (Test-Path -LiteralPath $applyScript) {
+        & $applyScript -PlayniteInstallDir $installDir
+        Write-MigrationLog "Elevated Play actions applied. Re-run Setup-PlayniteSteam.ps1 -WithSunshine or Export if you use Sunshine/Moonlight." "INFO"
+    }
+    else {
+        Write-MigrationLog "Apply-PlayniteElevatedPlayActions.ps1 not found: $applyScript" "WARN"
     }
 }
 catch {
@@ -89,7 +93,6 @@ catch {
 }
 finally {
     if ($script:UpdatePlayniteExe) {
-        $installDirFromExe = Split-Path -Path $script:UpdatePlayniteExe -Parent
-        Stop-PlayniteApplication -PlayniteExe $script:UpdatePlayniteExe -InstallDir $installDirFromExe -WaitSeconds 30 -Force
+        Stop-PlayniteApplication -PlayniteExe $script:UpdatePlayniteExe
     }
 }

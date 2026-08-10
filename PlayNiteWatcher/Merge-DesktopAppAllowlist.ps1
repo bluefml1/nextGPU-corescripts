@@ -62,6 +62,7 @@ function Get-AllowlistEntryKey {
         NameId = if ($Entry.nameId) { $Entry.nameId.ToString().Trim() } else { '' }
         Title  = if ($Entry.title) { $Entry.title.ToString().Trim() } else { '' }
         Type   = if ($Entry.type) { $Entry.type.ToString().Trim() } else { '' }
+        RunAsAdmin = if ($null -ne $Entry.runAsAdmin) { [bool]$Entry.runAsAdmin } elseif ($null -ne $Entry.skipAcl) { [bool]$Entry.skipAcl } else { $false }
     }
 }
 
@@ -117,10 +118,11 @@ function Normalize-IncomingEntry {
     }
 
     return [PSCustomObject]@{
-        exe    = $key.Exe
-        nameId = $nameId
-        title  = $title
-        type   = $type
+        exe        = $key.Exe
+        nameId     = $nameId
+        title      = $title
+        type       = $type
+        runAsAdmin = $key.RunAsAdmin
     }
 }
 
@@ -217,8 +219,17 @@ function Merge-AllowlistEntries {
     }
 
     $outDoc = [ordered]@{
-        _comment = 'List executable filenames only (exe), not install paths. Setup uses voidtools es.exe to find the real path and writes it into Playnite.'
-        apps     = @($existing)
+        _comment = 'List executable filenames only (exe), not install paths. Setup uses voidtools es.exe to find the real path and writes it into Playnite. Set runAsAdmin=true on Desktop apps to launch with admin privilege via the NextGPU service (High IL). Steam and Epic games always use admin launch.'
+        apps     = @($existing | ForEach-Object {
+            $e = $_
+            [ordered]@{
+                exe        = $e.exe
+                nameId     = $e.nameId
+                title      = $e.title
+                type       = $e.type
+                runAsAdmin = if ($e.PSObject.Properties.Name -contains 'runAsAdmin') { [bool]$e.runAsAdmin } elseif ($e.PSObject.Properties.Name -contains 'skipAcl') { [bool]$e.skipAcl } else { $false }
+            }
+        })
     }
 
     $json = $outDoc | ConvertTo-Json -Depth 20

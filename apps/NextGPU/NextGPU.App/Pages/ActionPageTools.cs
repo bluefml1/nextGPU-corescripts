@@ -106,6 +106,7 @@ internal static class ActionPageTools
         string relativePath,
         string? arguments = null,
         bool keepConsoleOpen = false,
+        bool elevated = true,
         string? confirm = null,
         string? tooltip = null,
         string? helpText = null)
@@ -117,7 +118,7 @@ internal static class ActionPageTools
             Padding = new Thickness(14, 10, 14, 10),
             Style = (Style)Application.Current.FindResource("PrimaryButton")
         };
-        btn.Click += (_, _) => RunBatch(panel, relativePath, arguments, keepConsoleOpen, confirm);
+        btn.Click += (_, _) => RunBatch(panel, relativePath, arguments, keepConsoleOpen, elevated, confirm);
         AddToPanel(panel, btn, helpText);
     }
 
@@ -127,16 +128,17 @@ internal static class ActionPageTools
         string relativePath,
         string? arguments = null,
         bool keepConsoleOpen = false,
+        bool elevated = true,
         string? confirm = null,
         string? tooltip = null,
         string? helpText = null)
     {
         var btn = MakeButton(label, tooltip ?? $"Runs {relativePath} elevated.", (_, _) =>
-            RunBatch(panel, relativePath, arguments, keepConsoleOpen, confirm));
+            RunBatch(panel, relativePath, arguments, keepConsoleOpen, elevated, confirm));
         AddToPanel(panel, btn, helpText);
     }
 
-    private static void RunBatch(Panel panel, string relativePath, string? arguments, bool keepConsoleOpen, string? confirm)
+    private static void RunBatch(Panel panel, string relativePath, string? arguments, bool keepConsoleOpen, bool elevated, string? confirm)
     {
         if (App.Session.Scripts is null)
         {
@@ -144,7 +146,7 @@ internal static class ActionPageTools
             return;
         }
         if (!Confirm(confirm)) return;
-        var r = App.Session.Scripts.RunBatchRelative(relativePath, elevated: true, arguments: arguments, keepConsoleOpen: keepConsoleOpen);
+        var r = App.Session.Scripts.RunBatchRelative(relativePath, elevated: elevated, arguments: arguments, keepConsoleOpen: keepConsoleOpen);
         ShowResult(r);
     }
 

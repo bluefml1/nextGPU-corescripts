@@ -2,12 +2,16 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Shrink a source volume and extend an existing target or create a new partition.
+    Shrink a source volume and extend an existing target or create a new partition;
+    or re-apply rental ACLs on an existing data drive (-RentalAclOnly).
 .DESCRIPTION
     Choose source drive (e.g. C:), size to take (GB), then either:
     - Extend an existing volume on the same disk (e.g. shrink C:, add to existing Z:)
     - Create a new partition with a new drive letter
     Extend only works when the target partition is immediately after the shrunk space on disk.
+    After extend/create (and with -RentalAclOnly), applies Users RX + NextGPURestricted
+    deny-delete on the volume root, then icacls /reset /T on every top-level folder
+    so Steam/Playnite inherit the same lockdown as other game folders.
 #>
 [CmdletBinding()]
 param(
@@ -15,7 +19,9 @@ param(
     [string]$TargetDriveLetter = '',
     [ValidateSet('', 'Extend', 'Create')]
     [string]$TargetMode = '',
-    [int]$NewPartitionSizeGB = 0
+    [int]$NewPartitionSizeGB = 0,
+    # Re-apply Users RX + NextGPURestricted deny-delete on an existing data volume (no shrink).
+    [switch]$RentalAclOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -255,12 +261,117 @@ function Resolve-ShrinkSizeGb {
     throw ('Cancelled: requested {0} GB but max shrinkable is {1} GB.' -f $RequestedGb, $max)
 }
 
-Write-Host '=== NextGPU Disk: Shrink + Extend or Create ===' -ForegroundColor Cyan
+function Set-NextGpuDataDriveRentalAcl {
+    <#
+    .SYNOPSIS
+        Lock down a data volume for rental use.
+        BUILTIN\Users: read/execute; NextGPURestricted: deny delete.
+        Root get explicit (OI)(CI) ACEs; then every top-level folder is /reset /T
+        so Steam, Playnite, Garena, etc. all inherit Users RX (no leftover Users Full).
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$DriveLetter
+    )
+
+    $letter = $DriveLetter.Trim().TrimEnd(':').ToUpperInvariant()
+    $root = '{0}:\' -f $letter
+    $usersGroup = 'Users'
+    $restrictedGroup = 'NextGPURestricted'
+    $skipNames = @('$RECYCLE.BIN', 'System Volume Information')
+
+    if (-not (Test-Path -LiteralPath $root)) {
+        Write-Warning "Drive root not found: $root"
+        return $false
+    }
+
+    $ensurePs1 = Join-Path $PSScriptRoot '..\provisioning\Ensure-NextGpuRestrictedGroup.ps1'
+    if (Test-Path -LiteralPath $ensurePs1) {
+        . $ensurePs1
+        $null = Ensure-NextGpuRestrictedGroupMembership -CreateGroupOnly
+    }
+    else {
+        Write-Warning "Ensure-NextGpuRestrictedGroup.ps1 not found; deny ACE may fail if group is missing."
+    }
+
+    Write-Host ('[*] Applying rental ACLs on {0} ...' -f $root) -ForegroundColor Cyan
+
+    $ok = $true
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+
+    try {
+        & icacls.exe $root /inheritance:d 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { $ok = $false }
+
+        # Remove may fail when no Users ACE exists yet; continue either way.
+        & icacls.exe $root /remove:g $usersGroup 2>&1 | Out-Null
+
+        & icacls.exe $root /grant:r "${usersGroup}:(OI)(CI)(RX)" 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { $ok = $false }
+
+        # Drop prior deny ACEs so re-apply does not stack duplicates on the root.
+        & icacls.exe $root /remove:d $restrictedGroup 2>&1 | Out-Null
+
+        & icacls.exe $root /deny "${restrictedGroup}:(OI)(CI)(DE,DC)" 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { $ok = $false }
+
+        # Root (OI)(CI) alone does not strip explicit Users:(F) on children (e.g. Steam).
+        # Reset each top-level tree so they inherit Users RX + deny delete like Garena/VNG.
+        # icacls /C continues past locked files; some Steam locks may still report Access Denied.
+        $children = @(Get-ChildItem -LiteralPath $root -Force -ErrorAction SilentlyContinue |
+            Where-Object { $skipNames -notcontains $_.Name })
+        Write-Host ('[*] Forcing inheritance on {0} top-level item(s) under {1} (includes Steam/Playnite)...' -f $children.Count, $root) -ForegroundColor Cyan
+        foreach ($item in $children) {
+            $path = $item.FullName
+            Write-Host ("    reset: $path") -ForegroundColor DarkGray
+            & icacls.exe $path /reset /T /C /Q 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "icacls /reset reported errors on $path (some files may be locked; continued)."
+                $ok = $false
+            }
+        }
+    }
+    finally {
+        $ErrorActionPreference = $prevEap
+    }
+
+    if ($ok) {
+        Write-Host ('[OK] Rental ACLs applied on {0} and children (Users: RX; NextGPURestricted: deny delete).' -f $root) -ForegroundColor Green
+    }
+    else {
+        Write-Warning "One or more icacls steps failed on $root (verify ACLs manually; locked files may need retry)."
+    }
+    return $ok
+}
 
 $vols = @(Get-FixedLetterVolumes)
 if ($vols.Count -eq 0) { throw 'No fixed lettered volumes found.' }
 
 $inUse = @($vols | ForEach-Object { $_.DriveLetter })
+
+if ($RentalAclOnly) {
+    Write-Host '=== NextGPU Disk: Re-apply rental ACL (no shrink) ===' -ForegroundColor Cyan
+    $letter = $TargetDriveLetter.Trim().TrimEnd(':').ToUpperInvariant()
+    if (-not $letter) {
+        $pick = @(
+            $vols | ForEach-Object {
+                '{0}:  {1}  free {2}  {3}' -f $_.DriveLetter, (Format-GB $_.Size), (Format-GB $_.Free), $_.Label
+            }
+        )
+        $choice = $pick | Out-GridView -Title 'Select data drive to re-apply rental ACL (Users RX + deny delete on whole tree)' -OutputMode Single
+        if (-not $choice) { exit 0 }
+        $letter = $choice.Substring(0, 1).ToUpperInvariant()
+    }
+    if ($inUse -notcontains $letter) { throw "Drive ${letter}: not found." }
+    $aclOk = Set-NextGpuDataDriveRentalAcl -DriveLetter $letter
+    Write-Host 'Done. Steam/Playnite/and other folders now inherit Users RX from the volume root.' -ForegroundColor Green
+    Write-Host 'Note: Playnite folder stays volume Users RX. Register elevated Playnite logon (NextGPU-Admin); do not grant nextGPU Modify on Playnite.' -ForegroundColor Yellow
+    if (-not $aclOk) { exit 2 }
+    exit 0
+}
+
+Write-Host '=== NextGPU Disk: Shrink + Extend or Create ===' -ForegroundColor Cyan
 
 $source = $SourceDriveLetter
 if ([string]::IsNullOrWhiteSpace($source)) {
@@ -477,6 +588,8 @@ else {
     Write-Host ('[OK] {0}: created (~{1} GB).' -f $targetLetter, $NewPartitionSizeGB) -ForegroundColor Green
     Write-Host ('    {0}: now ~{1} GB' -f $source, (Format-GB $targetSourceSize)) -ForegroundColor Green
 }
+
+$null = Set-NextGpuDataDriveRentalAcl -DriveLetter $targetLetter
 
 $restart = [System.Windows.Forms.MessageBox]::Show(
     "Disk operation complete.`n`nRestart now (recommended)?",

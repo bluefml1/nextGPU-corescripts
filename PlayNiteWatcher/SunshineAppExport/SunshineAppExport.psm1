@@ -86,15 +86,25 @@ function Get-Sha256HexFromFile {
 }
 
 function Register-AppId {
-    param([string]$Name, [string]$Source, [string]$ImagePath = "")
+    param(
+        [string]$Name,
+        [string]$Source,
+        [string]$InstallDirectory = $null,
+        [string]$ImagePath = "",
+        [string]$PlayniteId = "",
+        [bool]$SkipAclGrant = $false
+    )
     if ([string]::IsNullOrWhiteSpace($Name)) { return }
     $alreadyExists = $script:ResolvedAppIds | Where-Object { $_.Name -eq $Name -and $_.Source -eq $Source }
     if ($alreadyExists) { return }
     $appId = Get-AppIdFromName -AppName $Name
     $script:ResolvedAppIds.Add([PSCustomObject]@{
-            Name   = $Name
-            AppID  = $appId
-            Source = $Source
+            Name             = $Name
+            AppID            = $appId
+            Source           = $Source
+            InstallDirectory = $InstallDirectory
+            PlayniteId       = $PlayniteId
+            SkipAclGrant     = [bool]$SkipAclGrant
         }) | Out-Null
     $__logger.Info("NameID: $Name => AppID: $appId [$Source]")
 }
@@ -451,10 +461,17 @@ function Export-LegacyCoverApp {
     }
     [object[]]$Json.apps = $updatedApps.ToArray()
 
-    Register-AppId -Name $Game.Name -Source "Playnite"
+    Register-AppId -Name $Game.Name -Source "Playnite" -InstallDirectory $Game.InstallDirectory -PlayniteId $Game.Id.ToString() -SkipAclGrant $Game.SkipAclGrant
     $entry = $script:ResolvedAppIds | Where-Object { $_.Name -eq $Game.Name -and $_.Source -eq "Playnite" } | Select-Object -Last 1
     if ($entry) {
-        [void]$AppLaunchLinesPlaynite.Add("$($entry.AppID): $gameLaunchCmd")
+        $entryLine = "$($entry.AppID): $gameLaunchCmd"
+        if (-not [string]::IsNullOrWhiteSpace($Game.InstallDirectory)) {
+            $entryLine = "${entryLine} | $($Game.InstallDirectory)"
+        }
+        if ([bool]$Game.SkipAclGrant) {
+            $entryLine = "${entryLine} @ADMIN"
+        }
+        [void]$AppLaunchLinesPlaynite.Add($entryLine)
     }
     return $true
 }
@@ -530,10 +547,13 @@ function DoWork([string]$appsPath) {
             $newApp = New-SteamEpicSunshineApp -NameId $nameId -PlayniteId $game.Id.ToString() -KioskOutput $kioskOutput
             Add-OrReplaceAppInJson -Json $json -NewApp $newApp
 
-            Register-AppId -Name $nameId -Source $sourceLabel
+            Register-AppId -Name $nameId -Source $sourceLabel -InstallDirectory $game.InstallDirectory -PlayniteId $game.Id.ToString() -SkipAclGrant $false
             $entry = $script:ResolvedAppIds | Where-Object { $_.Name -eq $nameId -and $_.Source -eq $sourceLabel } | Select-Object -Last 1
             if ($entry) {
-                $line = "$($entry.AppID): $playniteCmd"
+                $line = "$($entry.AppID): $playniteCmd @ADMIN"
+                if (-not [string]::IsNullOrWhiteSpace($game.InstallDirectory)) {
+                    $line = "${line} | $($game.InstallDirectory)"
+                }
                 if ($sourceLabel -eq 'Steam') {
                     $AppLaunchLines_Steam.Add($line)
                     $counts.Steam++

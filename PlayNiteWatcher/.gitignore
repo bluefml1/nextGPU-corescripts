@@ -1,4 +1,20 @@
+*.txt
+*.json
+*.zip
+*.log
+!config/playnite/desktop-apps.allowlist.json.template
+!config/playnite/*.template.json
+!config/playnite/*.json.template
 
+# Auto-downloaded SQLite CLI (see Playnite-Common.ps1 Ensure-Sqlite3Available)
+tools/sqlite/*
+!tools/sqlite/.gitkeep
+
+# Guard against accidental relative DatabasePath outputs
+library/
 
 # Per-machine install folder from Setup folder picker
 PlayniteInstall.path
+
+# Built Steam extension packages (source under SteamExtensions/src)
+SteamExtensions/build/

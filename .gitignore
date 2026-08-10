@@ -8,3 +8,37 @@ apps/NextGPU/publish/*
 !apps/NextGPU/publish/README.txt
 !apps/NextGPU/publish/.gitkeep
 /NextGPU.exe
+
+# Runtime logs (keep folder placeholder)
+*.log
+logs/*
+!logs/.gitkeep
+
+# Host-specific / machine local
+/machine-profile.json
+/domain.txt
+**/*.path
+!**/*.path.example
+**/*.paths.json
+
+# Local / stray binaries (do not ship)
+/cloudflared.exe
+apps/NextGPU/test_copy.exe
+
+# Large driver package drop-in (download/install separately)
+/VDD-VAD-Install/
+
+# Vendor / third-party drop-ins
+/nssm/
+/sunshine/
+/moonlight-web/
+
+# Misplaced duplicate app trees (canonical is apps/NextGPU/*)
+/apps/NextGPU.App/
+/apps/NextGPU.Core/
+
+# Local Playnite database dumps
+/library/
+
+# Extension build outputs (rebuild from SteamExtensions/src)
+PlayNiteWatcher/SteamExtensions/build/

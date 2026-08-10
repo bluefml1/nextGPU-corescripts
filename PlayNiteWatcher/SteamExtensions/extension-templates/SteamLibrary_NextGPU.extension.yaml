@@ -1,0 +1,7 @@
+Id: SteamLibrary_NextGPU
+Name: Steam library (NextGPU)
+Author: NextGPU (fork of Playnite SteamLibrary 2.40)
+Version: 2.40.1
+Module: SteamLibrary.dll
+Type: GameLibrary
+Icon: Resources\steamicon.png

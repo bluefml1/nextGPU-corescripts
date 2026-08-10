@@ -1,0 +1,4 @@
+{
+  "_comment": "Logoff runs all rules. Logon re-runs rules with logonFallback when verification fails. Replace sources default under ProgramData\\nextGPU\\session-templates\\{id}. Rules are created dynamically (e.g. Garena Arrange/Seed copies Config\\<name> and upserts a replace rule).",
+  "rules": []
+}

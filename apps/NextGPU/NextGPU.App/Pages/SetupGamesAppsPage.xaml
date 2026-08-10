@@ -1,0 +1,28 @@
+<Page x:Class="NextGPU.App.Pages.SetupGamesAppsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      Title="Setup Games &amp; Apps">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16,24,20">
+        <StackPanel MaxWidth="900" HorizontalAlignment="Left">
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="Setup Games &amp; Apps" Style="{StaticResource SectionTitleText}"/>
+                    <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
+                               Text="Host setup only: sync official bundles, lay out games/apps, and push to cloud origins. Clean Session folder rules are on the Bypass page."/>
+                </StackPanel>
+            </Border>
+
+            <Border Background="{StaticResource CardBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Padding="16">
+                <StackPanel>
+                    <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12"
+                               Text="One-time or maintenance: sync official bundles, lay out games/apps, push to cloud origins. Does not run session folder rules."/>
+                    <StackPanel x:Name="HostSetupPanel"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

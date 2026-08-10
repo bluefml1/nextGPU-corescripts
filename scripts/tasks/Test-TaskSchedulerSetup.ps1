@@ -50,12 +50,24 @@ foreach ($scriptName in @(
     'Register-AutoRepairTask.ps1',
     'Register-AutoUpdateTask.ps1',
     'Register-NvidiaLogonTask.ps1',
-    'Register-EndSessionTask.ps1'
+    'Register-EndSessionTask.ps1',
+    'launchGameTaskScheduler.ps1'
 )) {
     $path = Join-Path $tasksDir $scriptName
     Test-Line "$scriptName exists" (Test-Path -LiteralPath $path)
     Test-Line "TaskScheduler.ps1 references $scriptName" ($orchestratorText -like "*$scriptName*")
 }
+
+$launchGameSunshine = 'C:\Program Files\Sunshine\scripts\launchGame.ps1'
+$launchGameRepo = Join-Path $repoRoot 'sunshine\launchGame.ps1'
+Test-Line 'launchGame.ps1 (Sunshine scripts or repo)' (
+    (Test-Path -LiteralPath $launchGameSunshine) -or (Test-Path -LiteralPath $launchGameRepo)
+) $(if (Test-Path -LiteralPath $launchGameSunshine) { $launchGameSunshine } else { $launchGameRepo })
+
+$playniteLogon = Join-Path $repoRoot 'PlayNiteWatcher\Register-PlayniteLogonTask.ps1'
+Test-Line 'Register-PlayniteLogonTask.ps1' (Test-Path -LiteralPath $playniteLogon) $playniteLogon
+Test-Line 'TaskScheduler.ps1 references Playnite logon' ($orchestratorText -like '*Register-PlayniteLogonTask*')
+
 
 Test-Line 'NextGpuScheduledTaskCommon.ps1 exists' (Test-Path -LiteralPath (Join-Path $tasksDir 'NextGpuScheduledTaskCommon.ps1'))
 
