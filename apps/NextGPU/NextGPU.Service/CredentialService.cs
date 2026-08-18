@@ -8,7 +8,8 @@ namespace NextGPU.Service;
 
 // Reads the NextGPU-Admin credential from C:\ProgramData\nextGPU\admincred.dat
 // and decrypts it via DPAPI LocalMachine scope. The service runs as SYSTEM and is
-// the only process that should read this file (admincred.dat ACL is SYSTEM:F).
+// the only process that should read this file (admincred.dat ACL: SYSTEM allow,
+// Administrators allow, nextGPU explicit deny).
 //
 // The password bytes are kept in a SecureString-ish backing field; callers should
 // read via ReadAdminPassword() and not retain references longer than necessary.

@@ -96,6 +96,21 @@ if (-not [string]::IsNullOrWhiteSpace($adminPasswordEncrypted)) {
 $vendorId = $vendorId.Trim()
 $computerLower = $computerName.Trim().ToLowerInvariant()
 
+# Persist vendor_id early so EndSession fallback works even if register API is re-run later.
+$programDataNextGpu = Join-Path $env:ProgramData 'nextGPU'
+if (-not (Test-Path -LiteralPath $programDataNextGpu)) {
+    New-Item -ItemType Directory -Path $programDataNextGpu -Force | Out-Null
+}
+$vendorIdPath = Join-Path $programDataNextGpu 'vendor-id.txt'
+if ([string]::IsNullOrWhiteSpace($vendorId)) {
+    if (Test-Path -LiteralPath $vendorIdPath) {
+        Remove-Item -LiteralPath $vendorIdPath -Force -ErrorAction SilentlyContinue
+    }
+}
+else {
+    Set-Content -LiteralPath $vendorIdPath -Value $vendorId -Encoding ASCII -Force
+}
+
 $lines = @(
     '@echo off',
     "set `"ENABLE_VDD=$enableVdd`"",

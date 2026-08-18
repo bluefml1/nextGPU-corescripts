@@ -10,6 +10,15 @@ The root folder exposes the main launchers:
 
 Detailed docs live in `docs/README.md` and `docs/started.md`.
 
+**First-time host setup (beginner):**
+
+| Guide | Use when |
+| ----- | -------- |
+| [`docs/setup-beginer.md`](docs/setup-beginer.md) | Screenshot walkthrough — open this in the repo for inline images |
+| [`docs/machine-setup-beginer.md`](docs/machine-setup-beginer.md) | Same flow with full explanations and troubleshooting |
+
+Both guides reference screenshots under `docs/images/setup-beginer/` (included in the repo).
+
 ## Repo Layout
 
 ```text

@@ -153,15 +153,15 @@ public sealed class AllowlistService
 
                 var afterColon = line[(colonIdx + 1)..].Trim();
 
-                // Split on " | " to separate launchPath from installDir
+                // Split on "|" to separate launchPath from installDir (tolerate missing spaces)
                 string launchPath;
                 string installDir;
 
-                int pipeIdx = afterColon.IndexOf(" | ");
+                int pipeIdx = afterColon.IndexOf('|');
                 if (pipeIdx >= 0)
                 {
                     launchPath = afterColon[..pipeIdx].Trim();
-                    installDir = afterColon[(pipeIdx + 3)..].Trim();
+                    installDir = afterColon[(pipeIdx + 1)..].Trim().Trim('"');
                 }
                 else
                 {
@@ -171,7 +171,9 @@ public sealed class AllowlistService
                 }
 
                 bool runAsAdmin = AdminMarkerRegex.IsMatch(launchPath);
-                var cleanLaunchPath = AdminMarkerRegex.Replace(launchPath, "").Trim();
+                var cleanLaunchPath = AdminMarkerRegex.Replace(launchPath, " ").Trim();
+                while (cleanLaunchPath.Contains("  ", StringComparison.Ordinal))
+                    cleanLaunchPath = cleanLaunchPath.Replace("  ", " ", StringComparison.Ordinal);
 
                 // Extract Exe and Args from launchPath
                 // Format: &"path" args  or  "path" args  or  path args

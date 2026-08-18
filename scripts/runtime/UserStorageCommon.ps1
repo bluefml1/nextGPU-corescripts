@@ -2092,8 +2092,11 @@ function Install-RcloneForAllUsers {
 
     if (Get-Command winget.exe -ErrorAction SilentlyContinue) {
         Write-Host '[*] Installing rclone (machine scope)...'
-        $null = winget.exe install --id Rclone.Rclone -e --scope machine `
-            --accept-source-agreements --accept-package-agreements 2>&1
+        winget.exe install --id Rclone.Rclone -e --scope machine `
+            --accept-source-agreements --accept-package-agreements 2>&1 |
+            ForEach-Object { Write-Host $_ }
+    } else {
+        Write-Warning 'winget.exe not found. Install "App Installer" from Microsoft Store, or rclone will be downloaded from GitHub.'
     }
 
     $source = Get-RcloneExeForUserStorage
@@ -2101,6 +2104,13 @@ function Install-RcloneForAllUsers {
         $candidates = Find-RcloneExeOnSystem
         if ($candidates -and $candidates.Count -gt 0) {
             $source = $candidates[0]
+        }
+    }
+    if (-not $source) {
+        try {
+            $source = Install-RcloneFromGitHubRelease
+        } catch {
+            Write-Warning "rclone GitHub download install: $($_.Exception.Message)"
         }
     }
     if (-not $source) {
@@ -2253,6 +2263,43 @@ function Install-WinFspFromGitHubRelease {
     Install-WinFspFromMsi -MsiPath $msiPath
 }
 
+function Install-RcloneFromGitHubRelease {
+    $targetExe = Get-NextGpuUserStorageProgramFilesRclone
+    if (Test-Path -LiteralPath $targetExe) {
+        return $targetExe
+    }
+
+    $headers = @{ 'User-Agent' = 'nextGPU-user-storage-setup' }
+    $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/rclone/rclone/releases/latest' -Headers $headers
+    $asset = $release.assets | Where-Object { $_.name -match 'windows-amd64\.zip$' } | Select-Object -First 1
+    if (-not $asset) {
+        throw 'No windows-amd64.zip asset on latest rclone GitHub release'
+    }
+
+    $zipPath = Join-Path $env:TEMP $asset.name
+    Write-Host "[*] Downloading rclone: $($asset.browser_download_url)"
+    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath -UseBasicParsing
+
+    $extractDir = Join-Path $env:TEMP 'nextgpu-rclone-extract'
+    if (Test-Path -LiteralPath $extractDir) {
+        Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Expand-Archive -LiteralPath $zipPath -DestinationPath $extractDir -Force
+    $exe = Get-ChildItem -Path $extractDir -Filter 'rclone.exe' -Recurse -File -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if (-not $exe) {
+        throw 'rclone.exe not found inside release zip'
+    }
+
+    $targetDir = Split-Path -Parent $targetExe
+    if (-not (Test-Path -LiteralPath $targetDir)) {
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+    }
+    Write-Host "[*] Publishing rclone for all users: $targetExe"
+    Copy-Item -LiteralPath $exe.FullName -Destination $targetExe -Force
+    return $targetExe
+}
+
 function Install-RcloneIfMissing {
     $exe = Install-RcloneForAllUsers
     return [bool]$exe
@@ -2261,6 +2308,16 @@ function Install-RcloneIfMissing {
 function Ensure-UserStoragePrerequisites {
     $rcloneOk = Install-RcloneIfMissing
     $winFspOk = Install-WinFspIfMissing
+    if (-not $rcloneOk) {
+        Write-Host '[ERROR] rclone is missing and could not be installed.' -ForegroundColor Red
+        Write-Host '        Manual: winget install Rclone.Rclone -e --scope machine' -ForegroundColor Yellow
+        Write-Host '        Need outbound HTTPS to winget CDN or github.com.' -ForegroundColor Yellow
+    }
+    if (-not $winFspOk) {
+        Write-Host '[ERROR] WinFsp is missing and could not be installed.' -ForegroundColor Red
+        Write-Host '        Manual: winget install WinFsp.WinFsp -e --scope machine' -ForegroundColor Yellow
+        Write-Host "        Log: $env:TEMP\nextgpu-winfsp-install.log" -ForegroundColor Yellow
+    }
     return ($rcloneOk -and $winFspOk)
 }
 

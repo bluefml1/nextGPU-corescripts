@@ -16,5 +16,7 @@ library/
 # Per-machine install folder from Setup folder picker
 PlayniteInstall.path
 
-# Built Steam extension packages (source under SteamExtensions/src)
-SteamExtensions/build/
+# Committed Steam extension package required by Setup-PlayniteSteam
+# (un-ignore under broad *.json / *.txt rules above)
+!SteamExtensions/build/
+!SteamExtensions/build/**

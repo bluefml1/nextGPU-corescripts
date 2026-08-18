@@ -702,7 +702,7 @@ public partial class BypassPage : Page
         AddConfirmedPowerShellButton(AllowlistActionsPanel, "Export Admin launches",
             @"PlayNiteWatcher\Export-SunshineFromPlaynite.ps1", "",
             "This exports to Sunshine, installs PlayNiteWatcher, and restarts Sunshine. Active Moonlight sessions may end. Continue?",
-            "Writes Playnite games and allowlisted desktop apps into Sunshine apps.json with @ADMIN markers for runAsAdmin entries.");
+            "Writes Playnite games and allowlisted desktop apps into Sunshine apps.json with @ADMIN markers for runAsAdmin entries. If export fails, close Playnite completely and retry.");
     }
 
     private static void AddPlainInlineActionButton(Panel panel, string label, RoutedEventHandler onClick, string styleKey)

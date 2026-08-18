@@ -101,7 +101,7 @@ All other workflows are run from their `scripts/` subfolders.
 - `scripts/runtime/auto-update.bat`: Long-running update loop for Sunshine/Moonlight versions. It is not installed by the main setup script in the current repo.
 - `scripts/runtime/checking-update.bat`: Run-once/logging update checker. It currently skips the backend availability gate and writes to `logs/checking-update.log`.
 - **Per-user S3 storage (opt-in):** `scripts/runtime/Setup-UserStorage.bat` installs rclone `[nextgpu-user]` under `%ProgramData%\nextGPU\rclone\`, registers `nextGPU-UserStorageMount` / `nextGPU-UserStorageUnmount` for the **nextGPU** user, and mounts `user_<id>/` from bucket `next-gpu-storage` as **`U:`** at logon (Explorer label `{name}'s Storage` from checkDomain `displayName` / `name` / `firstName` / `lastName`). Not wired into `RegisterMachine_Beta.bat` by default.
-- **Clean Session folder rules:** `scripts/runtime/Invoke-SessionFolderRules.ps1` runs **delete** or **replace** rules on nextGPU logoff (primary) with logon fallback. Config: `%ProgramData%\nextGPU\session-folder-rules.json`; golden replace sources: `%ProgramData%\nextGPU\session-templates\{id}\`. Tasks: `nextGPU-SessionFolderRulesLogoff` / `nextGPU-SessionFolderRulesLogon` via `Register-SessionFolderRulesTasks.ps1` (also called from `RegisterMachine_Beta.bat` after the nextGPU user is created). `sunshine/endSession.ps1` runs logoff rules at STEP 0. NextGPU HOST page **Bypass** → **Clean Session** tab for CRUD, import/export, seed templates. Host layout (`arrange-games-apps.bat`) is on **Setup Games & Apps**.
+- **Clean Session folder rules:** `scripts/runtime/Invoke-SessionFolderRules.ps1` runs **delete** or **replace** rules on nextGPU logoff (primary) with logon fallback. Config: `%ProgramData%\nextGPU\session-folder-rules.json`; golden replace sources: `%ProgramData%\nextGPU\session-templates\{id}\`. Tasks: `nextGPU-SessionFolderRulesLogoff` / `nextGPU-SessionFolderRulesLogon` via `Register-SessionFolderRulesTasks.ps1` (also called from `RegisterMachine_Beta.bat` after the nextGPU user is created). `sunshine/endSession.ps1` runs logoff rules at STEP 0. NextGPU HOST page **Setup Games & Apps** → **Clean Session** tab for CRUD, import/export, seed templates. Host layout (`arrange-games-apps.bat`) is separate on the **Host Setup** tab.
 
 ### Per-user S3 storage (optional)
 
@@ -136,10 +136,8 @@ Setup installs rclone/WinFsp, AWS config, publishes scripts, registers **ensure 
 - `scripts/desktop/Apply-WallpaperFit-Logon.ps1` / `Register-WallpaperFitLogonTask.ps1`: Per-logon Fit wallpaper, hide icons, clear nextGPU Desktop files.
 - `scripts/desktop/Clear-NextGpuUserDesktop.ps1`: Deletes everything under the **nextGPU** user’s Desktop folder (used by the `nextGPU-DesktopCleanupLogon` task at each nextGPU logon).
 - `scripts/desktop/Register-NextGpuDesktopCleanupTask.ps1`: Registers that logon task (run elevated; `RegisterMachine_Beta.bat` calls it after `net user nextGPU /add`).
-- `scripts/tasks/TaskScheduler.ps1`: Registers heartbeat, auto-repair, auto-update, NVIDIA logon, EndSession, auto game launch, and attempts Playnite logon registration.
-- `scripts/tasks/launchGameTaskScheduler.ps1`: Registers **auto game launch** at user logon as **SYSTEM** → Sunshine `launchGame.ps1`. Paired with **nextGPU-PlayniteLogon** (elevated Playnite UI as NextGPU-Admin via pipe). Steam Moonlight = elevated `steam.exe -applaunch`; Desktop = direct `.exe`.
-- `PlayNiteWatcher/Register-PlayniteLogonTask.ps1`: At nextGPU logon, elevates `Playnite.DesktopApp --startdesktop` as NextGPU-Admin (NextGPUService). Playnite folder stays volume Users RX (no nextGPU write grant).
-- `PlayNiteWatcher/Grant-PlayniteRentalAccess.ps1`: Deprecated — resets Playnite ACL to volume inherit only.
+- `scripts/tasks/TaskScheduler.ps1`: Registers the `EndSession` task.
+- `scripts/tasks/launchGameTaskScheduler.ps1`: Registers `auto game launch` at user logon and runs `Z:\launchGame.ps1`.
 
 ### Notes
 

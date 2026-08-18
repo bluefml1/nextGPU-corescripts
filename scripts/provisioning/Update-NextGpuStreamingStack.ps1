@@ -3,11 +3,11 @@
 .SYNOPSIS
     Shared Sunshine + Moonlight install/update/pairing used by auto-update, checking-update, and auto-repair.
 .PARAMETER SunshineMode
-    CheckUpdate: reinstall only when remote VERSION differs from local sunshine-version.txt.
+    CheckUpdate: reinstall only when remote VERSION:... differs from local sunshine-version.txt.
     ForceReinstall: always reinstall Sunshine.
     Skip: do not touch Sunshine.
 .PARAMETER MoonlightMode
-    CheckUpdate: reinstall only when remote VERSION.txt differs from moonlight-web\VERSION.txt.
+    CheckUpdate: reinstall only when remote VERSION:... differs from moonlight-web\VERSION.txt.
     ForceReinstall: always reinstall Moonlight Web service.
     Skip: do not touch Moonlight.
 .PARAMETER ForcePairing
@@ -304,6 +304,47 @@ function Resolve-RepoRootPath {
     return (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 }
 
+function Test-HttpErrorBody {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+    $t = $Text.Trim()
+    return ($t -match '(?i)^(429|403|404|502|503)\b|Too Many Requests|rate.?limit|Not Found|Access Denied|^<(!DOCTYPE|html)')
+}
+
+function Get-FilePreview {
+    param(
+        [string]$Path,
+        [int]$MaxChars = 80
+    )
+    if (-not (Test-Path -LiteralPath $Path)) { return '' }
+    $raw = (Get-Content -Raw -LiteralPath $Path -ErrorAction SilentlyContinue)
+    if ([string]::IsNullOrWhiteSpace($raw)) { return '' }
+    $t = $raw.Trim()
+    if ($t.Length -le $MaxChars) { return $t }
+    return $t.Substring(0, $MaxChars) + '...'
+}
+
+function Assert-DownloadedJsonFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+    if (-not (Test-Path -LiteralPath $Path) -or (Get-Item -LiteralPath $Path).Length -lt 2) {
+        throw "$Label is missing or empty: $Path"
+    }
+    $raw = Get-Content -Raw -LiteralPath $Path
+    $preview = Get-FilePreview -Path $Path
+    if (Test-HttpErrorBody -Text $raw) {
+        throw "$Label download is not JSON (HTTP/rate-limit page). Close extra GitHub downloads and retry later. Preview: $preview"
+    }
+    try {
+        $null = $raw | ConvertFrom-Json
+    }
+    catch {
+        throw "$Label is not valid JSON: $($_.Exception.Message). Preview: $preview"
+    }
+}
+
 function Invoke-DownloadFile {
     param(
         [Parameter(Mandatory = $true)][string]$Url,
@@ -315,12 +356,34 @@ function Invoke-DownloadFile {
     }
     $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
     if ($curl) {
-        $dlExit = Invoke-CurlNative @('-L', $Url, '-o', $Destination, '--progress-bar')
-        if ($dlExit -eq 0 -and (Test-Path -LiteralPath $Destination)) { return }
+        $dlExit = Invoke-CurlNative @(
+            '-L', '--fail', '--retry', '3', '--retry-delay', '2',
+            '--max-time', '90', '-o', $Destination, '--progress-bar', $Url
+        )
+        if ($dlExit -eq 0 -and (Test-Path -LiteralPath $Destination) -and (Get-Item -LiteralPath $Destination).Length -gt 0) {
+            if (Test-HttpErrorBody -Text (Get-FilePreview -Path $Destination -MaxChars 200)) {
+                throw "Download from $Url returned an HTTP error page. GitHub may be rate-limiting (429). Retry later."
+            }
+            return
+        }
+        if ($dlExit -eq 22) {
+            throw "Download failed HTTP error for $Url (curl --fail). GitHub may be rate-limiting (429). Retry later."
+        }
     }
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $ProgressPreference = 'SilentlyContinue'
-    Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing
+    }
+    catch {
+        throw "Download failed for $Url : $($_.Exception.Message)"
+    }
+    if (-not (Test-Path -LiteralPath $Destination) -or (Get-Item -LiteralPath $Destination).Length -eq 0) {
+        throw "Download produced an empty file for $Url"
+    }
+    if (Test-HttpErrorBody -Text (Get-FilePreview -Path $Destination -MaxChars 200)) {
+        throw "Download from $Url returned an HTTP error page. GitHub may be rate-limiting (429). Retry later."
+    }
 }
 
 function Get-RemoteTextLine {
@@ -329,7 +392,12 @@ function Get-RemoteTextLine {
     try {
         Invoke-DownloadFile -Url $Url -Destination $temp
         $line = (Get-Content -LiteralPath $temp -TotalCount 1 -ErrorAction Stop | Select-Object -First 1)
+        if ($null -eq $line) { return $null }
         return $line.Trim()
+    }
+    catch {
+        Write-StackLog "Remote version fetch failed ($Url): $($_.Exception.Message)" 'WARN'
+        return $null
     }
     finally {
         Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
@@ -339,8 +407,12 @@ function Get-RemoteTextLine {
 function Test-VersionLineValid {
     param([string]$Line)
     if ([string]::IsNullOrWhiteSpace($Line)) { return $false }
-    if ($Line.Length -gt 100) { return $false }
-    return ($Line -notmatch '<|404|Error|html|rate')
+    $t = $Line.Trim()
+    # Canonical remote/local stamp is VERSION:<value> (e.g. VERSION:Beta3.4).
+    # HTTP errors like "429: Too Many Requests" must not trigger an update.
+    if ($t.Length -gt 80) { return $false }
+    if (Test-HttpErrorBody -Text $t) { return $false }
+    return ($t -match '^VERSION:\S')
 }
 
 function Stop-SunshineProcessesAndService {
@@ -469,7 +541,8 @@ function Test-SunshineUpdateNeeded {
 
     $remote = Get-RemoteTextLine -Url $script:SunshineVersionUrl
     if (-not (Test-VersionLineValid -Line $remote)) {
-        Write-StackLog 'Could not read valid remote Sunshine version; skipping Sunshine update.' 'WARN'
+        $shown = if ([string]::IsNullOrWhiteSpace($remote)) { '(empty)' } else { $remote }
+        Write-StackLog "Remote Sunshine version is not VERSION:... ($shown); skipping until next checking-update." 'WARN'
         return @{ Needed = $false; Remote = $null }
     }
 
@@ -515,7 +588,7 @@ function Set-MoonlightConfigJson {
     if ([System.IO.File]::ReadAllText($configPath) -match '\{\{computer_name\}\}') {
         throw 'config.json still contains {{computer_name}} placeholder.'
     }
-    $null = (Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json)
+    Assert-DownloadedJsonFile -Path $configPath -Label 'Moonlight config.json'
 }
 
 function Install-MoonlightService {
@@ -644,7 +717,8 @@ function Test-MoonlightUpdateNeeded {
 
     $remote = Get-RemoteTextLine -Url $script:MoonlightVersionUrl
     if (-not (Test-VersionLineValid -Line $remote)) {
-        Write-StackLog 'Could not read valid remote Moonlight version; skipping Moonlight update.' 'WARN'
+        $shown = if ([string]::IsNullOrWhiteSpace($remote)) { '(empty)' } else { $remote }
+        Write-StackLog "Remote Moonlight version is not VERSION:... ($shown); skipping until next checking-update." 'WARN'
         return @{ Needed = $false; Remote = $null }
     }
 
@@ -784,7 +858,7 @@ function Invoke-MoonlightSunshinePairing {
 
     if (Test-Path -LiteralPath $dataPath) { Remove-Item -LiteralPath $dataPath -Force }
     Invoke-DownloadFile -Url $script:MoonlightDataUrl -Destination $dataPath
-    $null = (Get-Content -Raw -LiteralPath $dataPath | ConvertFrom-Json)
+    Assert-DownloadedJsonFile -Path $dataPath -Label 'Moonlight data.json'
     Write-PairingLog "Downloaded data.json -> $dataPath"
 
     Start-Service -Name $script:MoonlightService -ErrorAction Stop

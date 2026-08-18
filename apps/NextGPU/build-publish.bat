@@ -3,8 +3,8 @@ setlocal enabledelayedexpansion
 :: Build self-contained NextGPU.App (dashboard) and NextGPU.Service (game launcher service).
 cd /d "%~dp0"
 
-set "REPO_ROOT=%~dp0..\.."
-if "%REPO_ROOT:~-1%"=="\" set "REPO_ROOT=%REPO_ROOT:~0,-1%"
+:: Normalize repo root (avoid ...\apps\NextGPU\..\.. in paths)
+for %%I in ("%~dp0..\..") do set "REPO_ROOT=%%~fI"
 
 set "SVC_INSTALL_DIR=C:\Program Files\NextGPU\Service"
 
@@ -13,17 +13,63 @@ echo  NextGPU - Build and Publish
 echo ========================================
 echo.
 
-where dotnet <nul >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] dotnet host not found. Install .NET 8 SDK from:
+:: Ensure freshly-installed SDK is visible — probe absolute hosts one-by-one
+:: NEVER put %ProgramFiles(x86)% inside a for (...) list — the ')' breaks CMD parsing.
+for /f "usebackq delims=" %%P in (`powershell -NoProfile -Command "$m=[Environment]::GetEnvironmentVariable('Path','Machine'); $u=[Environment]::GetEnvironmentVariable('Path','User'); if ($m -and $u) { $m + ';' + $u } elseif ($m) { $m } elseif ($u) { $u } else { '' }"`) do (
+    if not "%%P"=="" set "PATH=%%P"
+)
+
+set "DOTNET_EXE="
+:: Prefer parent-resolved host or repo-local portable SDK
+if defined NEXTGPU_DOTNET if exist "%NEXTGPU_DOTNET%" call :try_host "%NEXTGPU_DOTNET%"
+if not defined DOTNET_EXE call :try_host "%REPO_ROOT%\.dotnet\dotnet.exe"
+if not defined DOTNET_EXE if defined ProgramW6432 call :try_host "%ProgramW6432%\dotnet\dotnet.exe"
+if not defined DOTNET_EXE call :try_host "%ProgramFiles%\dotnet\dotnet.exe"
+if not defined DOTNET_EXE (
+    set "PF86=%ProgramFiles(x86)%"
+    if defined PF86 call :try_host "!PF86!\dotnet\dotnet.exe"
+)
+if not defined DOTNET_EXE call :try_host "%LOCALAPPDATA%\Microsoft\dotnet\dotnet.exe"
+if not defined DOTNET_EXE (
+    for /f "tokens=2*" %%A in ('reg query "HKLM\SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedhost" /v Path 2^>nul') do (
+        if exist "%%~B\dotnet.exe" call :try_host "%%~B\dotnet.exe"
+    )
+)
+if not defined DOTNET_EXE (
+    for /f "delims=" %%W in ('where dotnet 2^>nul') do (
+        call :try_host "%%~W"
+        if defined DOTNET_EXE goto :dotnet_resolved
+    )
+)
+:dotnet_resolved
+
+if not defined DOTNET_EXE (
+    echo [ERROR] No usable .NET SDK found ^(host missing or runtime-only^).
+    echo   Install .NET 8 SDK from:
     echo   https://dotnet.microsoft.com/download/dotnet/8.0
     exit /b 1
 )
 
+for %%I in ("!DOTNET_EXE!") do set "DOTNET_ROOT=%%~dpI"
+if "!DOTNET_ROOT:~-1!"=="\" set "DOTNET_ROOT=!DOTNET_ROOT:~0,-1!"
+set "PATH=!DOTNET_ROOT!;%PATH%"
+set "DOTNET_ROOT=!DOTNET_ROOT!"
+set "DOTNET_MULTILEVEL_LOOKUP=0"
+
 set "HAS_SDK="
-for /f "delims=" %%s in ('dotnet --list-sdks 2^>nul') do (
+"!DOTNET_EXE!" --list-sdks > "%TEMP%\nextgpu-sdk-echo.txt" 2>nul
+for /f "usebackq delims=" %%s in ("%TEMP%\nextgpu-sdk-echo.txt") do (
     set "HAS_SDK=1"
     echo [*] Installed SDK: %%s
+)
+del "%TEMP%\nextgpu-sdk-echo.txt" <nul >nul 2>&1
+if not defined HAS_SDK (
+    dir /b /ad "!DOTNET_ROOT!\sdk\*" > "%TEMP%\nextgpu-sdk-dirs.txt" 2>nul
+    for /f "usebackq delims=" %%s in ("%TEMP%\nextgpu-sdk-dirs.txt") do (
+        set "HAS_SDK=1"
+        echo [*] Installed SDK folder: %%s
+    )
+    del "%TEMP%\nextgpu-sdk-dirs.txt" <nul >nul 2>&1
 )
 if not defined HAS_SDK (
     echo [ERROR] No .NET SDK installed ^(runtime-only dotnet is not enough^).
@@ -32,21 +78,27 @@ if not defined HAS_SDK (
     exit /b 1
 )
 
-for /f "tokens=*" %%v in ('dotnet --version 2^>nul') do set "DOTNET_VER=%%v"
-echo [*] Using dotnet !DOTNET_VER!
+"!DOTNET_EXE!" --version > "%TEMP%\nextgpu-dotnet-ver.txt" 2>nul
+set "DOTNET_VER="
+for /f "usebackq tokens=*" %%v in ("%TEMP%\nextgpu-dotnet-ver.txt") do set "DOTNET_VER=%%v"
+del "%TEMP%\nextgpu-dotnet-ver.txt" <nul >nul 2>&1
+echo [*] Using !DOTNET_EXE! ^(!DOTNET_VER!^)
 echo.
-
 :: ---------------------------------------------------------------------------
 :: 1. Publish NextGPU.App (dashboard)
 :: ---------------------------------------------------------------------------
 echo ========================================
-echo  [1/2] Building NextGPU.App (dashboard)
+echo  [1/3] Building NextGPU.App (dashboard)
 echo ========================================
 echo.
 
 if not exist "publish" mkdir "publish"
 
-dotnet publish NextGPU.App\NextGPU.App.csproj ^
+:: Remove stale dashboard EXE so we never copy/launch a leftover corrupt binary
+if exist "publish\NextGPU.exe" del /f /q "publish\NextGPU.exe" <nul >nul 2>&1
+if exist "%REPO_ROOT%\NextGPU.exe" del /f /q "%REPO_ROOT%\NextGPU.exe" <nul >nul 2>&1
+
+"!DOTNET_EXE!" publish NextGPU.App\NextGPU.App.csproj ^
     -c Release ^
     -r win-x64 ^
     --self-contained true ^
@@ -60,20 +112,31 @@ if errorlevel 1 (
     exit /b 1
 )
 
-for %%e in (NextGPU.exe NextGPU.dll) do (
-    if exist "publish\%%e" (
-        echo [OK] NextGPU.App -> apps\NextGPU\publish\%%e
-        goto :app_done
-    )
+if not exist "publish\NextGPU.exe" (
+    echo [ERROR] publish\NextGPU.exe was not created.
+    exit /b 1
 )
-:app_done
+
+call :verify_pe "publish\NextGPU.exe"
+if errorlevel 1 (
+    echo [ERROR] Published NextGPU.exe is invalid ^(corrupt or too small^).
+    echo         Windows would report this as "Unsupported 16-Bit Application".
+    exit /b 1
+)
+for %%A in ("publish\NextGPU.exe") do echo [OK] NextGPU.App -^> apps\NextGPU\publish\NextGPU.exe ^(%%~zA bytes^)
 
 echo [*] Copying to repo root for NextGPU.bat launcher...
-copy /y "publish\NextGPU.exe" "%REPO_ROOT%\NextGPU.exe" <nul >nul 2>&1
+copy /y /b "publish\NextGPU.exe" "%REPO_ROOT%\NextGPU.exe" <nul >nul 2>&1
 if errorlevel 1 (
     echo [!] Could not copy to repo root; use apps\NextGPU\publish\NextGPU.exe
 ) else (
-    echo [OK] NextGPU.exe -> %REPO_ROOT%\NextGPU.exe
+    call :verify_pe "%REPO_ROOT%\NextGPU.exe"
+    if errorlevel 1 (
+        echo [!] Root copy failed PE check; removing bad copy. Use publish\NextGPU.exe
+        del /f /q "%REPO_ROOT%\NextGPU.exe" <nul >nul 2>&1
+    ) else (
+        echo [OK] NextGPU.exe -^> %REPO_ROOT%\NextGPU.exe
+    )
 )
 echo.
 
@@ -85,7 +148,7 @@ echo  [2/3] Building NextGPU.Service
 echo ========================================
 echo.
 
-dotnet publish NextGPU.Service\NextGPU.Service.csproj ^
+"!DOTNET_EXE!" publish NextGPU.Service\NextGPU.Service.csproj ^
     -c Release ^
     -r win-x64 ^
     --self-contained true ^
@@ -103,7 +166,12 @@ if not exist "publish\Service\NextGPUService.exe" (
     echo [ERROR] publish\Service\NextGPUService.exe was not created.
     exit /b 1
 )
-echo [OK] NextGPU.Service -^> apps\NextGPU\publish\Service\NextGPUService.exe
+call :verify_pe "publish\Service\NextGPUService.exe"
+if errorlevel 1 (
+    echo [ERROR] Published NextGPUService.exe is invalid.
+    exit /b 1
+)
+for %%A in ("publish\Service\NextGPUService.exe") do echo [OK] NextGPU.Service -^> apps\NextGPU\publish\Service\NextGPUService.exe ^(%%~zA bytes^)
 
 :: ---------------------------------------------------------------------------
 :: 3. Publish NextGPU.Launcher (in-session desktop broker)
@@ -115,7 +183,7 @@ echo.
 
 set "LAUNCHER_INSTALL_DIR=%ProgramFiles%\NextGPU\Launcher"
 
-dotnet publish NextGPU.Launcher\NextGPU.Launcher.csproj ^
+"!DOTNET_EXE!" publish NextGPU.Launcher\NextGPU.Launcher.csproj ^
     -c Release ^
     -r win-x64 ^
     --self-contained true ^
@@ -133,7 +201,12 @@ if not exist "publish\Launcher\NextGPU.Launcher.exe" (
     echo [ERROR] publish\Launcher\NextGPU.Launcher.exe was not created.
     exit /b 1
 )
-echo [OK] NextGPU.Launcher -^> apps\NextGPU\publish\Launcher\NextGPU.Launcher.exe
+call :verify_pe "publish\Launcher\NextGPU.Launcher.exe"
+if errorlevel 1 (
+    echo [ERROR] Published NextGPU.Launcher.exe is invalid.
+    exit /b 1
+)
+for %%A in ("publish\Launcher\NextGPU.Launcher.exe") do echo [OK] NextGPU.Launcher -^> apps\NextGPU\publish\Launcher\NextGPU.Launcher.exe ^(%%~zA bytes^)
 
 :: Install to default location
 sc query NextGPUService 2>nul | findstr /i "SERVICE_NAME" <nul >nul 2>&1
@@ -144,12 +217,12 @@ if not errorlevel 1 (
 )
 echo [*] Installing NextGPUService to %SVC_INSTALL_DIR%...
 if not exist "%SVC_INSTALL_DIR%" mkdir "%SVC_INSTALL_DIR%"
-copy /y "publish\Service\NextGPUService.exe" "%SVC_INSTALL_DIR%\NextGPUService.exe" <nul >nul 2>&1
+copy /y /b "publish\Service\NextGPUService.exe" "%SVC_INSTALL_DIR%\NextGPUService.exe" <nul >nul 2>&1
 if errorlevel 1 goto :copy_failed
 echo [OK] NextGPUService installed to %SVC_INSTALL_DIR%
 echo [*] Installing NextGPU.Launcher to %LAUNCHER_INSTALL_DIR%...
 if not exist "%LAUNCHER_INSTALL_DIR%" mkdir "%LAUNCHER_INSTALL_DIR%"
-copy /y "publish\Launcher\NextGPU.Launcher.exe" "%LAUNCHER_INSTALL_DIR%\NextGPU.Launcher.exe" <nul >nul 2>&1
+copy /y /b "publish\Launcher\NextGPU.Launcher.exe" "%LAUNCHER_INSTALL_DIR%\NextGPU.Launcher.exe" <nul >nul 2>&1
 if errorlevel 1 (
     echo [!] Could not copy launcher to %LAUNCHER_INSTALL_DIR%
 ) else (
@@ -273,3 +346,44 @@ goto :svc_check_done
 echo [OK] NextGPUService is running.
 :svc_check_done
 exit /b 0
+
+:: ---------------------------------------------------------------------------
+:: verify_pe: exit 0 if file has MZ header and size >= 1 MiB (self-contained)
+:: ---------------------------------------------------------------------------
+:verify_pe
+set "PE_CHECK=%~1"
+powershell -NoProfile -Command ^
+  "$p=$env:PE_CHECK; if (-not $p -or -not (Test-Path -LiteralPath $p)) { exit 1 };" ^
+  "$len=(Get-Item -LiteralPath $p).Length;" ^
+  "if ($len -lt 1MB) { Write-Host ('[!] Too small (' + $len + ' bytes): ' + $p); exit 1 };" ^
+  "$fs=[IO.File]::OpenRead($p); $b=New-Object byte[] 2; [void]$fs.Read($b,0,2); $fs.Close();" ^
+  "if ($b[0] -ne 0x4D -or $b[1] -ne 0x5A) { Write-Host ('[!] Missing MZ PE header: ' + $p); exit 1 };" ^
+  "exit 0"
+set "PE_ERR=%ERRORLEVEL%"
+set "PE_CHECK="
+exit /b %PE_ERR%
+
+:: ---------------------------------------------------------------------------
+:try_host
+set "TRY_HOST=%~1"
+if not defined TRY_HOST goto :eof
+if not exist "%TRY_HOST%" goto :eof
+for %%I in ("%TRY_HOST%") do set "TRY_ROOT=%%~dpI"
+if "%TRY_ROOT:~-1%"=="\" set "TRY_ROOT=%TRY_ROOT:~0,-1%"
+set "DOTNET_ROOT=%TRY_ROOT%"
+set "DOTNET_MULTILEVEL_LOOKUP=0"
+"%TRY_HOST%" --list-sdks > "%TEMP%\nextgpu-sdk-list-build.txt" 2>nul
+for /f "usebackq delims=" %%s in ("%TEMP%\nextgpu-sdk-list-build.txt") do (
+    set "DOTNET_EXE=%TRY_HOST%"
+    del "%TEMP%\nextgpu-sdk-list-build.txt" <nul >nul 2>&1
+    goto :eof
+)
+dir /b /ad "%TRY_ROOT%\sdk\*" > "%TEMP%\nextgpu-sdk-dirs-build.txt" 2>nul
+for /f "usebackq delims=" %%s in ("%TEMP%\nextgpu-sdk-dirs-build.txt") do (
+    set "DOTNET_EXE=%TRY_HOST%"
+    del "%TEMP%\nextgpu-sdk-dirs-build.txt" <nul >nul 2>&1
+    goto :eof
+)
+del "%TEMP%\nextgpu-sdk-list-build.txt" <nul >nul 2>&1
+del "%TEMP%\nextgpu-sdk-dirs-build.txt" <nul >nul 2>&1
+goto :eof

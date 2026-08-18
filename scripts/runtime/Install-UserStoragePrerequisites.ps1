@@ -19,8 +19,7 @@ if (-not (Test-Path -LiteralPath $commonPath)) {
 $ok = Ensure-UserStoragePrerequisites
 if (-not $ok) {
     if (-not $Quiet) {
-        Write-Host '[ERROR] rclone or WinFsp could not be installed for all users.' -ForegroundColor Red
-        Write-Host '        Re-run Setup-UserStorage.bat as Administrator.' -ForegroundColor Yellow
+        Write-Host '        Run this window as Administrator, then re-run User-Storage.bat Setup.' -ForegroundColor Yellow
     }
     exit 1
 }

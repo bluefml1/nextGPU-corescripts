@@ -4,6 +4,7 @@
     Shared credential storage functions for NextGPU-Admin password.
     Uses DPAPI to encrypt credentials at rest.
     New stores use LocalMachine scope so SYSTEM (Sunshine endSession) can decrypt.
+    File ACL: SYSTEM + Administrators allow; nextGPU explicit FullControl deny.
     Get tries LocalMachine first, then CurrentUser for older admincred.dat files.
     Call . (dot-source) this file in scripts that need to access the admin password.
 #>
@@ -11,6 +12,96 @@
 Add-Type -AssemblyName System.Security
 
 $script:NextGpuAdminCredPath = Join-Path $env:ProgramData "nextGPU\admincred.dat"
+$script:NextGpuRentalAccountName = 'nextGPU'
+
+function Get-NextGpuRentalAccountSid {
+    <#
+    .SYNOPSIS
+        SID of the rental nextGPU account, or $null when the user does not exist.
+    #>
+    try {
+        $user = Get-LocalUser -Name $script:NextGpuRentalAccountName -ErrorAction Stop
+        return [System.Security.Principal.SecurityIdentifier]$user.SID.Value
+    }
+    catch {
+        return $null
+    }
+}
+
+function Set-NextGpuAdminCredFileAcl {
+    <#
+    .SYNOPSIS
+        Locks admincred.dat to SYSTEM + Administrators, with explicit DENY for nextGPU.
+    .DESCRIPTION
+        Inheritance disabled. Rental user gets FullControl Deny (read/write/execute/delete).
+        Re-run after nextGPU delete/recreate so the deny ACE targets the new SID.
+    #>
+    param(
+        [string]$Path = $script:NextGpuAdminCredPath,
+        [switch]$Silent
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        if (-not $Silent) {
+            Write-Warning "admincred.dat not found: $Path"
+        }
+        return $false
+    }
+
+    $inheritNone = [System.Security.AccessControl.InheritanceFlags]::None
+    $propNone = [System.Security.AccessControl.PropagationFlags]::None
+    $fullControl = [System.Security.AccessControl.FileSystemRights]::FullControl
+
+    $acl = New-Object System.Security.AccessControl.FileSecurity
+    $acl.SetAccessRuleProtection($true, $false)
+
+    foreach ($sidValue in @('S-1-5-18', 'S-1-5-32-544')) {
+        $sid = New-Object System.Security.Principal.SecurityIdentifier($sidValue)
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $sid,
+            $fullControl,
+            $inheritNone,
+            $propNone,
+            [System.Security.AccessControl.AccessControlType]::Allow)))
+    }
+
+    $rentalSid = Get-NextGpuRentalAccountSid
+    if ($rentalSid) {
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $rentalSid,
+            $fullControl,
+            $inheritNone,
+            $propNone,
+            [System.Security.AccessControl.AccessControlType]::Deny)))
+    }
+    elseif (-not $Silent) {
+        Write-Warning "Local user '$($script:NextGpuRentalAccountName)' not found; admincred.dat ACL has no rental deny yet."
+    }
+
+    Set-Acl -LiteralPath $Path -AclObject $acl
+
+    if (-not $Silent -and $rentalSid) {
+        Write-Host "[OK] admincred.dat ACL: SYSTEM + Administrators allow; $($script:NextGpuRentalAccountName) deny."
+    }
+
+    return $true
+}
+
+function Update-NextGpuAdminCredRentalDenyAcl {
+    <#
+    .SYNOPSIS
+        Re-apply admincred.dat deny ACE for the current nextGPU SID (after recreate).
+    .DESCRIPTION
+        Call after nextGPU is created or recreated — not from user-storage Sync.
+    #>
+    param([switch]$Silent)
+
+    if (-not (Test-Path -LiteralPath $script:NextGpuAdminCredPath)) {
+        return $false
+    }
+
+    return (Set-NextGpuAdminCredFileAcl -Path $script:NextGpuAdminCredPath -Silent:$Silent)
+}
 
 function Get-NextGpuAdminCredential {
     <#
@@ -77,11 +168,35 @@ function Get-NextGpuAdminCredential {
     return $null
 }
 
+function Test-NextGpuAdminCredentialLocalMachine {
+    <#
+    .SYNOPSIS
+        Returns $true if admincred.dat decrypts with LocalMachine DPAPI (SYSTEM-readable).
+    #>
+    if (-not (Test-Path -LiteralPath $script:NextGpuAdminCredPath)) {
+        return $false
+    }
+
+    try {
+        $protected = [System.IO.File]::ReadAllBytes($script:NextGpuAdminCredPath)
+        $decrypted = [System.Security.Cryptography.ProtectedData]::Unprotect(
+            $protected,
+            $null,
+            [System.Security.Cryptography.DataProtectionScope]::LocalMachine
+        )
+        $ok = ($null -ne $decrypted -and $decrypted.Length -gt 0)
+        if ($decrypted) { [Array]::Clear($decrypted, 0, $decrypted.Length) }
+        return $ok
+    }
+    catch {
+        return $false
+    }
+}
+
 function Set-NextGpuAdminCredential {
     <#
     .SYNOPSIS
-        Stores the NextGPU-Admin password securely using DPAPI.
-        The credential is encrypted with the current Windows user's key.
+        Stores the NextGPU-Admin password using LocalMachine DPAPI so SYSTEM can decrypt.
     .EXAMPLE
         Set-NextGpuAdminCredential -Password $securePassword
     #>
@@ -116,13 +231,50 @@ function Set-NextGpuAdminCredential {
 
     [System.IO.File]::WriteAllBytes($script:NextGpuAdminCredPath, $protected)
 
-    $acl = Get-Acl $script:NextGpuAdminCredPath
-    $acl.SetAccessRuleProtection($true, $false)
-    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
-        "SYSTEM", "FullControl", "Allow")))
-    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
-        "Administrators", "FullControl", "Allow")))
-    Set-Acl -Path $script:NextGpuAdminCredPath -AclObject $acl
+    $null = Set-NextGpuAdminCredFileAcl -Silent
+}
+
+function Repair-NextGpuAdminCredentialToLocalMachine {
+    <#
+    .SYNOPSIS
+        Re-encrypts admincred.dat as LocalMachine DPAPI.
+        Run as an Administrator who can decrypt the current blob (often CurrentUser).
+        SYSTEM / EndSession cannot do this when the blob is CurrentUser-only.
+    .OUTPUTS
+        $true if LocalMachine decrypt works after repair (or already did).
+    #>
+    param(
+        [string]$AdminUser = "NextGPU-Admin",
+        [switch]$Force
+    )
+
+    if (-not $Force -and (Test-NextGpuAdminCredentialLocalMachine)) {
+        $null = Set-NextGpuAdminCredFileAcl -Silent
+        Write-Host "[OK] admincred.dat already decrypts with LocalMachine DPAPI (ACL refreshed)."
+        return $true
+    }
+
+    $cred = Get-NextGpuAdminCredential -AdminUser $AdminUser
+    if (-not $cred) {
+        Write-Warning "Cannot decrypt admincred.dat as this user. Re-run Bypass admin password setup, then Store-NextGpuAdminCredential.ps1 -Repair if needed."
+        return $false
+    }
+
+    $len = $cred.GetNetworkCredential().Password.Length
+    if ($len -lt 1) {
+        Write-Warning "Decrypted password is empty; refusing to rewrite admincred.dat."
+        return $false
+    }
+
+    Set-NextGpuAdminCredential -Password $cred.Password
+
+    if (Test-NextGpuAdminCredentialLocalMachine) {
+        Write-Host "[OK] Rewrote $($script:NextGpuAdminCredPath) as LocalMachine DPAPI (SYSTEM can decrypt)."
+        return $true
+    }
+
+    Write-Warning "Rewrite completed but LocalMachine decrypt check failed."
+    return $false
 }
 
 function Test-NextGpuAdminCredentialExists {

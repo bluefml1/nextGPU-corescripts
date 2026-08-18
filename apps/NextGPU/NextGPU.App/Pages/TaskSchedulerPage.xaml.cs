@@ -25,7 +25,7 @@ public partial class TaskSchedulerPage : Page
             "Register all tasks",
             RepoCatalog.TaskSchedulerOrchestratorRelativePath,
             keepConsoleOpen: true,
-            helpText: "Runs scripts/tasks/TaskScheduler.ps1 — registers heartbeat, auto-repair, auto-update, NVIDIA logon, EndSession, auto game launch, and Playnite logon when available.");
+            helpText: "Runs scripts/tasks/TaskScheduler.ps1 — registers heartbeat, auto-repair, auto-update, NVIDIA logon, EndSession, EndSession recovery (startup), auto game launch, and Playnite logon when available.");
 
         ActionPageTools.AddPowerShellButton(RegisterPanel,
             "Start NVIDIA now",

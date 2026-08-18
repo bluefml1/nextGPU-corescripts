@@ -79,6 +79,14 @@ public static class RepoCatalog
         },
         new()
         {
+            TaskName = "nextGPU-EndSessionRecoveryStartup",
+            DisplayName = "End Session Recovery (Startup)",
+            Description = "At startup: if endsession-reset-pending.flag exists, finishes leftover nextGPU / NextGPU-Admin profile delete and recreate. No-op when flag missing.",
+            IntervalSummary = "At startup +45s",
+            RegisterScriptRelativePath = @"scripts\tasks\Register-NextGpuEndSessionRecoveryTask.ps1"
+        },
+        new()
+        {
             TaskName = "nextGPU-SessionFolderRulesLogoff",
             DisplayName = "Session Folder Rules (Logoff)",
             Description = "Runs delete/replace session folder rules when nextGPU logs off.",

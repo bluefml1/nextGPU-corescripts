@@ -37,7 +37,12 @@ public static class RegisterMachineLauncher
             arguments: args,
             keepConsoleOpen: keepConsoleOpen);
 
-        MessageBox.Show(r.Message, "NextGPU", MessageBoxButton.OK,
+        var message = string.IsNullOrWhiteSpace(r.Message)
+            ? (r.Success
+                ? "RegisterMachine was started in an elevated console. Watch that window for progress."
+                : "RegisterMachine failed to start (no error details).")
+            : r.Message;
+        MessageBox.Show(message, "NextGPU", MessageBoxButton.OK,
             r.Success ? MessageBoxImage.Information : MessageBoxImage.Warning);
     }
 }

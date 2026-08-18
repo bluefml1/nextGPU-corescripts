@@ -39,7 +39,8 @@ $expectedChain = @(
     'Register-AutoRepairTask.ps1',
     'Register-AutoUpdateTask.ps1',
     'Register-NvidiaLogonTask.ps1',
-    'Register-EndSessionTask.ps1'
+    'Register-EndSessionTask.ps1',
+    'Register-NextGpuEndSessionRecoveryTask.ps1'
 )
 
 Test-Line 'TaskScheduler.ps1 exists' (Test-Path -LiteralPath $orchestrator)
@@ -51,6 +52,7 @@ foreach ($scriptName in @(
     'Register-AutoUpdateTask.ps1',
     'Register-NvidiaLogonTask.ps1',
     'Register-EndSessionTask.ps1',
+    'Register-NextGpuEndSessionRecoveryTask.ps1',
     'launchGameTaskScheduler.ps1'
 )) {
     $path = Join-Path $tasksDir $scriptName
@@ -80,6 +82,11 @@ $endSession = Join-Path $repoRoot 'endSession.ps1'
 Test-Line 'endSession.ps1 (repo root or fallback path)' (
     (Test-Path -LiteralPath $endSession) -or (Test-Path -LiteralPath 'C:\Program Files\Sunshine\scripts\endSession.ps1')
 ) $endSession
+
+$endSessionRecovery = Join-Path $repoRoot 'scripts\runtime\Recover-NextGpuEndSessionAtStartup.ps1'
+Test-Line 'Recover-NextGpuEndSessionAtStartup.ps1' (Test-Path -LiteralPath $endSessionRecovery) $endSessionRecovery
+$endSessionCommon = Join-Path $repoRoot 'scripts\runtime\NextGpuEndSessionCommon.ps1'
+Test-Line 'NextGpuEndSessionCommon.ps1' (Test-Path -LiteralPath $endSessionCommon) $endSessionCommon
 
 $nvidiaStart = Join-Path $repoRoot 'scripts\provisioning\Start-Nvidia-InSession.ps1'
 Test-Line 'Start-Nvidia-InSession.ps1' (Test-Path -LiteralPath $nvidiaStart) $nvidiaStart
@@ -159,6 +166,7 @@ if ($Register) {
             'nextGPU-AutoUpdate' = @{ Interval = 'PT1H'; Bat = 'auto-update.bat' }
             'nextGPU-NvidiaLogon' = @{ Interval = $null; Bat = 'Start-Nvidia-InSession.ps1' }
             'EndSession'         = @{ Interval = $null; Bat = $null }
+            'nextGPU-EndSessionRecoveryStartup' = @{ Interval = $null; Bat = 'Recover-NextGpuEndSessionAtStartup.ps1' }
         }
         foreach ($entry in $expectedTasks.GetEnumerator()) {
             $name = $entry.Key

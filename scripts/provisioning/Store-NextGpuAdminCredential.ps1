@@ -6,12 +6,16 @@
     Called from NextGPU App (Bypass page Setup dialog) and Import-RegisterMachineConfig.ps1.
     The app passes a Base64 DPAPI blob encrypted with CurrentUser scope; this script
     decrypts it and re-stores via Set-NextGpuAdminCredential (LocalMachine DPAPI).
+
+    Use -Repair to re-encrypt an existing admincred.dat (often CurrentUser) as LocalMachine
+    so SYSTEM / EndSession can decrypt. Run as an Administrator who can already decrypt it.
 #>
 [CmdletBinding()]
 param(
     [string]$EncryptedPassword,
     [switch]$CreateUser,
     [switch]$StatusOnly,
+    [switch]$Repair,
     [string]$AdminUser = 'NextGPU-Admin'
 )
 
@@ -84,16 +88,25 @@ if ($StatusOnly) {
     $userExists = [bool](Test-NextGpuAdminUserExists -AdminUser $AdminUser)
     $isAdmin = [bool](Test-NextGpuAdminIsAdmin -AdminUser $AdminUser)
     $credExists = [bool](Test-NextGpuAdminCredentialExists)
+    $localMachineOk = [bool](Test-NextGpuAdminCredentialLocalMachine)
     @{
-        UserExists = $userExists
-        IsAdmin    = $isAdmin
-        CredExists = $credExists
+        UserExists      = $userExists
+        IsAdmin         = $isAdmin
+        CredExists      = $credExists
+        LocalMachineOk  = $localMachineOk
     } | ConvertTo-Json -Compress
     exit 0
 }
 
+if ($Repair) {
+    if (Repair-NextGpuAdminCredentialToLocalMachine -AdminUser $AdminUser -Force) {
+        exit 0
+    }
+    exit 1
+}
+
 if ([string]::IsNullOrWhiteSpace($EncryptedPassword)) {
-    Write-Error 'EncryptedPassword is required.'
+    Write-Error 'EncryptedPassword is required (or use -Repair / -StatusOnly).'
     exit 1
 }
 

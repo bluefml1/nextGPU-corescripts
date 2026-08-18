@@ -21,9 +21,10 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'SessionFolderRules-Common.ps1')
 
 $desktopCommon = Join-Path (Split-Path $PSScriptRoot -Parent) 'desktop\NextGpuLogonTask.ps1'
-if (Test-Path -LiteralPath $desktopCommon) {
-    . $desktopCommon
+if (-not (Test-Path -LiteralPath $desktopCommon)) {
+    throw "Shared helper not found: $desktopCommon"
 }
+. $desktopCommon
 
 if ([string]::IsNullOrWhiteSpace($InvokeScriptPath)) {
     $InvokeScriptPath = Resolve-InvokeSessionFolderRulesScript
@@ -34,11 +35,15 @@ if (-not (Test-Path -LiteralPath $InvokeScriptPath)) {
 
 $localUser = Get-LocalUser -Name 'nextGPU' -ErrorAction SilentlyContinue
 if (-not $localUser) {
-    Write-Warning "Local user 'nextGPU' does not exist yet. Registering tasks anyway."
+    Write-Warning "Local user 'nextGPU' does not exist yet. Waiting for account / SID mapping..."
 }
 
-$userId = "$env:USERDOMAIN\nextGPU"
+if (-not (Get-Command Resolve-NextGpuLocalAccountId -ErrorAction SilentlyContinue)) {
+    throw "Resolve-NextGpuLocalAccountId not found. Expected $desktopCommon"
+}
+$userId = Resolve-NextGpuLocalAccountId -UserName 'nextGPU' -WaitSeconds 45
 $accountName = 'nextGPU'
+Write-Host "[*] Using account for session folder rules tasks: $userId"
 $logoffTask = 'nextGPU-SessionFolderRulesLogoff'
 $logonTask = 'nextGPU-SessionFolderRulesLogon'
 $systemPrincipalId = 'NT AUTHORITY\SYSTEM'
@@ -53,8 +58,9 @@ function Remove-SessionFolderRulesTaskIfPresent {
 
 function New-SessionFolderRulesTaskAction {
     param([string]$Phase)
+    $psExe = (Get-Command powershell.exe -ErrorAction Stop).Source
     $psArgs = '-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -Phase {1} -Quiet' -f $InvokeScriptPath, $Phase
-    return New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $psArgs
+    return New-ScheduledTaskAction -Execute $psExe -Argument $psArgs
 }
 
 function New-SessionFolderRulesSystemPrincipal {

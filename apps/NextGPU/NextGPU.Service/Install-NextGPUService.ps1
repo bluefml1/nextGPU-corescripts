@@ -55,27 +55,93 @@ if (-not (Test-Path $LauncherPath)) {
 }
 Write-Log "Launcher present: $LauncherPath"
 
-# Tighten the ACL on admincred.dat so only SYSTEM can read it. The service runs as
-# SYSTEM and decrypts the credential itself; Launcher.exe inherits Admin token and
-# does not need admincred.dat. LocalMachine-scope DPAPI requires SYSTEM-equivalent
-# access to the master key.
+function Set-InstallNextGpuAdminCredFileAclFallback {
+    param(
+        [Parameter(Mandatory)][string]$Path
+    )
+
+    Add-Type -AssemblyName System.Security
+    $inheritNone = [System.Security.AccessControl.InheritanceFlags]::None
+    $propNone = [System.Security.AccessControl.PropagationFlags]::None
+    $fullControl = [System.Security.AccessControl.FileSystemRights]::FullControl
+
+    $acl = New-Object System.Security.AccessControl.FileSecurity
+    $acl.SetAccessRuleProtection($true, $false)
+
+    foreach ($sidValue in @('S-1-5-18', 'S-1-5-32-544')) {
+        $sid = New-Object System.Security.Principal.SecurityIdentifier($sidValue)
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $sid,
+            $fullControl,
+            $inheritNone,
+            $propNone,
+            [System.Security.AccessControl.AccessControlType]::Allow)))
+    }
+
+    try {
+        $rentalUser = Get-LocalUser -Name 'nextGPU' -ErrorAction Stop
+        $rentalSid = New-Object System.Security.Principal.SecurityIdentifier($rentalUser.SID.Value)
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $rentalSid,
+            $fullControl,
+            $inheritNone,
+            $propNone,
+            [System.Security.AccessControl.AccessControlType]::Deny)))
+    }
+    catch {
+        Write-Log "WARN: nextGPU user not found; admincred.dat ACL has no rental deny ACE."
+    }
+
+    Set-Acl -LiteralPath $Path -AclObject $acl
+}
+
+function Invoke-InstallNextGpuAdminCredAcl {
+    param([Parameter(Mandatory)][string]$Path)
+
+    $credHelper = $null
+    if (-not [string]::IsNullOrWhiteSpace($RepoRoot)) {
+        $credHelper = Join-Path $RepoRoot 'scripts\provisioning\NextGPU-AdminCredential.ps1'
+    }
+    if (-not $credHelper -or -not (Test-Path -LiteralPath $credHelper)) {
+        $repoGuess = (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent)
+        $credHelper = Join-Path $repoGuess 'scripts\provisioning\NextGPU-AdminCredential.ps1'
+    }
+
+    Write-Log "admincred ACL helper: $credHelper"
+
+    if ((Test-Path -LiteralPath $credHelper) -and (Get-Command Set-NextGpuAdminCredFileAcl -ErrorAction SilentlyContinue) -eq $null) {
+        try {
+            . $credHelper
+        }
+        catch {
+            Write-Log "WARN: dot-source failed for $credHelper : $($_.Exception.Message)"
+        }
+    }
+
+    if (Get-Command Set-NextGpuAdminCredFileAcl -ErrorAction SilentlyContinue) {
+        $null = Set-NextGpuAdminCredFileAcl -Path $Path -Silent
+        Write-Log "ACL on admincred.dat updated via NextGPU-AdminCredential.ps1"
+        return
+    }
+
+    Write-Log "WARN: Set-NextGpuAdminCredFileAcl missing in helper; using inline ACL fallback."
+    Set-InstallNextGpuAdminCredFileAclFallback -Path $Path
+    Write-Log "ACL on admincred.dat updated via inline fallback"
+}
+
+# Tighten ACL on admincred.dat: SYSTEM + Administrators allow; nextGPU explicit deny.
 $credPath = "$env:ProgramData\nextGPU\admincred.dat"
 if (Test-Path $credPath) {
-    Write-Log "Tightening ACL on $credPath (SYSTEM:F only)"
-    $credAcl = Get-Acl -Path $credPath
-    # Disable inheritance and clear inherited rules
-    $credAcl.SetAccessRuleProtection($true, $false)
-    $credSystemRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-        [System.Security.Principal.SecurityIdentifier]"S-1-5-18",
-        [System.Security.AccessControl.FileSystemRights]"FullControl",
-        [System.Security.AccessControl.InheritanceFlags]"None",
-        [System.Security.AccessControl.PropagationFlags]"None",
-        [System.Security.AccessControl.AccessControlType]"Allow")
-    $credAcl.SetAccessRule($credSystemRule)
-    Set-Acl -Path $credPath -AclObject $credAcl
-    Write-Log "ACL on admincred.dat set to SYSTEM:F only"
-} else {
-    Write-Log "NOTE: $credPath not found. Run the credential-setup tool (e.g. Set-AdminCred.ps1) to create it before elevated launches will work."
+    Write-Log "Tightening ACL on $credPath (SYSTEM + Administrators allow; nextGPU deny)"
+    try {
+        Invoke-InstallNextGpuAdminCredAcl -Path $credPath
+    }
+    catch {
+        Write-Log "WARN: admincred.dat ACL tighten failed (continuing install): $($_.Exception.Message)"
+    }
+}
+else {
+    Write-Log "NOTE: $credPath not found. Run Store-NextGpuAdminCredential.ps1 before elevated launches will work."
 }
 
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue

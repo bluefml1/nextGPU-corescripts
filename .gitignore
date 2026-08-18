@@ -8,6 +8,7 @@ apps/NextGPU/publish/*
 !apps/NextGPU/publish/README.txt
 !apps/NextGPU/publish/.gitkeep
 /NextGPU.exe
+/.dotnet/
 
 # Runtime logs (keep folder placeholder)
 *.log
@@ -40,5 +41,6 @@ apps/NextGPU/test_copy.exe
 # Local Playnite database dumps
 /library/
 
-# Extension build outputs (rebuild from SteamExtensions/src)
-PlayNiteWatcher/SteamExtensions/build/
+# SteamExtensions/.cache is download-only; committed build/ is required for setup
+# PlayNiteWatcher/SteamExtensions/build/  # kept in repo (SteamLibrary_NextGPU)
+PlayNiteWatcher/SteamExtensions/.cache/
