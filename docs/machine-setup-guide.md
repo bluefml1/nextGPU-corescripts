@@ -545,7 +545,7 @@ Run after Sunshine/Moonlight apps change.
 scripts\runtime\auto-repair.bat
 ```
 
-Skips repair when `domain.txt` contains `STATUS=updating`.
+Skips repair when `%ProgramData%\nextGPU\machine-status.flag` is `updating`.
 
 ### Streaming stack update
 
@@ -553,7 +553,7 @@ Skips repair when `domain.txt` contains `STATUS=updating`.
 scripts\runtime\Run-StreamingStackUpdate.bat
 ```
 
-Shared Sunshine/Moonlight update and pairing path used by auto-repair and auto-update.
+Shared Sunshine/Moonlight update and pairing path used by auto-repair and checking-update.
 
 ### Apply wallpaper only
 

@@ -12,12 +12,12 @@ By default it looks for Sunshine's `apps.json` at `C:\Program Files\Sunshine\con
 - **No** `image-path` (matches Add-SteamGames-style Steam entries).
 - **`prep-cmd`** undo: `powershell.exe ... eventLogs.ps1` (requires that script under `C:\Program Files\Sunshine\scripts\`).
 - Hidden **`playnite-id`** field stores the Playnite game GUID for [PlayNite Watcher](../readme.md) Installer.
-- Writes **`resolved-appids.json`** and **`resolved-appids.txt`** next to `apps.json`, using the **same CRC AppID algorithm** as [Add-SteamGames.ps1](../Add-SteamGames.ps1). Launch lines use `&"Playnite.DesktopApp.exe" --start <playniteGameId>` (PowerShell call operator) instead of `steam://rungameid/...`.
+- Writes **`resolved-appids.json`** and **`resolved-appids.txt`** next to `apps.json`, using the **same CRC AppID algorithm** as [Add-SteamGames.ps1](../Add-SteamGames.ps1). **Steam** launch lines are `&"<steam.exe>" -applaunch <SteamAppId>`. **Epic** still uses `&"Playnite.DesktopApp.exe" --start <playniteGameId>`.
 
 Example `resolved-appids.txt` line for CS2:
 
 ```text
-215449499: &"C:\Program Files\Playnite\Playnite.DesktopApp.exe" --start <your-playnite-guid>
+215449499: &"C:\Program Files (x86)\Steam\steam.exe" -applaunch 730 @ADMIN | H:\SteamLibrary\steamapps\common\Counter-Strike Global Offensive
 ```
 
 (`215449499` is the AppID for NameID `730`.)

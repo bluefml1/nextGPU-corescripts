@@ -12,6 +12,16 @@ if defined NEXTGPU_REPO_ROOT (
     for %%I in ("%SCRIPT_IMPL_DIR%\..\..") do set "SCRIPT_DIR=%%~fI"
 )
 
+:: Skip if vendor shutdown / startup publish is coordinating status
+if exist "%ProgramData%\nextGPU\heartbeat-suspended.flag" (
+    echo [*] Heartbeat suspended flag present - skipping updateStatus post.
+    exit /b 0
+)
+if exist "%ProgramData%\nextGPU\startup-publish-pending.flag" (
+    echo [*] Startup publish pending - skipping updateStatus post.
+    exit /b 0
+)
+
 :: ==============================
 :: CONFIGURATION
 :: ==============================
@@ -51,10 +61,13 @@ for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /i "192.168.1."') do (
 if not defined PRIVATE_IP set "PRIVATE_IP=127.0.0.1"
 
 :: ==============================
-:: DETERMINE STATUS FROM DOMAIN FILE
+:: DETERMINE STATUS FROM ProgramData FLAG
 :: ==============================
 set "CURRENT_STATUS="
-for /f "tokens=2 delims==" %%A in ('findstr "STATUS=" "%DOMAIN_FILE%"') do set "CURRENT_STATUS=%%A"
+set "IDENTITY_PS1=%SCRIPT_IMPL_DIR%\Invoke-NextGpuMachineIdentity.ps1"
+if exist "%IDENTITY_PS1%" (
+    for /f "usebackq delims=" %%S in (`powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action GetStatus -RepoRoot "%SCRIPT_DIR%"`) do set "CURRENT_STATUS=%%S"
+)
 if "!CURRENT_STATUS!"=="" set "CURRENT_STATUS=%DEFAULT_STATUS%"
 
 :: Build and send payload

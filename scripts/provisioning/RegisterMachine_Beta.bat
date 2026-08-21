@@ -754,16 +754,34 @@ echo ======================================== >> "%REGISTER_LOG%"
 del "%TEMP%\register_response.json" >nul 2>&1
 echo [*] API log saved to: %REGISTER_LOG%
 
-:: Save domain info
+:: Save domain info (identity + ProgramData identity/status; domain.txt has no STATUS)
 > "%SCRIPT_DIR%\domain.txt" echo DOMAIN=%DOMAIN%
 >> "%SCRIPT_DIR%\domain.txt" echo PUBLIC_IP=%PUBLIC_IP%
 >> "%SCRIPT_DIR%\domain.txt" echo COMPUTER_NAME=%NAME%
 if defined VENDOR_ID if not "!VENDOR_ID!"=="" (
     >> "%SCRIPT_DIR%\domain.txt" echo VENDOR_ID=!VENDOR_ID!
+    >> "%SCRIPT_DIR%\domain.txt" echo VENDOR_ID_ENABLED=yes
 ) else (
     >> "%SCRIPT_DIR%\domain.txt" echo VENDOR_ID=
+    >> "%SCRIPT_DIR%\domain.txt" echo VENDOR_ID_ENABLED=no
 )
 echo [*] domain.txt saved.
+
+set "IDENTITY_PS1=%RUNTIME_DIR%\Invoke-NextGpuMachineIdentity.ps1"
+if exist "%IDENTITY_PS1%" (
+    if defined VENDOR_ID if not "!VENDOR_ID!"=="" (
+        powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action SaveIdentity -RepoRoot "%SCRIPT_DIR%" -Domain "%DOMAIN%" -PublicIp "%PUBLIC_IP%" -ComputerName "%NAME%" -VendorId "!VENDOR_ID!" -VendorIdEnabled yes
+    ) else (
+        powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action SaveIdentity -RepoRoot "%SCRIPT_DIR%" -Domain "%DOMAIN%" -PublicIp "%PUBLIC_IP%" -ComputerName "%NAME%" -VendorId "" -VendorIdEnabled no
+    )
+    if !errorlevel! neq 0 (
+        echo [!] WARNING: Failed to persist machine-identity.env / machine-status.flag.
+    ) else (
+        echo [*] machine-identity.env and machine-status.flag=online saved.
+    )
+) else (
+    echo [!] WARNING: Invoke-NextGpuMachineIdentity.ps1 not found; ProgramData identity not saved.
+)
 
 :: Persist vendor_id for EndSession fallback (vendor machines skip auto-reboot)
 if not exist "%ProgramData%\nextGPU" mkdir "%ProgramData%\nextGPU" >nul 2>&1
@@ -858,8 +876,7 @@ for %%S in (gpu-heartbeat auto-repair auto-update) do (
 )
 if not exist "%RUNTIME_DIR%\heartbeat-only.bat" (echo ERROR: heartbeat-only.bat not found. & exit /b 1)
 if not exist "%RUNTIME_DIR%\auto-repair.bat" (echo ERROR: auto-repair.bat not found. & exit /b 1)
-if not exist "%RUNTIME_DIR%\auto-update.bat" (echo ERROR: auto-update.bat not found. & exit /b 1)
-echo [*] Heartbeat, auto-repair, and auto-update run via Task Scheduler (Register-*Task.ps1).
+echo [*] Heartbeat and auto-repair run via Task Scheduler (Register-*Task.ps1). Updates use checking-update.bat.
 
 :: ===================================================================
 :: [8/8] Register scheduled tasks
@@ -867,7 +884,6 @@ echo [*] Heartbeat, auto-repair, and auto-update run via Task Scheduler (Registe
 echo [*] Registering scheduled tasks...
 set "TASK_HEARTBEAT=%TASKS_DIR%\Register-HeartbeatTask.ps1"
 set "TASK_AUTO_REPAIR=%TASKS_DIR%\Register-AutoRepairTask.ps1"
-set "TASK_AUTO_UPDATE=%TASKS_DIR%\Register-AutoUpdateTask.ps1"
 set "TASK_NVIDIA_LOGON=%TASKS_DIR%\Register-NvidiaLogonTask.ps1"
 set "TASK_END_SESSION=%TASKS_DIR%\Register-EndSessionTask.ps1"
 set "TASK_SCHEDULER_SCRIPT=%TASKS_DIR%\TaskScheduler.ps1"
@@ -875,7 +891,6 @@ set "TASK_SCHEDULER_SCRIPT=%TASKS_DIR%\TaskScheduler.ps1"
 for %%F in (
     "%TASK_HEARTBEAT%"
     "%TASK_AUTO_REPAIR%"
-    "%TASK_AUTO_UPDATE%"
     "%TASK_NVIDIA_LOGON%"
     "%TASK_END_SESSION%"
 ) do (

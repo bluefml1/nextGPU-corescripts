@@ -6,14 +6,15 @@
 .DESCRIPTION
   Deploys NextGPU-PlayElevated.ps1 to %ProgramData%\nextGPU\scripts\, then updates games.db:
 
-  - Steam (PluginId CB91DFC9-...): always File action -> powershell + NextGPU-PlayElevated
+  - Steam (PluginId CB91DFC9-...): always File action -> NextGPU.Launcher --play-elevated
     -Exe steam.exe -Args "-applaunch {SteamAppId}"
     (does not nest Playnite --start; avoids single-instance handoff as nextGPU).
   - Epic: left on library plugin action (skip).
   - Desktop: only allowlist runAsAdmin=true or resolved-appids.txt @ADMIN File exes.
 
   Requires NextGPUService running when the user clicks Play.
-  Moonlight/Sunshine still uses elevated Playnite --start via launchGame.ps1.
+  Moonlight/Sunshine Steam uses elevated steam.exe -applaunch via launchGame.ps1;
+  Epic still uses elevated Playnite --start.
 
 .PARAMETER PlayniteInstallDir
   Override Playnite root (default: PlayniteInstall.path).
@@ -62,12 +63,13 @@ function Write-ApplyLog {
 function Deploy-NextGpuPlayElevatedScript {
     <#
     .SYNOPSIS
-      Copy NextGPU-PlayElevated.ps1 (+ .cmd) from repo runtime to ProgramData.
+      Copy NextGPU-PlayElevated.ps1 (+ .vbs / .cmd) from repo runtime to ProgramData.
     #>
     $destDir = Join-Path $env:ProgramData 'nextGPU\scripts'
     $destPs1 = Join-Path $destDir 'NextGPU-PlayElevated.ps1'
     $repoRoot = Split-Path -Parent $script:WatcherRoot
     $srcPs1 = Join-Path $repoRoot 'scripts\runtime\NextGPU-PlayElevated.ps1'
+    $srcVbs = Join-Path $repoRoot 'scripts\runtime\NextGPU-PlayElevated.vbs'
     $srcCmd = Join-Path $repoRoot 'scripts\runtime\NextGPU-PlayElevated.cmd'
 
     if (-not (Test-Path -LiteralPath $srcPs1)) {
@@ -80,6 +82,9 @@ function Deploy-NextGpuPlayElevatedScript {
     }
 
     Copy-Item -LiteralPath $srcPs1 -Destination $destPs1 -Force
+    if (Test-Path -LiteralPath $srcVbs) {
+        Copy-Item -LiteralPath $srcVbs -Destination (Join-Path $destDir 'NextGPU-PlayElevated.vbs') -Force
+    }
     if (Test-Path -LiteralPath $srcCmd) {
         Copy-Item -LiteralPath $srcCmd -Destination (Join-Path $destDir 'NextGPU-PlayElevated.cmd') -Force
     }
@@ -110,9 +115,9 @@ if (-not (Test-Path -LiteralPath $ElevateScriptPath)) {
     }
 }
 
-$powershellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-if (-not (Test-Path -LiteralPath $powershellExe)) {
-    $powershellExe = 'powershell.exe'
+$launcherExe = Join-Path $env:ProgramFiles 'NextGPU\Launcher\NextGPU.Launcher.exe'
+if (-not (Test-Path -LiteralPath $launcherExe)) {
+    throw "NextGPU.Launcher.exe not found: $launcherExe (publish/install the Launcher, then re-run Apply Elevated Play Actions)"
 }
 
 $installDir = $PlayniteInstallDir
@@ -145,7 +150,7 @@ if ([string]::IsNullOrWhiteSpace($AllowlistPath)) {
 }
 
 Write-ApplyLog 'INFO' "Playnite install: $installDir"
-Write-ApplyLog 'INFO' "Elevate script: $ElevateScriptPath"
+Write-ApplyLog 'INFO' "Elevate launcher: $launcherExe"
 Write-ApplyLog 'INFO' "Playnite DesktopApp: $playniteDesktopExe"
 Write-ApplyLog 'INFO' "Allowlist: $AllowlistPath"
 
@@ -199,7 +204,8 @@ else {
 function Test-IsAlreadyElevatedAction {
     param([string]$Path, [string]$Arguments)
     $blob = "$Path $Arguments"
-    return ($blob -match '(?i)NextGPU-PlayElevated')
+    # Require WinExe --play-elevated so powershell/wscript wrappers (visible console) get rewritten.
+    return ($blob -match '(?i)NextGPU\.Launcher' -and $blob -match '(?i)--play-elevated')
 }
 
 function Test-IsSteamElevatedApplaunchAction {
@@ -262,7 +268,6 @@ function Test-IsAdminMarkedGame {
 
 function New-ElevateWrapperArguments {
     param(
-        [Parameter(Mandatory)][string]$ElevateScript,
         [Parameter(Mandatory)][string]$TargetExe,
         [string]$WorkingDir = '',
         [string]$TargetArgs = '',
@@ -270,22 +275,19 @@ function New-ElevateWrapperArguments {
     )
 
     $argParts = New-Object System.Collections.Generic.List[string]
-    [void]$argParts.Add('-NoProfile')
-    [void]$argParts.Add('-ExecutionPolicy Bypass')
-    [void]$argParts.Add('-File')
-    [void]$argParts.Add(('"{0}"' -f $ElevateScript))
-    [void]$argParts.Add('-Exe')
+    [void]$argParts.Add('--play-elevated')
+    [void]$argParts.Add('--exe')
     [void]$argParts.Add(('"{0}"' -f $TargetExe))
     if ($WorkingDir) {
-        [void]$argParts.Add('-WorkingDir')
+        [void]$argParts.Add('--cwd')
         [void]$argParts.Add(('"{0}"' -f $WorkingDir))
     }
     if (-not [string]::IsNullOrWhiteSpace($TargetArgs)) {
-        [void]$argParts.Add('-Args')
+        [void]$argParts.Add('--args')
         [void]$argParts.Add(('"{0}"' -f ($TargetArgs -replace '"', '\"')))
     }
     if ($Wait) {
-        [void]$argParts.Add('-Wait')
+        [void]$argParts.Add('--wait')
     }
     return [string]::Join(' ', $argParts)
 }
@@ -313,7 +315,7 @@ function Set-ElevatedPlayniteGameAction {
     Set-LiteDbBsonField -Document $Doc -Name 'IsInstalled' -Value $true
     Set-LiteDbBsonField -Document $Doc -Name 'IncludeLibraryPluginAction' -Value $false
 
-    $action = New-PlayniteFilePlayActionBson -ExePath $powershellExe -WorkingDir $ActionWorkingDir -Arguments $WrapperArgs
+    $action = New-PlayniteFilePlayActionBson -ExePath $launcherExe -WorkingDir $ActionWorkingDir -Arguments $WrapperArgs
     $arr = New-Object LiteDB.BsonArray
     Add-LiteDbBsonArrayItem -Array $arr -Value $action
     Set-LiteDbBsonField -Document $Doc -Name 'GameActions' -Value $arr
@@ -396,7 +398,6 @@ try {
             $steamWork = Split-Path -Parent $steamExe
             $applaunchArgs = "-applaunch $steamAppId"
             $wrapperArgs = New-ElevateWrapperArguments `
-                -ElevateScript $ElevateScriptPath `
                 -TargetExe $steamExe `
                 -WorkingDir $steamWork `
                 -TargetArgs $applaunchArgs
@@ -437,7 +438,6 @@ try {
         $origArgs = $existingArgs
 
         $wrapperArgs = New-ElevateWrapperArguments `
-            -ElevateScript $ElevateScriptPath `
             -TargetExe $origExe `
             -WorkingDir $origWork `
             -TargetArgs $origArgs

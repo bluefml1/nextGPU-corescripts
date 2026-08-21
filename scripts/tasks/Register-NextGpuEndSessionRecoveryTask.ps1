@@ -13,7 +13,7 @@ $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
     -Argument "-NoLogo -NoProfile -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File `"$recoverScript`""
 
 $trigger = New-ScheduledTaskTrigger -AtStartup
-$trigger.Delay = 'PT45S'
+$trigger.Delay = 'PT20S'
 
 $principal = New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet `
@@ -35,7 +35,7 @@ Register-ScheduledTask `
     -Trigger $trigger `
     -Principal $principal `
     -Settings $settings `
-    -Description 'Finishes EndSession profile/account reset when endsession-reset-pending.flag exists (flag-only; normal boots no-op).' `
+    -Description 'AtStartup: EndSession profile recovery when pending flag exists; always publishes updateStatus online after recovery or on normal boot (PT20S).' `
     -Force | Out-Null
 
 Write-Host "[*] Registered scheduled task: $taskName"

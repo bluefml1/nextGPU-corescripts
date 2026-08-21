@@ -7,7 +7,7 @@
     Extraction supports .zip/.7z/.rar using available tools (built-in ZIP, 7-Zip, or WinRAR/UnRAR).
     Install path is saved to PlayniteInstall.path in this repo folder.
     Library and settings live in the install folder - all Windows users share the same Playnite when using that path.
-    Default run: portable install, Steam/Epic disk-scan config, and --updatelibraries only.
+    Default run: portable install, Steam/Epic disk-scan config, --updatelibraries, and --updatemetadata (covers). Use -SkipMetadata to skip artwork.
     Sunshine/Moonlight export and PlayNiteWatcher are separate; use -WithSunshine to include them in setup.
 .PARAMETER WithSunshine
     Also run headless Sunshine export and PlayNiteWatcher install (and copy SunshineAppExport when -FullSetup).
@@ -16,7 +16,9 @@
 .PARAMETER FullSetup
     Same as default plus Steam path detect and library/games.db stats. Sunshine extension/export only with -WithSunshine.
 .PARAMETER SkipLibraryUpdate
-    Do not run --updatelibraries.
+    Do not run --updatelibraries / --updatemetadata.
+.PARAMETER SkipMetadata
+    Run --updatelibraries without --updatemetadata (faster; no covers).
 .PARAMETER SkipSunshineExport
     Do not run Export-SunshineFromPlaynite.ps1.
 .PARAMETER SkipWatcherInstall
@@ -51,6 +53,7 @@ param(
     [switch]$SkipInstall,
     [switch]$FullSetup,
     [switch]$SkipLibraryUpdate,
+    [switch]$SkipMetadata,
     [switch]$WithSunshine,
     [switch]$SkipSunshineExport,
     [switch]$SkipWatcherInstall,
@@ -68,7 +71,7 @@ param(
     [string]$DesktopImportScanMode = "Prompt",
     [string]$DesktopScanPath = "",
     [switch]$SkipEverythingInstall,
-    [int]$MaxWaitMinutes = 15
+    [int]$MaxWaitMinutes = 20
 )
 
 $ErrorActionPreference = "Stop"
@@ -884,22 +887,28 @@ function Start-PlayniteDesktop {
 function Start-PlayniteLibraryUpdate {
     param(
         [string]$PlayniteExe,
-        [int]$WaitMinutes
+        [int]$WaitMinutes,
+        [switch]$SkipMetadata
     )
 
-    Write-SetupLog "Start-PlayniteLibraryUpdate: waiting up to $WaitMinutes minute(s) for Steam/Epic import in playnite.log"
+    Write-SetupLog "Start-PlayniteLibraryUpdate: waiting up to $WaitMinutes minute(s) for Steam/Epic import$(if (-not $SkipMetadata) { ' + metadata' }) in playnite.log"
 
     Stop-PlayniteProcess -PlayniteExe $PlayniteExe
 
     $playniteLog = Join-Path $script:PlayniteAppData "playnite.log"
     $startedAfter = Get-Date
     $args = @("--startdesktop", "--hidesplashscreen", "--updatelibraries")
+    if (-not $SkipMetadata) {
+        $args += "--updatemetadata"
+        Write-SetupLog "Metadata pass enabled (--updatemetadata). Large libraries can take many minutes."
+    }
     Write-SetupLog "Starting library update: $PlayniteExe $($args -join ' ')"
     Start-PlayniteProcess -PlayniteExe $PlayniteExe -ArgumentList $args | Out-Null
 
     $logAction = { param($Message, $Level) Write-SetupLog $Message $Level }
+    $waitMeta = -not $SkipMetadata
     $importOk = Wait-PlayniteLibraryImportInLog -LogPath $playniteLog -StartedAfter $startedAfter `
-        -TimeoutMinutes $WaitMinutes -LogAction $logAction
+        -TimeoutMinutes $WaitMinutes -LogAction $logAction -WaitForMetadata:$waitMeta
 
     Stop-PlayniteProcess -PlayniteExe $PlayniteExe
 
@@ -1200,7 +1209,7 @@ try {
             Write-SetupLog "Skipped (-SkipLibraryUpdate)."
         }
         else {
-            Start-PlayniteLibraryUpdate -PlayniteExe $playniteExe -WaitMinutes $MaxWaitMinutes
+            Start-PlayniteLibraryUpdate -PlayniteExe $playniteExe -WaitMinutes $MaxWaitMinutes -SkipMetadata:$SkipMetadata
         }
         Stop-PlayniteProcess -PlayniteExe $playniteExe
 
@@ -1333,7 +1342,7 @@ try {
             Write-SetupLog "Skipped (-SkipLibraryUpdate)."
         }
         else {
-            Start-PlayniteLibraryUpdate -PlayniteExe $playniteExe -WaitMinutes $MaxWaitMinutes
+            Start-PlayniteLibraryUpdate -PlayniteExe $playniteExe -WaitMinutes $MaxWaitMinutes -SkipMetadata:$SkipMetadata
         }
         Stop-PlayniteProcess -PlayniteExe $playniteExe
 

@@ -81,17 +81,46 @@ else {
     Write-RecoverLog "WARN: NextGPU-AdminCredential.ps1 not found."
 }
 
-if (-not (Test-NextGpuEndSessionPendingFlag)) {
-    Write-RecoverLog "No pending flag; exiting (normal boot)."
-    exit 0
+if (Test-NextGpuEndSessionPendingFlag) {
+    $pendingUsers = @(Get-NextGpuEndSessionPendingUsers)
+    Write-RecoverLog "Pending users: $($pendingUsers -join ', ')"
+    if ($pendingUsers.Count -eq 0) {
+        Write-RecoverLog "Flag present but empty user list; clearing flag."
+        Clear-NextGpuEndSessionPendingFlag
+        $script:RunEndSessionRecovery = $false
+    }
+    else {
+        $script:RunEndSessionRecovery = $true
+    }
+}
+else {
+    Write-RecoverLog "No pending flag; skipping EndSession recovery (normal boot)."
+    $script:RunEndSessionRecovery = $false
 }
 
+if (-not $script:RunEndSessionRecovery) {
+    Write-RecoverLog "Publishing online at startup..."
+    if (Publish-OnlineAtStartup) {
+        Write-RecoverLog "SUCCESS: Publish-OnlineAtStartup completed."
+        $script:ExitCode = 0
+    }
+    else {
+        Write-RecoverLog "ERROR: Publish-OnlineAtStartup failed."
+        $script:ExitCode = 1
+    }
+    Write-RecoverLog "Finished ExitCode=$script:ExitCode"
+    exit $script:ExitCode
+}
+
+# --- EndSession recovery path (pending flag present) ---
 $pendingUsers = @(Get-NextGpuEndSessionPendingUsers)
-Write-RecoverLog "Pending users: $($pendingUsers -join ', ')"
 if ($pendingUsers.Count -eq 0) {
-    Write-RecoverLog "Flag present but empty user list; clearing flag."
-    Clear-NextGpuEndSessionPendingFlag
-    exit 0
+    Write-RecoverLog "Publishing online after empty pending clear..."
+    if (-not (Publish-OnlineAtStartup)) {
+        $script:ExitCode = 1
+    }
+    Write-RecoverLog "Finished ExitCode=$script:ExitCode"
+    exit $script:ExitCode
 }
 
 function Get-ProfileForUser {
@@ -330,10 +359,18 @@ foreach ($user in $pendingUsers) {
 if ($allOk) {
     Clear-NextGpuEndSessionPendingFlag
     Write-RecoverLog "SUCCESS: recovery complete; pending flag cleared."
-    $script:ExitCode = 0
+    Write-RecoverLog "Publishing online after successful EndSession recovery..."
+    if (Publish-OnlineAtStartup) {
+        Write-RecoverLog "SUCCESS: Publish-OnlineAtStartup completed."
+        $script:ExitCode = 0
+    }
+    else {
+        Write-RecoverLog "ERROR: Publish-OnlineAtStartup failed after recovery."
+        $script:ExitCode = 1
+    }
 }
 else {
-    Write-RecoverLog "ERROR: recovery incomplete; pending flag retained for next boot."
+    Write-RecoverLog "ERROR: recovery incomplete; pending flag retained for next boot; skipping publish online."
     $script:ExitCode = 1
 }
 

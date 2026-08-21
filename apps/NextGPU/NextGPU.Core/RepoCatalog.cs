@@ -27,21 +27,11 @@ public static class RepoCatalog
         {
             TaskName = "nextGPU-AutoRepair",
             DisplayName = "Auto-Repair",
-            Description = "Health-checks cloudflared, Sunshine, Moonlight, and local HTTP every minute.",
+            Description = "Health-checks cloudflared, Sunshine, Moonlight, and local HTTP every minute. Skips when machine-status.flag=updating.",
             IntervalSummary = "Every 1 min",
             RegisterScriptRelativePath = @"scripts\tasks\Register-AutoRepairTask.ps1",
             StdoutLogFileName = "auto-repair.log",
             StderrLogFileName = "auto-repair-error.log"
-        },
-        new()
-        {
-            TaskName = "nextGPU-AutoUpdate",
-            DisplayName = "Auto-Update",
-            Description = "Checks Sunshine/Moonlight versions and applies updates every hour.",
-            IntervalSummary = "Every 1 hour",
-            RegisterScriptRelativePath = @"scripts\tasks\Register-AutoUpdateTask.ps1",
-            StdoutLogFileName = "auto-update.log",
-            StderrLogFileName = "auto-update-error.log"
         },
         new()
         {
@@ -64,7 +54,7 @@ public static class RepoCatalog
         {
             TaskName = "auto game launch",
             DisplayName = "Auto Game Launch",
-            Description = "At logon (SYSTEM): Sunshine launchGame.ps1 → NextGPUService. Steam/Epic = elevated Playnite --start; Desktop = direct exe.",
+            Description = "At logon (SYSTEM): Sunshine launchGame.ps1 → NextGPUService. Steam = elevated steam.exe -applaunch; Epic = elevated Playnite --start; Desktop = direct exe.",
             IntervalSummary = "At user logon",
             RegisterScriptRelativePath = @"scripts\tasks\launchGameTaskScheduler.ps1",
             StdoutLogFileName = "launchGame.log"
@@ -81,8 +71,8 @@ public static class RepoCatalog
         {
             TaskName = "nextGPU-EndSessionRecoveryStartup",
             DisplayName = "End Session Recovery (Startup)",
-            Description = "At startup: if endsession-reset-pending.flag exists, finishes leftover nextGPU / NextGPU-Admin profile delete and recreate. No-op when flag missing.",
-            IntervalSummary = "At startup +45s",
+            Description = "At startup (PT20S): EndSession recovery if pending flag exists; then publish updateStatus online on every boot.",
+            IntervalSummary = "At startup +20s",
             RegisterScriptRelativePath = @"scripts\tasks\Register-NextGpuEndSessionRecoveryTask.ps1"
         },
         new()
@@ -121,8 +111,6 @@ public static class RepoCatalog
         "heartbeat-error.log",
         "auto-repair.log",
         "auto-repair-error.log",
-        "auto-update.log",
-        "auto-update-error.log",
         "checking-update.log",
         "moonlight-web.log",
         "moonlight-web-error.log",

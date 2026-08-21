@@ -261,6 +261,15 @@ public sealed class AllowlistService
                     kind = AppKind.PlayniteStart;
                 }
 
+                if (string.Equals(currentSection, "Steam", StringComparison.OrdinalIgnoreCase)
+                    && kind == AppKind.PlayniteStart)
+                {
+                    _log.LogError(
+                        "Skipping Steam Sunshine app {AppId}: resolved-appids still uses Playnite --start. Re-export Sunshine so Steam uses steam.exe -applaunch.",
+                        appId);
+                    continue;
+                }
+
                 var resolvedApp = new ResolvedApp
                 {
                     Exe = exePath,

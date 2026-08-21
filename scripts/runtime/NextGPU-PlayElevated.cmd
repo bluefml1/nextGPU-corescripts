@@ -1,10 +1,10 @@
 @echo off
-REM Playnite File play-action helper: elevates via NextGPUService.
+REM Hidden elevate helper: WinExe NextGPU.Launcher (no PowerShell window).
 setlocal
-set "SCRIPT=%ProgramData%\nextGPU\scripts\NextGPU-PlayElevated.ps1"
-if not exist "%SCRIPT%" (
-  echo ERROR: Missing %SCRIPT%
+set "LAUNCHER=%ProgramFiles%\NextGPU\Launcher\NextGPU.Launcher.exe"
+if not exist "%LAUNCHER%" (
+  echo ERROR: Missing %LAUNCHER%
   exit /b 2
 )
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%" %*
+"%LAUNCHER%" --play-elevated %*
 exit /b %ERRORLEVEL%

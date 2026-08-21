@@ -57,10 +57,18 @@ const css = `
   hr { border: none; border-top: 1px solid #ddd; margin: 1.5em 0; }
 `;
 
-const guides = [
+const requested = process.argv.slice(2);
+const allGuides = [
   { input: 'setup-beginer.md', output: 'setup-beginer.pdf' },
   { input: 'machine-setup-beginer.md', output: 'machine-setup-beginer.pdf' },
 ];
+const guides = requested.length
+  ? allGuides.filter((g) => requested.includes(g.input) || requested.includes(g.output))
+  : allGuides;
+
+if (requested.length && guides.length === 0) {
+  throw new Error(`Unknown guide(s): ${requested.join(', ')}`);
+}
 
 for (const guide of guides) {
   const inputPath = resolve(__dirname, guide.input);

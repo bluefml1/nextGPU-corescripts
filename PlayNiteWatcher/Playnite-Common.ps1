@@ -1330,12 +1330,15 @@ function Wait-PlayniteLibraryImportInLog {
         [string]$LogPath,
         [datetime]$StartedAfter,
         [int]$TimeoutMinutes,
-        [scriptblock]$LogAction
+        [scriptblock]$LogAction,
+        [switch]$WaitForMetadata
     )
 
     $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
     $sawSteamImport = $false
     $sawEpicImport = $false
+    $importDone = $false
+    $metadataDone = $false
 
     $write = {
         param([string]$Message, [string]$Level = "INFO")
@@ -1344,43 +1347,79 @@ function Wait-PlayniteLibraryImportInLog {
         }
     }
 
-    & $write ("Watching {0} for Steam/Epic import (up to {1} min)..." -f $LogPath, $TimeoutMinutes)
+    if ($WaitForMetadata) {
+        & $write ("Watching {0} for Steam/Epic import + metadata (up to {1} min)..." -f $LogPath, $TimeoutMinutes)
+    }
+    else {
+        & $write ("Watching {0} for Steam/Epic import (up to {1} min)..." -f $LogPath, $TimeoutMinutes)
+    }
 
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Seconds 2
         if (-not (Test-Path -LiteralPath $LogPath)) { continue }
 
-        foreach ($line in (Get-Content -LiteralPath $LogPath -Tail 300 -ErrorAction SilentlyContinue)) {
+        foreach ($line in (Get-Content -LiteralPath $LogPath -Tail 400 -ErrorAction SilentlyContinue)) {
             if (-not (Test-PlayniteLogLineIsRecent -Line $line -StartedAfter $StartedAfter)) {
                 continue
             }
 
             if ($line -match 'Importing games from Steam plugin') {
-                $sawSteamImport = $true
-                & $write 'Steam library import started.'
+                if (-not $sawSteamImport) {
+                    $sawSteamImport = $true
+                    & $write 'Steam library import started.'
+                }
             }
             if ($line -match 'Importing games from Epic plugin') {
-                $sawEpicImport = $true
-                & $write 'Epic library import started.'
+                if (-not $sawEpicImport) {
+                    $sawEpicImport = $true
+                    & $write 'Epic library import started.'
+                }
+            }
+
+            if ($line -match '(?i)(metadata download (completed|finished|complete)|finished (downloading )?metadata|all metadata downloaded)') {
+                if (-not $metadataDone) {
+                    $metadataDone = $true
+                    & $write 'Playnite metadata download reported in log.'
+                }
             }
 
             if ($line -match 'Setting Sorting Name for \d+ new games') {
-                & $write 'Library import complete (metadata and sorting names finished).'
-                return $true
+                # Playnite emits this after library import + metadata pass for new games.
+                if (-not $importDone -or -not $metadataDone) {
+                    $importDone = $true
+                    $metadataDone = $true
+                    & $write 'Library import + metadata complete (sorting names finished).'
+                }
             }
-            if ($line -match 'Steam library import finished|Steam library update finished') {
-                & $write 'Steam library import finished.'
-                return $true
+            elseif (-not $importDone) {
+                if ($line -match 'Steam library import finished|Steam library update finished') {
+                    $importDone = $true
+                    & $write 'Steam library import finished.'
+                }
+                elseif ($line -match 'Epic library import finished|Epic library update finished') {
+                    $importDone = $true
+                    & $write 'Epic library import finished.'
+                }
+                elseif ($line -match 'Finished Library Install Size scan' -and ($sawSteamImport -or $sawEpicImport)) {
+                    $importDone = $true
+                    & $write 'Library import complete (install size scan after plugin import).'
+                }
             }
-            if ($line -match 'Epic library import finished|Epic library update finished') {
-                & $write 'Epic library import finished.'
-                return $true
+
+            if ($WaitForMetadata) {
+                if ($metadataDone -and ($importDone -or $sawSteamImport -or $sawEpicImport)) {
+                    return $true
+                }
             }
-            if ($line -match 'Finished Library Install Size scan' -and ($sawSteamImport -or $sawEpicImport)) {
-                & $write 'Library import complete (install size scan after plugin import).'
+            elseif ($importDone) {
                 return $true
             }
         }
+    }
+
+    if ($WaitForMetadata -and $importDone) {
+        & $write -Message 'Library import finished but metadata completion was not seen in playnite.log before timeout. Covers may still download in Playnite.' -Level 'WARN'
+        return $true
     }
 
     if ($sawSteamImport -or $sawEpicImport) {
@@ -4226,7 +4265,7 @@ function Find-PlayniteGameForAllowlistExe {
             (([System.IO.Path]::GetFileName($path)).ToLowerInvariant() -eq $exeKey)) {
             $matched = $true
         }
-        # Elevate-wrapper play actions rewrite Path to powershell.exe; still match via install dir + allowlist exe.
+        # Elevate-wrapper play actions rewrite Path to NextGPU.Launcher.exe; still match via install dir + allowlist exe.
         if (-not $matched -and -not [string]::IsNullOrWhiteSpace($game.InstallDirectory)) {
             $underInstall = Join-Path $game.InstallDirectory $ExeName
             if (Test-Path -LiteralPath $underInstall) {
@@ -4446,6 +4485,9 @@ function Get-ExportableDesktopPlayniteGames {
         if ([string]::IsNullOrWhiteSpace($playPath) -or
             $leaf -ieq 'powershell.exe' -or
             $leaf -ieq 'pwsh.exe' -or
+            $leaf -ieq 'wscript.exe' -or
+            $leaf -ieq 'cscript.exe' -or
+            $leaf -ieq 'NextGPU.Launcher.exe' -or
             $playPath -match '(?i)NextGPU-PlayElevated' -or
             ($entry.Exe -and $leaf -ine $entry.Exe)) {
             $candidate = $null
@@ -4457,7 +4499,7 @@ function Get-ExportableDesktopPlayniteGames {
             }
             elseif ($entry.Exe -and $leaf -ine $entry.Exe) {
                 # Keep PrimaryPlayPath only if we could not find allowlist exe (e.g. shortcut/.cmd launchers).
-                if ($leaf -ieq 'powershell.exe' -or $leaf -ieq 'pwsh.exe') {
+                if ($leaf -ieq 'powershell.exe' -or $leaf -ieq 'pwsh.exe' -or $leaf -ieq 'wscript.exe' -or $leaf -ieq 'cscript.exe' -or $leaf -ieq 'NextGPU.Launcher.exe') {
                     if ($LogAction) {
                         & $LogAction "Desktop export skipped (elevate wrapper, exe missing): nameId=$($entry.NameId) exe=$($entry.Exe) dir=$($match.InstallDirectory)" "WARN"
                     }

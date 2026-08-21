@@ -213,7 +213,7 @@ Look for **`[OK] WallpaperStyle = 6`**, desktop path pointing to **`nextgputobu-
 
 Runs in a loop (default **every 300 seconds**):
 
-1. Reads `domain.txt` (`DOMAIN`, `PUBLIC_IP`, `COMPUTER_NAME`, optional `STATUS`).
+1. Reads `domain.txt` (`DOMAIN`, `PUBLIC_IP`, `COMPUTER_NAME`) and machine status from `%ProgramData%\nextGPU\machine-status.flag`.
 2. Refreshes private IP (`192.168.1.*`).
 3. `POST` to `https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus` with JSON: computer name, public/private IP, status.
 
@@ -230,17 +230,16 @@ Every **60 seconds** (after network is reachable):
 | `moonlight-web` service | `net start` or reinstall Moonlight + NSSM |
 | `http://127.0.0.1:8080` returns 200 | Triggers full repair path |
 
-Skips repair when `domain.txt` has `STATUS=updating`.
+Skips repair when `%ProgramData%\nextGPU\machine-status.flag` is `updating`.
 
 On full repair, runs `scripts/runtime/Run-StreamingStackUpdate.bat ForceReinstall ForceReinstall ForcePairing` → `Update-NextGpuStreamingStack.ps1` (same Sunshine/Moonlight/pairing path as update scripts, but always reinstalls and re-pairs).
 
 ### Shared streaming stack (`Update-NextGpuStreamingStack.ps1`)
 
-`auto-update.bat`, `checking-update.bat`, and `auto-repair.bat` no longer duplicate Sunshine/Moonlight logic. They call `scripts/runtime/Run-StreamingStackUpdate.bat`, which invokes `scripts/provisioning/Update-NextGpuStreamingStack.ps1`.
+`checking-update.bat` and `auto-repair.bat` no longer duplicate Sunshine/Moonlight logic. They call `scripts/runtime/Run-StreamingStackUpdate.bat`, which invokes `scripts/provisioning/Update-NextGpuStreamingStack.ps1`.
 
 | Caller | Sunshine mode | Moonlight mode | Pairing |
 |--------|---------------|----------------|---------|
-| `auto-update.bat` | `CheckUpdate` | `CheckUpdate` | After update only |
 | `checking-update.bat` | `CheckUpdate` | `CheckUpdate` | After update only |
 | `auto-repair.bat` (full repair) | `ForceReinstall` | `ForceReinstall` | Always (`ForcePairing`) |
 
@@ -256,8 +255,7 @@ After Sunshine install/reinstall, the stack runs `Invoke-PostSunshineSetup.ps1`:
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/runtime/auto-update.bat` | Remote-triggered update; uses shared streaming stack (`CheckUpdate`) |
-| `scripts/runtime/checking-update.bat` | Periodic update check; uses shared streaming stack (`CheckUpdate`) |
+| `scripts/runtime/checking-update.bat` | EndSession / vendor update check; uses shared streaming stack (`CheckUpdate`) |
 | `scripts/runtime/Run-StreamingStackUpdate.bat` | Thin wrapper for `Update-NextGpuStreamingStack.ps1` |
 | `scripts/provisioning/Update-NextGpuStreamingStack.ps1` | Sunshine + Moonlight install/update/pairing (single source of truth) |
 | `scripts/maintenance/copy.bat` / `scripts/maintenance/extract.bat` / `scripts/maintenance/garena.bat` | Image-specific game/app deployment |

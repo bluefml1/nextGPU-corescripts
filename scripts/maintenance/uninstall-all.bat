@@ -6,7 +6,7 @@ setlocal enabledelayedexpansion
 ::   uninstall-all.bat whatif
 :: Run without prompt:
 ::   uninstall-all.bat force
-:: Keep local user nextGPU:
+:: Keep local users nextGPU / NextGPU-Admin:
 ::   uninstall-all.bat force keepusers
 
 set "SCRIPT_IMPL_DIR=%~dp0"
@@ -56,7 +56,7 @@ echo.
 echo This removes local services, Sunshine/Moonlight/cloudflared, drivers
 echo (VDD/VAD/VB-CABLE - reboot if they still appear in Device Manager),
 echo scheduled tasks (including nextGPU-*), wallpaper/shutdown policy,
-echo CLOUDFLARE_TUNNEL_TOKEN, the nextGPU local user, and generated logs.
+echo CLOUDFLARE_TUNNEL_TOKEN, local users nextGPU and NextGPU-Admin, and generated logs.
 echo It does not delete Cloudflare DNS/tunnel resources from your account.
 echo It does not remove the NextGPU-Authority admin account or this script folder.
 echo.

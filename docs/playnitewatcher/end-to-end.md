@@ -514,11 +514,13 @@ First export may download **sqlite3** to `tools\sqlite\`. Run elevated once for 
 - `resolved-appids.json`
 - `resolved-appids.txt`
 
-Example line in `resolved-appids.txt`:
+Example Steam line in `resolved-appids.txt`:
 
 ```text
-<crcAppId>: &"<install>\Playnite.DesktopApp.exe" --start <playniteGameGuid>
+<crcAppId>: &"<steamInstall>\steam.exe" -applaunch <steamAppId> @ADMIN | <installDir>
 ```
+
+Epic still uses `Playnite.DesktopApp.exe --start <playniteGameGuid>`.
 
 **UI extension copy (default):** setup already copies `SunshineAppExport/` into Playnite. Use `-SkipSunshineExtension` only if you want to disable it.
 

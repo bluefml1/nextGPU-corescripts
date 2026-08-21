@@ -171,3 +171,147 @@ function Clear-NextGpuEndSessionPendingFlag {
 function Test-NextGpuEndSessionPendingFlag {
     return (Test-Path -LiteralPath $script:NextGpuEndSessionPendingFlagPath)
 }
+
+function Resolve-NextGpuDomainTxtPath {
+    $candidates = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:NEXTGPU_REPO_ROOT)) {
+        $candidates += (Join-Path $env:NEXTGPU_REPO_ROOT.TrimEnd('\') 'domain.txt')
+    }
+    $marker = Join-Path $script:NextGpuProgramDataDir 'repo-root.txt'
+    if (Test-Path -LiteralPath $marker) {
+        try {
+            $root = (Get-Content -LiteralPath $marker -Raw -ErrorAction Stop).Trim().TrimEnd('\')
+            if ($root) { $candidates += (Join-Path $root 'domain.txt') }
+        }
+        catch { }
+    }
+    $candidates += (Join-Path $script:NextGpuProgramDataDir 'domain.txt')
+    foreach ($path in $candidates) {
+        if ($path -and (Test-Path -LiteralPath $path)) {
+            return $path
+        }
+    }
+    return $null
+}
+
+function Get-NextGpuPrivateIp {
+    try {
+        $lines = ipconfig 2>$null | Select-String -Pattern '192\.168\.1\.'
+        foreach ($line in $lines) {
+            if ($line.Line -match ':\s*([0-9.]+)\s*$') {
+                return $Matches[1].Trim()
+            }
+        }
+    }
+    catch { }
+    return '127.0.0.1'
+}
+
+function Publish-OnlineAtStartup {
+    <#
+    .SYNOPSIS
+        Repair domain.txt from identity if needed, set machine-status.flag=online,
+        POST updateStatus online, clear coordination flags.
+    .OUTPUTS
+        $true on success, $false on failure.
+    #>
+
+    $identityHelper = Join-Path $PSScriptRoot 'NextGpuMachineIdentity.ps1'
+    if (Test-Path -LiteralPath $identityHelper) {
+        . $identityHelper
+        try {
+            $null = Repair-NextGpuDomainTxtIfNeeded
+        }
+        catch {
+            Write-Host "[Publish-Online] WARN: Repair-NextGpuDomainTxtIfNeeded: $($_.Exception.Message)"
+        }
+    }
+
+    $computerName = $null
+    $publicIp = $null
+
+    if (Get-Command -Name Read-NextGpuMachineIdentity -ErrorAction SilentlyContinue) {
+        try {
+            $identity = Read-NextGpuMachineIdentity
+            $computerName = [string]$identity.COMPUTER_NAME
+            $publicIp = [string]$identity.PUBLIC_IP
+        }
+        catch {
+            Write-Host "[Publish-Online] WARN: Read-NextGpuMachineIdentity: $($_.Exception.Message)"
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($computerName) -or [string]::IsNullOrWhiteSpace($publicIp)) {
+        $domainPath = Resolve-NextGpuDomainTxtPath
+        if (-not $domainPath) {
+            Write-Host "[Publish-Online] ERROR: domain.txt not found; cannot publish online."
+            return $false
+        }
+        try {
+            foreach ($line in Get-Content -LiteralPath $domainPath -ErrorAction Stop) {
+                if ($line -match '^\s*COMPUTER_NAME\s*=\s*(.+)\s*$') { $computerName = $Matches[1].Trim() }
+                if ($line -match '^\s*PUBLIC_IP\s*=\s*(.+)\s*$') { $publicIp = $Matches[1].Trim() }
+            }
+        }
+        catch {
+            Write-Host "[Publish-Online] ERROR: reading domain.txt: $($_.Exception.Message)"
+            return $false
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($computerName) -or [string]::IsNullOrWhiteSpace($publicIp)) {
+        Write-Host '[Publish-Online] ERROR: COMPUTER_NAME or PUBLIC_IP missing in identity/domain.txt.'
+        return $false
+    }
+
+    $privateIp = Get-NextGpuPrivateIp
+
+    if (Get-Command -Name Set-NextGpuMachineStatus -ErrorAction SilentlyContinue) {
+        try {
+            $null = Set-NextGpuMachineStatus -Status 'online'
+            Write-Host '[Publish-Online] machine-status.flag=online written.'
+        }
+        catch {
+            Write-Host "[Publish-Online] ERROR: writing machine-status.flag: $($_.Exception.Message)"
+            return $false
+        }
+    }
+    else {
+        Write-Host '[Publish-Online] WARN: NextGpuMachineIdentity.ps1 not loaded; status flag not updated.'
+    }
+
+    $payload = @{
+        computer_name = $computerName
+        publicIP      = $publicIp
+        privateIP     = $privateIp
+        status        = 'online'
+    } | ConvertTo-Json -Compress
+
+    try {
+        Invoke-RestMethod -Method Post `
+            -Uri 'https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus' `
+            -ContentType 'application/json' `
+            -Body $payload | Out-Null
+        Write-Host '[Publish-Online] updateStatus online posted.'
+    }
+    catch {
+        Write-Host "[Publish-Online] ERROR: updateStatus online failed: $($_.Exception.Message)"
+        return $false
+    }
+
+    $secretsHelper = Join-Path $PSScriptRoot 'NextGpuOnDemandGpuHostSecrets.ps1'
+    if (Test-Path -LiteralPath $secretsHelper) {
+        . $secretsHelper
+        Clear-NextGpuStatusCoordinationFlags
+        Write-Host '[Publish-Online] Cleared heartbeat-suspended and startup-publish-pending flags.'
+    }
+    else {
+        $suspend = Join-Path $script:NextGpuProgramDataDir 'heartbeat-suspended.flag'
+        $pending = Join-Path $script:NextGpuProgramDataDir 'startup-publish-pending.flag'
+        if (Test-Path -LiteralPath $suspend) { Remove-Item -LiteralPath $suspend -Force -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $pending) { Remove-Item -LiteralPath $pending -Force -ErrorAction SilentlyContinue }
+        Write-Host '[Publish-Online] Cleared coordination flags (inline).'
+    }
+
+    return $true
+}
