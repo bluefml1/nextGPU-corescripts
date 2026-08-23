@@ -260,24 +260,67 @@ function Test-PlayniteLogLineIsRecent {
 }
 
 function Wait-PlayniteLibraryImportInLog {
-    param([string]$LogPath, [datetime]$StartedAfter, [int]$TimeoutMinutes, [scriptblock]$LogAction)
+    param(
+        [string]$LogPath,
+        [datetime]$StartedAfter,
+        [int]$TimeoutMinutes,
+        [scriptblock]$LogAction,
+        [switch]$WaitForMetadata
+    )
     $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
     $sawSteamImport = $false
     $sawEpicImport = $false
+    $importDone = $false
+    $metadataDone = $false
     $write = { param($Message, [string]$Level = "INFO"); if ($LogAction) { & $LogAction $Message $Level } }
-    & $write ("Watching {0} for Steam/Epic import (up to {1} min)..." -f $LogPath, $TimeoutMinutes)
+    if ($WaitForMetadata) {
+        & $write ("Watching {0} for Steam/Epic import + metadata (up to {1} min)..." -f $LogPath, $TimeoutMinutes)
+    }
+    else {
+        & $write ("Watching {0} for Steam/Epic import (up to {1} min)..." -f $LogPath, $TimeoutMinutes)
+    }
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Seconds 2
         if (-not (Test-Path -LiteralPath $LogPath)) { continue }
-        foreach ($line in (Get-Content -LiteralPath $LogPath -Tail 300 -ErrorAction SilentlyContinue)) {
+        foreach ($line in (Get-Content -LiteralPath $LogPath -Tail 400 -ErrorAction SilentlyContinue)) {
             if (-not (Test-PlayniteLogLineIsRecent -Line $line -StartedAfter $StartedAfter)) { continue }
-            if ($line -match 'Importing games from Steam plugin') { $sawSteamImport = $true; & $write 'Steam library import started.' }
-            if ($line -match 'Importing games from Epic plugin') { $sawEpicImport = $true; & $write 'Epic library import started.' }
-            if ($line -match 'Setting Sorting Name for \d+ new games') { & $write 'Library import complete (metadata and sorting names finished).'; return $true }
-            if ($line -match 'Steam library import finished|Steam library update finished') { & $write 'Steam library import finished.'; return $true }
-            if ($line -match 'Epic library import finished|Epic library update finished') { & $write 'Epic library import finished.'; return $true }
-            if ($line -match 'Finished Library Install Size scan' -and ($sawSteamImport -or $sawEpicImport)) { & $write 'Library import complete (install size scan after plugin import).'; return $true }
+            if ($line -match 'Importing games from Steam plugin') {
+                if (-not $sawSteamImport) {
+                    $sawSteamImport = $true
+                    & $write 'Steam library import started.'
+                }
+            }
+            if ($line -match 'Importing games from Epic plugin') {
+                if (-not $sawEpicImport) {
+                    $sawEpicImport = $true
+                    & $write 'Epic library import started.'
+                }
+            }
+            if ($line -match '(?i)(metadata download (completed|finished|complete)|finished (downloading )?metadata|all metadata downloaded)') {
+                if (-not $metadataDone) { $metadataDone = $true; & $write 'Playnite metadata download reported in log.' }
+            }
+            if ($line -match 'Setting Sorting Name for \d+ new games') {
+                # Playnite emits this after library import + metadata pass for new games.
+                if (-not $importDone -or -not $metadataDone) {
+                    $importDone = $true
+                    $metadataDone = $true
+                    & $write 'Library import + metadata complete (sorting names finished).'
+                }
+            }
+            elseif (-not $importDone) {
+                if ($line -match 'Steam library import finished|Steam library update finished') { $importDone = $true; & $write 'Steam library import finished.' }
+                elseif ($line -match 'Epic library import finished|Epic library update finished') { $importDone = $true; & $write 'Epic library import finished.' }
+                elseif ($line -match 'Finished Library Install Size scan' -and ($sawSteamImport -or $sawEpicImport)) { $importDone = $true; & $write 'Library import complete (install size scan after plugin import).' }
+            }
+            if ($WaitForMetadata) {
+                if ($metadataDone -and ($importDone -or $sawSteamImport -or $sawEpicImport)) { return $true }
+            }
+            elseif ($importDone) { return $true }
         }
+    }
+    if ($WaitForMetadata -and $importDone) {
+        & $write -Message 'Library import finished but metadata completion was not seen in playnite.log before timeout. Covers may still download in Playnite.' -Level 'WARN'
+        return $true
     }
     if ($sawSteamImport -or $sawEpicImport) {
         $partialMsg = 'Import started in log but completion line not seen (Steam: {0}, Epic: {1}).' -f $sawSteamImport, $sawEpicImport

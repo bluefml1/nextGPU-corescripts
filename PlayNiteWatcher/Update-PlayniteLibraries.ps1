@@ -57,13 +57,14 @@ try {
     $args = @("--startdesktop", "--hidesplashscreen", "--updatelibraries")
     if (-not $SkipMetadata) {
         $args += "--updatemetadata"
+        Write-MigrationLog "Metadata pass enabled (--updatemetadata). Large libraries can take many minutes."
     }
     Write-MigrationLog "Launch: $playniteExe $($args -join ' ')"
     Start-PlayniteProcess -PlayniteExe $playniteExe -ArgumentList $args | Out-Null
 
     $logAction = { param($Message, $Level) Write-MigrationLog $Message $Level }
     $ok = Wait-PlayniteLibraryImportInLog -LogPath $playniteLog -StartedAfter $startedAfter `
-        -TimeoutMinutes $MaxWaitMinutes -LogAction $logAction
+        -TimeoutMinutes $MaxWaitMinutes -LogAction $logAction -WaitForMetadata:(-not $SkipMetadata)
     if (-not $ok) {
         Write-MigrationLog "Playnite may still be open - check for first-run wizard dialogs." "WARN"
     }

@@ -2,6 +2,8 @@ s.txt
 **/user-s3.env
 **/*user-s3*.env
 !**/user-s3.env.example
+**/ondemand-gpu-host.env
+!**/ondemand-gpu-host.env.example
 **/bin/
 **/obj/
 apps/NextGPU/publish/*
@@ -44,3 +46,8 @@ apps/NextGPU/test_copy.exe
 # SteamExtensions/.cache is download-only; committed build/ is required for setup
 # PlayNiteWatcher/SteamExtensions/build/  # kept in repo (SteamLibrary_NextGPU)
 PlayNiteWatcher/SteamExtensions/.cache/
+
+# Local PDF export tooling (md-to-pdf)
+docs/node_modules/
+docs/package-lock.json
+/docs/package.json

@@ -189,6 +189,57 @@ function ConvertTo-JsonSafe {
     return ($Object | ConvertTo-Json -Depth $Depth)
 }
 
+function Write-SunshineExportWarn {
+    param([string]$Message)
+    if (Get-Command Write-ExportLog -ErrorAction SilentlyContinue) {
+        Write-ExportLog $Message 'WARN'
+    }
+    else {
+        Write-Host ("[WARN] {0}" -f $Message)
+    }
+}
+
+function Resolve-SteamAppIdForExport {
+    param($Game)
+
+    $id = [string]$Game.GameId
+    if ($id -match '^\d{1,10}$') {
+        return $id
+    }
+
+    $installDir = [string]$Game.InstallDirectory
+    if ([string]::IsNullOrWhiteSpace($installDir) -or -not (Test-Path -LiteralPath $installDir)) {
+        return ''
+    }
+
+    $dir = $installDir.TrimEnd('\', '/')
+    $steamapps = $null
+    $leaf = Split-Path -LiteralPath $dir -Leaf
+    $parent = Split-Path -LiteralPath $dir -Parent
+    $grand = if ($parent) { Split-Path -LiteralPath $parent -Parent } else { $null }
+    if ($parent -and $grand -and
+        ((Split-Path -LiteralPath $parent -Leaf) -eq 'common') -and
+        ((Split-Path -LiteralPath $grand -Leaf) -eq 'steamapps')) {
+        $steamapps = $grand
+    }
+
+    if (-not $steamapps -or -not (Test-Path -LiteralPath $steamapps)) {
+        return ''
+    }
+
+    foreach ($acf in Get-ChildItem -LiteralPath $steamapps -Filter 'appmanifest_*.acf' -File -ErrorAction SilentlyContinue) {
+        $raw = Get-Content -LiteralPath $acf.FullName -Raw -ErrorAction SilentlyContinue
+        if (-not $raw) { continue }
+        if ($raw -notmatch '"installdir"\s+"([^"]+)"') { continue }
+        if ($Matches[1] -ne $leaf) { continue }
+        if ($acf.BaseName -match '^appmanifest_(\d+)$') {
+            return $Matches[1]
+        }
+    }
+
+    return ''
+}
+
 function Export-PlayniteLibraryToSunshine {
     param(
         [string]$PlayniteExe,
@@ -216,13 +267,6 @@ function Export-PlayniteLibraryToSunshine {
             continue
         }
 
-        Remove-PriorExportsForGame -Json $json -NameId $nameId -PlayniteId $game.Id.ToString()
-
-        $kioskOutput = if ($game.SourceLabel -eq 'Epic') { "$($game.Id).kiosk.log" } else { "$nameId.kiosk.log" }
-        $newApp = New-SteamEpicSunshineApp -NameId $nameId -PlayniteId $game.Id.ToString() -KioskOutput $kioskOutput
-        Add-OrReplaceAppInJson -Json $json -NewApp $newApp
-
-        $appId = Get-AppIdFromName -AppName $nameId
         $isDesktop = ($game.SourceLabel -eq 'Desktop')
         $isSteam = ($game.SourceLabel -eq 'Steam')
         $desktopExe = ''
@@ -239,12 +283,22 @@ function Export-PlayniteLibraryToSunshine {
             $desktopArgs = if ($game.PrimaryPlayArgs) { [string]$game.PrimaryPlayArgs } else { '' }
         }
         elseif ($isSteam) {
-            $steamAppId = [string]$game.GameId
-            if ($steamAppId -notmatch '^\d{1,10}$') {
-                # Fall back to Playnite --start if GameId is not a numeric Steam AppID.
-                $steamAppId = ''
+            $steamAppId = Resolve-SteamAppIdForExport -Game $game
+            if (-not $steamExe -or [string]::IsNullOrWhiteSpace($steamAppId)) {
+                $why = if (-not $steamExe) { 'steam.exe not found' } else { "no numeric Steam AppID (GameId='$($game.GameId)')" }
+                Write-SunshineExportWarn "Skipping Steam export for '$($game.Name)': $why. Will not fall back to Playnite --start."
+                Remove-PriorExportsForGame -Json $json -NameId $nameId -PlayniteId $game.Id.ToString()
+                continue
             }
         }
+
+        Remove-PriorExportsForGame -Json $json -NameId $nameId -PlayniteId $game.Id.ToString()
+
+        $kioskOutput = if ($game.SourceLabel -eq 'Epic') { "$($game.Id).kiosk.log" } else { "$nameId.kiosk.log" }
+        $newApp = New-SteamEpicSunshineApp -NameId $nameId -PlayniteId $game.Id.ToString() -KioskOutput $kioskOutput
+        Add-OrReplaceAppInJson -Json $json -NewApp $newApp
+
+        $appId = Get-AppIdFromName -AppName $nameId
 
         $resolvedEntry = [PSCustomObject]@{
             Name             = $nameId
@@ -257,7 +311,7 @@ function Export-PlayniteLibraryToSunshine {
             $resolvedEntry | Add-Member -NotePropertyName Exe -NotePropertyValue $desktopExe -Force
             $resolvedEntry | Add-Member -NotePropertyName Args -NotePropertyValue $desktopArgs -Force
         }
-        elseif ($isSteam -and $steamExe -and $steamAppId) {
+        elseif ($isSteam) {
             $resolvedEntry | Add-Member -NotePropertyName Exe -NotePropertyValue $steamExe -Force
             $resolvedEntry | Add-Member -NotePropertyName Args -NotePropertyValue ("-applaunch $steamAppId") -Force
             $resolvedEntry.RunAsAdmin = $true
@@ -270,7 +324,7 @@ function Export-PlayniteLibraryToSunshine {
                 $line = "$line $desktopArgs"
             }
         }
-        elseif ($isSteam -and $steamExe -and $steamAppId) {
+        elseif ($isSteam) {
             $line = "${appId}: &`"$steamExe`" -applaunch $steamAppId"
         }
         else {

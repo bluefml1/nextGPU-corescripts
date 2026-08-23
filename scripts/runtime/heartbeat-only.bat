@@ -12,6 +12,16 @@ if defined NEXTGPU_REPO_ROOT (
     for %%I in ("%SCRIPT_IMPL_DIR%\..\..") do set "SCRIPT_DIR=%%~fI"
 )
 
+:: Skip if vendor shutdown / startup publish is coordinating status
+if exist "%ProgramData%\nextGPU\heartbeat-suspended.flag" (
+    echo [*] Heartbeat suspended flag present - skipping updateStatus post.
+    exit /b 0
+)
+if exist "%ProgramData%\nextGPU\startup-publish-pending.flag" (
+    echo [*] Startup publish pending - skipping updateStatus post.
+    exit /b 0
+)
+
 :: ==============================
 :: CONFIGURATION
 :: ==============================

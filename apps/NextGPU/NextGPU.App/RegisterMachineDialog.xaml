@@ -44,12 +44,14 @@
                     <TextBox x:Name="AccountIdBox" Margin="0,0,0,14"/>
 
                     <TextBlock Text="API KEY" Style="{StaticResource LabelCaptionText}"/>
-                    <Grid Margin="0,0,0,14">
+                    <Grid Margin="0,0,0,4">
                         <PasswordBox x:Name="ApiKeyBox"/>
-                        <TextBlock x:Name="ApiKeyPlaceholder" Text="Paste API key"
+                        <TextBlock x:Name="ApiKeyPlaceholder" Text="Paste API key for registerMachine"
                                    Foreground="{StaticResource MutedBrush}" FontSize="13"
                                    Margin="14,10,14,0" IsHitTestVisible="False" VerticalAlignment="Top"/>
                     </Grid>
+                    <TextBlock Text="Used for the registerMachine Lambda only."
+                               Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,14"/>
 
                     <TextBlock Text="COMPUTER NAME" Style="{StaticResource LabelCaptionText}"/>
                     <TextBox x:Name="ComputerNameBox" Margin="0,0,0,14"/>
@@ -63,7 +65,18 @@
                     </Grid>
 
                     <TextBlock Text="VENDOR ID (OPTIONAL)" Style="{StaticResource LabelCaptionText}"/>
-                    <TextBox x:Name="VendorIdBox" Margin="0,0,0,14"/>
+                    <TextBox x:Name="VendorIdBox" Margin="0,0,0,4" TextChanged="VendorIdBox_TextChanged"/>
+                    <StackPanel x:Name="VendorShutdownPanel" Visibility="Collapsed" Margin="0,0,0,14">
+                        <TextBlock Text="VENDOR API KEY (REQUIRED)" Style="{StaticResource LabelCaptionText}"/>
+                        <Grid Margin="0,0,0,4">
+                            <PasswordBox x:Name="VendorShutdownApiKeyBox"/>
+                            <TextBlock x:Name="VendorShutdownApiKeyPlaceholder" Text="Paste API key for vendor_id (onDemandGPUHost)"
+                                       Foreground="{StaticResource MutedBrush}" FontSize="13"
+                                       Margin="14,10,14,0" IsHitTestVisible="False" VerticalAlignment="Top"/>
+                        </Grid>
+                        <TextBlock Text="Required when Vendor ID is set. Separate from the registerMachine API Key above. Stored under ProgramData secrets (never logged)."
+                                   Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap"/>
+                    </StackPanel>
 
                     <TextBlock Text="NEXTGPU-ADMIN PASSWORD" Style="{StaticResource LabelCaptionText}"/>
                     <Grid Margin="0,0,0,4">

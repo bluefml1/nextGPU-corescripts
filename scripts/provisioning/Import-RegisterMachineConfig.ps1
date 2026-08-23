@@ -45,6 +45,7 @@ $apiKey = [string]$config.apiKey
 $computerName = [string]$config.computerName
 $price = [string]$config.price
 $vendorId = if ($null -ne $config.vendorId) { [string]$config.vendorId } else { '' }
+$vendorShutdownApiKey = if ($null -ne $config.vendorShutdownApiKey) { [string]$config.vendorShutdownApiKey } else { '' }
 $adminAccount = [string]$config.adminAccountName
 $adminPasswordEncrypted = if ($null -ne $config.adminPasswordEncrypted) { [string]$config.adminPasswordEncrypted } else { '' }
 
@@ -94,6 +95,7 @@ if (-not [string]::IsNullOrWhiteSpace($adminPasswordEncrypted)) {
 }
 
 $vendorId = $vendorId.Trim()
+$vendorShutdownApiKey = $vendorShutdownApiKey.Trim()
 $computerLower = $computerName.Trim().ToLowerInvariant()
 
 # Persist vendor_id early so EndSession fallback works even if register API is re-run later.
@@ -109,6 +111,33 @@ if ([string]::IsNullOrWhiteSpace($vendorId)) {
 }
 else {
     Set-Content -LiteralPath $vendorIdPath -Value $vendorId -Encoding ASCII -Force
+}
+
+# Persist vendor shutdown API key (onDemandGPUHost) — separate from registerMachine apiKey.
+$secretsHelper = Join-Path $PSScriptRoot '..\runtime\NextGpuOnDemandGpuHostSecrets.ps1'
+if (Test-Path -LiteralPath $secretsHelper) {
+    . $secretsHelper
+    if ([string]::IsNullOrWhiteSpace($vendorId)) {
+        Remove-NextGpuOnDemandGpuHostApiKey
+        Write-Host '[*] Vendor shutdown API key cleared (no vendor_id).'
+    }
+    elseif ([string]::IsNullOrWhiteSpace($vendorShutdownApiKey)) {
+        Write-Error 'vendorShutdownApiKey is required when vendorId is set.'
+        exit 1
+    }
+    else {
+        try {
+            $savedSecret = Save-NextGpuOnDemandGpuHostApiKey -ApiKey $vendorShutdownApiKey
+            Write-Host '[OK] Vendor shutdown API key saved (path not echoed).'
+            Write-Host "[*] Secrets file: $savedSecret"
+        }
+        catch {
+            Write-Warning "Failed to persist vendor shutdown API key: $($_.Exception.Message)"
+        }
+    }
+}
+else {
+    Write-Warning 'NextGpuOnDemandGpuHostSecrets.ps1 not found; vendor shutdown API key will not persist.'
 }
 
 $lines = @(

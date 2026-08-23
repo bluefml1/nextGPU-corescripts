@@ -21,6 +21,9 @@ internal static class Program
     private const string DefaultPipeEndpoint = "net.pipe://localhost/PlaynitePipe";
     private const uint ChildSettleMs = 1500;
     private const uint STILL_ACTIVE = 259;
+    private const int PlaynitePipeWaitMs = 20000;
+    private const int PlaynitePipePollMs = 250;
+    private const string PlayniteUiArgs = "--startdesktop --hidesplashscreen";
 
     private static readonly string LogDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
@@ -38,6 +41,13 @@ internal static class Program
         int exitCode = 1;
         try
         {
+            if (args.Length > 0 &&
+                string.Equals(args[0], "--play-elevated", StringComparison.OrdinalIgnoreCase))
+            {
+                exitCode = PlayElevatedClient.Run(args.Skip(1).ToArray());
+                return exitCode;
+            }
+
             BeginStderrCapture();
             LogContextBanner(args);
 
@@ -81,6 +91,7 @@ internal static class Program
 
             if (TryForwardPlayniteStart(target, targetArgs, out string? forwardError, out uint forwardedPid))
             {
+                WipePassword(ref adminPassword);
                 WriteResult(ok: true, pid: forwardedPid, error: null, forwarded: true);
                 Log($"FORWARD ok pid={forwardedPid}");
                 exitCode = 0;
@@ -89,6 +100,29 @@ internal static class Program
 
             if (forwardError != null)
                 Log($"Playnite forward skipped: {forwardError}");
+
+            // Playnite is single-instance. Spawning DesktopApp.exe --start while
+            // nextGPU-PlayniteLogon starts --startdesktop makes --start exit 0
+            // without delivering the game. Wait for the surviving UI pipe, then Start.
+            if (IsPlayniteStartLaunch(target, targetArgs))
+            {
+                bool forwarded = EnsurePlayniteThenForwardStart(
+                    target, targetArgs, asAdmin, adminPassword, out uint playnitePid, out string? playniteErr);
+                WipePassword(ref adminPassword);
+                if (forwarded)
+                {
+                    WriteResult(ok: true, pid: playnitePid, error: null, forwarded: true);
+                    Log($"FORWARD after Playnite ready pid={playnitePid}");
+                    exitCode = 0;
+                    return exitCode;
+                }
+
+                WriteResult(ok: false, pid: 0, error: playniteErr);
+                Log($"Launch FAILED: {playniteErr}");
+                Console.Error.WriteLine($"Launch failed: {playniteErr}");
+                exitCode = 1;
+                return exitCode;
+            }
 
             bool useShell = ShouldUseShellExecute(target);
             Log($"Launch mode={(useShell ? "ShellExecuteEx" : "CreateProcessW")}");
@@ -131,18 +165,7 @@ internal static class Program
                 launched = LaunchViaCreateProcess(target, targetArgs, cwd, out createPid, out createErr);
             }
 
-            // Best-effort wipe password from memory.
-            if (adminPassword != null)
-            {
-                unsafe
-                {
-                    fixed (char* p = adminPassword)
-                    {
-                        for (int i = 0; i < adminPassword.Length; i++)
-                            p[i] = '\0';
-                    }
-                }
-            }
+            WipePassword(ref adminPassword);
 
             if (!launched)
             {
@@ -396,7 +419,8 @@ internal static class Program
         string? cwd,
         string password,
         out uint pid,
-        out string? error)
+        out string? error,
+        bool requireStayAlive = true)
     {
         pid = 0;
         error = null;
@@ -468,8 +492,14 @@ internal static class Program
         {
             string hex = $"0x{exitCode:X8}";
             error = $"Child exited during settle exitCode={exitCode} ({hex}) pid={pid}";
-            Log($"FAIL: {error}");
-            Console.Error.WriteLine(error);
+            if (requireStayAlive)
+            {
+                Log($"FAIL: {error}");
+                Console.Error.WriteLine(error);
+                return false;
+            }
+
+            Log($"Child exited during settle (ignored for Playnite UI): {error}");
             return false;
         }
 
@@ -481,7 +511,8 @@ internal static class Program
         string? args,
         string? cwd,
         out uint pid,
-        out string? error)
+        out string? error,
+        bool requireStayAlive = true)
     {
         pid = 0;
         error = null;
@@ -553,8 +584,14 @@ internal static class Program
             {
                 string hex = $"0x{exitCode:X8}";
                 error = $"Child exited during settle exitCode={exitCode} ({hex}) pid={pid}";
-                Log($"FAIL: {error}");
-                Console.Error.WriteLine(error);
+                if (requireStayAlive)
+                {
+                    Log($"FAIL: {error}");
+                    Console.Error.WriteLine(error);
+                    return false;
+                }
+
+                Log($"Child exited during settle (ignored for Playnite UI): {error}");
                 return false;
             }
 
@@ -712,11 +749,109 @@ internal static class Program
     [DllImport("kernel32.dll")]
     private static extern uint NativeGetProcessId(IntPtr handle);
 
+    private static void WipePassword(ref string? adminPassword)
+    {
+        if (adminPassword == null)
+            return;
+        unsafe
+        {
+            fixed (char* p = adminPassword)
+            {
+                for (int i = 0; i < adminPassword.Length; i++)
+                    p[i] = '\0';
+            }
+        }
+        adminPassword = null;
+    }
+
+    private static bool IsPlayniteStartLaunch(string gameExe, string? gameArgs)
+    {
+        return gameExe.EndsWith(PlayniteExeSuffix, StringComparison.OrdinalIgnoreCase)
+            && ExtractStartGuid(gameArgs) != null;
+    }
+
+    private static bool EnsurePlayniteThenForwardStart(
+        string playniteExe,
+        string? startArgs,
+        bool asAdmin,
+        string? adminPassword,
+        out uint pid,
+        out string? error)
+    {
+        pid = 0;
+        error = null;
+
+        uint existing = FindPlaynitePid(playniteExe);
+        if (existing == 0)
+        {
+            Log("Playnite not running; starting desktop UI then forwarding --start");
+            string? playniteDir = Path.GetDirectoryName(playniteExe);
+            bool launched = asAdmin
+                ? LaunchViaCreateProcessWithLogon(
+                    playniteExe, PlayniteUiArgs, playniteDir, adminPassword!, out _, out error, requireStayAlive: false)
+                : LaunchViaCreateProcess(
+                    playniteExe, PlayniteUiArgs, playniteDir, out _, out error, requireStayAlive: false);
+
+            existing = FindPlaynitePid(playniteExe);
+            if (existing == 0)
+            {
+                error ??= "Playnite UI did not stay running";
+                return false;
+            }
+
+            if (!launched)
+                Log($"Playnite UI spawn exited early (single-instance); using surviving pid={existing}");
+            else
+                Log($"Playnite UI running pid={existing}");
+        }
+        else
+        {
+            Log($"Playnite already running pid={existing}; waiting for pipe to forward --start");
+        }
+
+        return WaitForPlayniteStartForward(playniteExe, startArgs, out pid, out error);
+    }
+
+    private static bool WaitForPlayniteStartForward(
+        string playniteExe,
+        string? startArgs,
+        out uint pid,
+        out string? error)
+    {
+        pid = 0;
+        error = null;
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(PlaynitePipeWaitMs);
+        int attempt = 0;
+        string? lastErr = null;
+        Log($"Waiting up to {PlaynitePipeWaitMs}ms for Playnite pipe to accept --start");
+
+        while (DateTime.UtcNow < deadline)
+        {
+            attempt++;
+            bool verbose = attempt == 1 || attempt % 8 == 0;
+            if (TryForwardPlayniteStart(playniteExe, startArgs, out lastErr, out pid, verbose))
+                return true;
+
+            if (FindPlaynitePid(playniteExe) == 0)
+            {
+                // Single-instance handoff can briefly leave no process; keep waiting.
+                Log("Playnite process not visible yet; continuing pipe wait");
+            }
+
+            Thread.Sleep(PlaynitePipePollMs);
+        }
+
+        error = lastErr ?? $"Timed out after {PlaynitePipeWaitMs}ms waiting for Playnite pipe";
+        Log($"Playnite forward wait failed: {error}");
+        return false;
+    }
+
     private static bool TryForwardPlayniteStart(
         string gameExe,
         string? gameArgs,
         out string? forwardError,
-        out uint pid)
+        out uint pid,
+        bool logAttempt = true)
     {
         forwardError = null;
         pid = 0;
@@ -735,7 +870,8 @@ internal static class Program
             return false;
         }
 
-        Log($"Playnite forward attempt guid={startGuid} endpoint={pipeEndpoint}");
+        if (logAttempt)
+            Log($"Playnite forward attempt guid={startGuid} endpoint={pipeEndpoint}");
 
         var binding = new NetNamedPipeBinding
         {

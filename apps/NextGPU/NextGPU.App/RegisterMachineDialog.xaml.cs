@@ -17,8 +17,25 @@ public partial class RegisterMachineDialog : Window
         AdminAccountBox.Text = Environment.UserName;
         WirePasswordPlaceholder(CfTokenBox, CfTokenPlaceholder);
         WirePasswordPlaceholder(ApiKeyBox, ApiKeyPlaceholder);
+        WirePasswordPlaceholder(VendorShutdownApiKeyBox, VendorShutdownApiKeyPlaceholder);
         WireTextPlaceholder(PriceBox, PricePlaceholder);
         WirePasswordPlaceholder(AdminPasswordBox, AdminPasswordPlaceholder);
+        UpdateVendorUi();
+    }
+
+    private void VendorIdBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateVendorUi();
+    }
+
+    private void UpdateVendorUi()
+    {
+        var hasVendor = !string.IsNullOrWhiteSpace(VendorIdBox.Text);
+        VendorShutdownPanel.Visibility = hasVendor ? Visibility.Visible : Visibility.Collapsed;
+        if (!hasVendor)
+        {
+            VendorShutdownApiKeyBox.Password = string.Empty;
+        }
     }
 
     private static void WirePasswordPlaceholder(PasswordBox box, TextBlock placeholder)
@@ -68,6 +85,7 @@ public partial class RegisterMachineDialog : Window
         var priceText = PriceBox.Text.Trim();
         var adminAccount = AdminAccountBox.Text.Trim();
         var vendorId = VendorIdBox.Text.Trim();
+        var vendorShutdownApiKey = VendorShutdownApiKeyBox.Password.Trim();
         var adminPassword = AdminPasswordBox.Password;
 
         if (string.IsNullOrWhiteSpace(cfToken))
@@ -116,6 +134,11 @@ public partial class RegisterMachineDialog : Window
             ShowError("Password must be at least 12 characters.");
             return;
         }
+        if (!string.IsNullOrWhiteSpace(vendorId) && string.IsNullOrWhiteSpace(vendorShutdownApiKey))
+        {
+            ShowError("Vendor Shutdown API Key is required when Vendor ID is set.");
+            return;
+        }
 
         var enableVdd = VddCombo.SelectedItem is ComboBoxItem item
             && string.Equals(item.Content?.ToString(), "Yes", StringComparison.OrdinalIgnoreCase);
@@ -129,6 +152,7 @@ public partial class RegisterMachineDialog : Window
             ComputerName = computerName,
             Price = priceText,
             VendorId = string.IsNullOrWhiteSpace(vendorId) ? null : vendorId,
+            VendorShutdownApiKey = string.IsNullOrWhiteSpace(vendorShutdownApiKey) ? null : vendorShutdownApiKey,
             AdminAccountName = adminAccount,
             AdminPasswordEncrypted = EncryptWithDpapi(adminPassword)
         };

@@ -9,7 +9,7 @@
     (including nextGPU-*), optional portable Playnite folder cleanup,
     wallpaper/shutdown policy and Default-user hive
     keys, releases stale NTUSER mounts, removes CLOUDFLARE_TUNNEL_TOKEN, optional
-    nextGPU local user, and generated setup/runtime logs.
+    nextGPU / NextGPU-Admin local users, %ProgramData%\nextGPU, and generated setup/runtime logs.
 
     If machine-profile.json has vdd.enabled=false (register skipped VDD/VAD),
     VDD/VAD/VB-CABLE removal is skipped automatically; ViGEmBus is still removed.
@@ -308,23 +308,90 @@ function Remove-CloudflaredArtifacts {
     Remove-PathSafe -Path (Join-Path $env:ProgramData 'cloudflared')
 }
 
+function Remove-LocalUserProfileLeftovers {
+    param([Parameter(Mandatory)][string]$UserName)
+
+    try {
+        $profiles = @(
+            Get-CimInstance -ClassName Win32_UserProfile -ErrorAction SilentlyContinue |
+                Where-Object {
+                    if (-not $_.LocalPath) { return $false }
+                    $folder = ($_.LocalPath -split '\\')[-1]
+                    return ($folder -eq $UserName -or $folder -like "${UserName}.*")
+                }
+        )
+        foreach ($profile in $profiles) {
+            try {
+                if ($profile.Loaded) {
+                    Write-Log "Profile still loaded for ${UserName}: $($profile.LocalPath) (skip CIM delete)." -Level WARN
+                    continue
+                }
+                $profile | Remove-CimInstance -ErrorAction Stop
+                Write-Log "Removed profile CIM: $($profile.LocalPath)" -Level OK
+            }
+            catch {
+                Write-Log "Failed to remove profile CIM $($profile.LocalPath): $($_.Exception.Message)" -Level WARN
+            }
+        }
+    }
+    catch {
+        Write-Log "Profile CIM cleanup for ${UserName}: $($_.Exception.Message)" -Level WARN
+    }
+
+    $usersRoot = Join-Path $env:SystemDrive 'Users'
+    if (Test-Path -LiteralPath $usersRoot) {
+        Get-ChildItem -LiteralPath $usersRoot -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -eq $UserName -or $_.Name -like "${UserName}.*" } |
+            ForEach-Object {
+                Remove-PathSafe -Path $_.FullName
+            }
+    }
+}
+
 function Remove-LocalUserNextGpu {
     if ($KeepLocalUsers) {
-        Write-Log 'Keeping local user nextGPU (-KeepLocalUsers).' -Level SKIP
+        Write-Log 'Keeping local users nextGPU / NextGPU-Admin (-KeepLocalUsers).' -Level SKIP
         return
     }
-    $user = Get-LocalUser -Name 'nextGPU' -ErrorAction SilentlyContinue
-    if (-not $user) {
-        Write-Log 'Local user nextGPU not present.' -Level SKIP
-        return
-    }
-    if ($PSCmdlet.ShouldProcess('nextGPU', 'Remove local user account')) {
-        try {
-            Remove-LocalUser -Name 'nextGPU' -ErrorAction Stop
-            Write-Log 'Removed local user: nextGPU' -Level OK
-        } catch {
-            Write-Log "Failed to remove local user nextGPU: $($_.Exception.Message)" -Level WARN
+
+    foreach ($userName in @('nextGPU', 'NextGPU-Admin')) {
+        $user = Get-LocalUser -Name $userName -ErrorAction SilentlyContinue
+        if (-not $user) {
+            Write-Log "Local user $userName not present." -Level SKIP
         }
+        elseif ($PSCmdlet.ShouldProcess($userName, 'Remove local user account')) {
+            try {
+                # Log off if session exists (best-effort)
+                try {
+                    $session = (quser 2>$null | Select-String -SimpleMatch $userName)
+                    if ($session) {
+                        $sessionId = ($session.ToString().Trim().TrimStart('>') -split '\s+') |
+                            Where-Object { $_ -match '^\d+$' } | Select-Object -First 1
+                        if ($sessionId) {
+                            logoff $sessionId 2>$null
+                            Write-Log "Logged off $userName (session $sessionId)." -Level OK
+                            Start-Sleep -Seconds 2
+                        }
+                    }
+                }
+                catch { }
+
+                Remove-LocalUser -Name $userName -ErrorAction Stop
+                Write-Log "Removed local user: $userName" -Level OK
+            }
+            catch {
+                Write-Log "Failed to remove local user ${userName}: $($_.Exception.Message)" -Level WARN
+            }
+        }
+
+        if ($PSCmdlet.ShouldProcess($userName, 'Remove leftover profile folders / CIM')) {
+            Remove-LocalUserProfileLeftovers -UserName $userName
+        }
+    }
+
+    $credPath = Join-Path $env:ProgramData 'nextGPU\admincred.dat'
+    if (Test-Path -LiteralPath $credPath) {
+        Remove-PathSafe -Path $credPath
     }
 }
 
@@ -1099,16 +1166,11 @@ Remove-WallpaperPolicy
 Write-Log 'Removing CLOUDFLARE_TUNNEL_TOKEN...'
 Remove-MachineEnvironmentValue -Name 'CLOUDFLARE_TUNNEL_TOKEN'
 
-Write-Log 'Removing per-user S3 storage config and secrets...'
+Write-Log 'Removing per-user S3 storage env vars and ProgramData\nextGPU...'
 Remove-MachineEnvironmentValue -Name 'NEXTGPU_USER_S3_ACCESS_KEY'
 Remove-MachineEnvironmentValue -Name 'NEXTGPU_USER_S3_SECRET_KEY'
-foreach ($pdPath in @(
-        (Join-Path $env:ProgramData 'nextGPU\rclone'),
-        (Join-Path $env:ProgramData 'nextGPU\secrets\user-s3.env'),
-        (Join-Path $env:ProgramData 'nextGPU\user-storage.json')
-    )) {
-    Remove-PathSafe -Path $pdPath
-}
+Remove-MachineEnvironmentValue -Name 'NEXTGPU_ONDEMAND_GPU_HOST_API_KEY'
+Remove-PathSafe -Path (Join-Path $env:ProgramData 'nextGPU')
 
 if ($SkipGeneratedFiles) {
     Write-Log 'Generated file removal skipped by -SkipGeneratedFiles.' -Level SKIP
@@ -1117,7 +1179,7 @@ if ($SkipGeneratedFiles) {
     Remove-RepoGeneratedArtifacts
 }
 
-Write-Log 'Removing local user nextGPU (if present)...'
+Write-Log 'Removing local users nextGPU and NextGPU-Admin (if present)...'
 Remove-LocalUserNextGpu
 
 Write-Log 'Final release of Default-user registry hives...'

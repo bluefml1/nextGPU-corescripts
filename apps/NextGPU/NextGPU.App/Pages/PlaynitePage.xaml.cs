@@ -87,16 +87,16 @@ public partial class PlaynitePage : Page
             helpText: "Re-applies Playnite configuration, volume ACL reset, elevated logon task, and Sunshine integration without re-downloading Playnite.");
         ActionPageTools.AddPowerShellButton(SetupPanel, "Register Playnite Logon Task",
             @"PlayNiteWatcher\Register-PlayniteLogonTask.ps1", "", keepConsoleOpen: true,
-            helpText: "Registers nextGPU-PlayniteLogon: at nextGPU logon, elevates Playnite.DesktopApp --startdesktop as NextGPU-Admin via NextGPUService (requires service + admin credential). Playnite folder stays Users RX.");
+            helpText: "Registers nextGPU-PlayniteLogon: at nextGPU logon, NextGPU.Launcher --play-elevated (no PowerShell window) starts Playnite.DesktopApp --startdesktop as NextGPU-Admin via NextGPUService. Playnite folder stays Users RX.");
         ActionPageTools.AddBatchButton(SetupPanel, "Update Libraries",
             @"PlayNiteWatcher\Update-PlayniteLibraries.bat", keepConsoleOpen: true,
-            helpText: "Scans installed Steam and Epic games on disk and imports them into Playnite's games.db, then re-applies elevated Steam Play actions. Run after new games are installed or when library is empty.");
+            helpText: "Scans installed Steam and Epic games on disk, imports them into Playnite, and downloads full metadata/covers (--updatemetadata). Then re-applies elevated Steam Play actions. Run after new games are installed, a Playnite reinstall, or when covers are missing.");
         ActionPageTools.AddPowerShellButton(SetupPanel, "Update Libraries (Skip Metadata)",
             @"PlayNiteWatcher\Update-PlayniteLibraries.ps1", "-SkipMetadata", keepConsoleOpen: true,
-            helpText: "Same as Update Libraries but skips metadata enrichment for a faster refresh when only game presence needs updating. Also re-applies elevated Steam Play actions.");
+            helpText: "Same disk scan as Update Libraries but skips metadata/covers for a faster refresh when only game presence matters. Also re-applies elevated Steam Play actions.");
         ActionPageTools.AddPowerShellButton(SetupPanel, "Apply Elevated Play Actions",
             @"PlayNiteWatcher\Apply-PlayniteElevatedPlayActions.ps1", "", keepConsoleOpen: true,
-            helpText: "Close Playnite first. Rewrites Steam games so Play deploys NextGPU-PlayElevated (elevated steam.exe -applaunch as NextGPU-Admin). Desktop apps elevate only when allowlist runAsAdmin or @ADMIN. Requires NextGPUService.");
+            helpText: "Close Playnite first. Rewrites Steam games so Play launches NextGPU.Launcher --play-elevated (hidden) then steam.exe -applaunch as NextGPU-Admin. Desktop apps elevate only when allowlist runAsAdmin or @ADMIN. Requires NextGPUService + installed Launcher.");
         ActionPageTools.AddBatchButton(SetupPanel, "Import Desktop Apps",
             @"PlayNiteWatcher\Import-PlayniteDesktopApps.bat", ImportDesktopAppsHeadlessArgs, keepConsoleOpen: true,
             elevated: false,

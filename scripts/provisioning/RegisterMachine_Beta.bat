@@ -760,8 +760,10 @@ echo [*] API log saved to: %REGISTER_LOG%
 >> "%SCRIPT_DIR%\domain.txt" echo COMPUTER_NAME=%NAME%
 if defined VENDOR_ID if not "!VENDOR_ID!"=="" (
     >> "%SCRIPT_DIR%\domain.txt" echo VENDOR_ID=!VENDOR_ID!
+    >> "%SCRIPT_DIR%\domain.txt" echo VENDOR_ID_ENABLED=yes
 ) else (
     >> "%SCRIPT_DIR%\domain.txt" echo VENDOR_ID=
+    >> "%SCRIPT_DIR%\domain.txt" echo VENDOR_ID_ENABLED=no
 )
 echo [*] domain.txt saved.
 

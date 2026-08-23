@@ -108,7 +108,7 @@ Setup does **not** copy old libraries automatically. To move an existing library
 
 ### Export formats (Sunshine App Export)
 
-- **Steam / Epic games**: Sunshine app `name` is the **NameID** (Steam AppID such as `730` for CS2, or Epic install folder name). No box art. `prep-cmd` undo runs `eventLogs.ps1` (same as Add-SteamGames). Moonlight pairing AppIDs are in `resolved-appids.txt` (CRC hash of NameID, same algorithm as Add-SteamGames), with launch commands like `&"Playnite.DesktopApp.exe" --start <playniteGameId>`.
+- **Steam / Epic games**: Sunshine app `name` is the **NameID** (Steam AppID such as `730` for CS2, or Epic install folder name). No box art. `prep-cmd` undo runs `eventLogs.ps1` (same as Add-SteamGames). Moonlight pairing AppIDs are in `resolved-appids.txt` (CRC hash of NameID, same algorithm as Add-SteamGames). **Steam** launch lines are `&"steam.exe" -applaunch <AppId>`; **Epic** uses `&"Playnite.DesktopApp.exe" --start <playniteGameId>`.
 - **Other platforms (GOG, etc.)**: Legacy export with Playnite box art under `%LocalAppData%\Sunshine Playnite App Export\Apps\`.
 
 Ensure `C:\Program Files\Sunshine\scripts\eventLogs.ps1` exists (for example by running Add-SteamGames.ps1 once) before streaming.

@@ -1003,11 +1003,34 @@ function Register-NextGpuUserStorageEnsureBindingsTask {
         -LogFile (Join-Path $script:NextGpuUserStorageLogDir 'user-storage-ensure.log')
 }
 
+function Test-NextGpuIsValidRepoRoot {
+    <#
+    .SYNOPSIS
+        True only for the real corescripts folder (not %ProgramData%\nextGPU domain copy).
+    #>
+    param([string]$Root)
+    if ([string]::IsNullOrWhiteSpace($Root)) { return $false }
+    $root = $Root.Trim().TrimEnd('\')
+    $programData = $script:NextGpuUserStorageProgramData.TrimEnd('\')
+    if ($root -ieq $programData) { return $false }
+    if (-not (Test-Path -LiteralPath (Join-Path $root 'domain.txt'))) { return $false }
+    # ProgramData can hold a domain.txt copy; require repo runtime markers.
+    $markers = @(
+        (Join-Path $root 'scripts\runtime\checking-update.bat'),
+        (Join-Path $root 'scripts\runtime\UserStorageCommon.ps1'),
+        (Join-Path $root 'RegisterMachine_Beta.bat')
+    )
+    foreach ($m in $markers) {
+        if (Test-Path -LiteralPath $m) { return $true }
+    }
+    return $false
+}
+
 function Set-NextGpuRepoRootMarker {
     param([Parameter(Mandatory)][string]$RepoRoot)
     $root = $RepoRoot.TrimEnd('\')
-    if (-not (Test-Path -LiteralPath (Join-Path $root 'domain.txt'))) {
-        throw "domain.txt not found under repo root: $root"
+    if (-not (Test-NextGpuIsValidRepoRoot -Root $root)) {
+        throw "Refusing to save repo-root marker: '$root' is not a valid nextGPU corescripts root (must have domain.txt + scripts\\runtime, and must not be %ProgramData%\\nextGPU)."
     }
     if (-not (Test-Path -LiteralPath $script:NextGpuUserStorageProgramData)) {
         New-Item -ItemType Directory -Path $script:NextGpuUserStorageProgramData -Force | Out-Null
@@ -1127,29 +1150,25 @@ function Publish-NextGpuDomainForRentalUser {
 
 function Get-NextGpuRepoRoot {
     param([string]$StartPath = '')
-    if (Test-Path -LiteralPath $script:NextGpuUserStorageDomainCopyPath) {
-        if (Test-Path -LiteralPath $script:NextGpuRepoRootMarkerPath) {
-            try {
-                $marked = (Get-Content -LiteralPath $script:NextGpuRepoRootMarkerPath -Raw -ErrorAction Stop).Trim()
-                if ($marked) { return $marked.TrimEnd('\') }
-            } catch { }
-        }
-        return $script:NextGpuUserStorageProgramData.TrimEnd('\')
-    }
+
+    # Prefer an existing marker only when it points at a real corescripts root
+    # (never %ProgramData%\nextGPU, which only holds a domain.txt copy).
     if (Test-Path -LiteralPath $script:NextGpuRepoRootMarkerPath) {
         try {
             $marked = (Get-Content -LiteralPath $script:NextGpuRepoRootMarkerPath -Raw -ErrorAction Stop).Trim()
-            if ($marked -and (Test-Path -LiteralPath (Join-Path $marked 'domain.txt'))) {
+            if (Test-NextGpuIsValidRepoRoot -Root $marked) {
                 return $marked.TrimEnd('\')
             }
         } catch { }
     }
+
     if ($env:NEXTGPU_REPO_ROOT) {
         $envRoot = $env:NEXTGPU_REPO_ROOT.TrimEnd('\')
-        if (Test-Path -LiteralPath (Join-Path $envRoot 'domain.txt')) {
+        if (Test-NextGpuIsValidRepoRoot -Root $envRoot) {
             return $envRoot
         }
     }
+
     if ([string]::IsNullOrWhiteSpace($StartPath)) {
         if ($PSScriptRoot) {
             $StartPath = $PSScriptRoot
@@ -1163,8 +1182,7 @@ function Get-NextGpuRepoRoot {
             $dir = (Resolve-Path -LiteralPath $StartPath -ErrorAction Stop).Path
         } catch { }
         for ($i = 0; $i -lt 10; $i++) {
-            $domainFile = Join-Path $dir 'domain.txt'
-            if (Test-Path -LiteralPath $domainFile) {
+            if (Test-NextGpuIsValidRepoRoot -Root $dir) {
                 return $dir.TrimEnd('\')
             }
             $parent = Split-Path -Parent $dir
@@ -1175,8 +1193,9 @@ function Get-NextGpuRepoRoot {
         }
     }
     throw @"
-Could not find domain.txt. Expected it at the repo root (same folder as RegisterMachine_Beta.bat).
-Set NEXTGPU_REPO_ROOT, or re-run Setup-UserStorage.bat as Administrator from your scripts folder.
+Could not find a valid nextGPU corescripts root (domain.txt + scripts\runtime).
+%ProgramData%\nextGPU is not the repo — it only holds published copies.
+Set NEXTGPU_REPO_ROOT, or re-run User-Storage.bat Sync / Setup from your repo scripts\runtime folder.
 Searched upward from: $StartPath
 "@
 }
