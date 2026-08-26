@@ -218,7 +218,6 @@ function Get-NextGpuRepoRootForUpdate {
         }
     }
 
-    # Walk up from this common script (scripts\runtime -> repo root)
     try {
         $dir = $PSScriptRoot
         if (-not $dir -and $MyInvocation.MyCommand.Path) {
@@ -236,9 +235,7 @@ function Get-NextGpuRepoRootForUpdate {
     catch { }
 
     foreach ($drive in [System.IO.DriveInfo]::GetDrives()) {
-        if (-not $drive.IsReady -or $drive.DriveType -ne 'Fixed') {
-            continue
-        }
+        if (-not $drive.IsReady -or $drive.DriveType -ne 'Fixed') { continue }
         try {
             $domainFiles = Get-ChildItem -LiteralPath $drive.RootDirectory.FullName -Filter 'domain.txt' `
                 -File -Recurse -Depth 6 -ErrorAction SilentlyContinue
@@ -251,25 +248,19 @@ function Get-NextGpuRepoRootForUpdate {
         }
         catch { }
     }
-
     return $null
 }
 
 function Resolve-NextGpuDomainTxtPath {
     $candidates = @()
     if (-not [string]::IsNullOrWhiteSpace($env:NEXTGPU_REPO_ROOT)) {
-        $envRoot = $env:NEXTGPU_REPO_ROOT.TrimEnd('\')
-        if (Test-NextGpuIsValidRepoRoot -Root $envRoot) {
-            $candidates += (Join-Path $envRoot 'domain.txt')
-        }
+        $candidates += (Join-Path $env:NEXTGPU_REPO_ROOT.TrimEnd('\') 'domain.txt')
     }
     $marker = Join-Path $script:NextGpuProgramDataDir 'repo-root.txt'
     if (Test-Path -LiteralPath $marker) {
         try {
             $root = (Get-Content -LiteralPath $marker -Raw -ErrorAction Stop).Trim().TrimEnd('\')
-            if (Test-NextGpuIsValidRepoRoot -Root $root) {
-                $candidates += (Join-Path $root 'domain.txt')
-            }
+            if ($root) { $candidates += (Join-Path $root 'domain.txt') }
         }
         catch { }
     }
@@ -390,49 +381,74 @@ function Publish-UpdatingAtEndSession {
 function Publish-OnlineAtStartup {
     <#
     .SYNOPSIS
-        Write STATUS=online to domain.txt, POST updateStatus online, clear coordination flags.
+        Repair domain.txt from identity if needed, set machine-status.flag=online,
+        POST updateStatus online, clear coordination flags.
     .OUTPUTS
         $true on success, $false on failure.
     #>
 
-    $domainPath = Resolve-NextGpuDomainTxtPath
-    if (-not $domainPath) {
-        Write-Host "[Publish-Online] ERROR: domain.txt not found; cannot publish online."
-        return $false
+    $identityHelper = Join-Path $PSScriptRoot 'NextGpuMachineIdentity.ps1'
+    if (Test-Path -LiteralPath $identityHelper) {
+        . $identityHelper
+        try {
+            $null = Repair-NextGpuDomainTxtIfNeeded
+        }
+        catch {
+            Write-Host "[Publish-Online] WARN: Repair-NextGpuDomainTxtIfNeeded: $($_.Exception.Message)"
+        }
     }
 
     $computerName = $null
     $publicIp = $null
-    try {
-        foreach ($line in Get-Content -LiteralPath $domainPath -ErrorAction Stop) {
-            if ($line -match '^\s*COMPUTER_NAME\s*=\s*(.+)\s*$') { $computerName = $Matches[1].Trim() }
-            if ($line -match '^\s*PUBLIC_IP\s*=\s*(.+)\s*$') { $publicIp = $Matches[1].Trim() }
+
+    if (Get-Command -Name Read-NextGpuMachineIdentity -ErrorAction SilentlyContinue) {
+        try {
+            $identity = Read-NextGpuMachineIdentity
+            $computerName = [string]$identity.COMPUTER_NAME
+            $publicIp = [string]$identity.PUBLIC_IP
         }
-    }
-    catch {
-        Write-Host "[Publish-Online] ERROR: reading domain.txt: $($_.Exception.Message)"
-        return $false
+        catch {
+            Write-Host "[Publish-Online] WARN: Read-NextGpuMachineIdentity: $($_.Exception.Message)"
+        }
     }
 
     if ([string]::IsNullOrWhiteSpace($computerName) -or [string]::IsNullOrWhiteSpace($publicIp)) {
-        Write-Host '[Publish-Online] ERROR: COMPUTER_NAME or PUBLIC_IP missing in domain.txt.'
+        $domainPath = Resolve-NextGpuDomainTxtPath
+        if (-not $domainPath) {
+            Write-Host "[Publish-Online] ERROR: domain.txt not found; cannot publish online."
+            return $false
+        }
+        try {
+            foreach ($line in Get-Content -LiteralPath $domainPath -ErrorAction Stop) {
+                if ($line -match '^\s*COMPUTER_NAME\s*=\s*(.+)\s*$') { $computerName = $Matches[1].Trim() }
+                if ($line -match '^\s*PUBLIC_IP\s*=\s*(.+)\s*$') { $publicIp = $Matches[1].Trim() }
+            }
+        }
+        catch {
+            Write-Host "[Publish-Online] ERROR: reading domain.txt: $($_.Exception.Message)"
+            return $false
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($computerName) -or [string]::IsNullOrWhiteSpace($publicIp)) {
+        Write-Host '[Publish-Online] ERROR: COMPUTER_NAME or PUBLIC_IP missing in identity/domain.txt.'
         return $false
     }
 
     $privateIp = Get-NextGpuPrivateIp
 
-    try {
-        $lines = Get-Content -LiteralPath $domainPath -ErrorAction Stop
-        $lines = $lines | ForEach-Object {
-            if ($_ -match '^STATUS=') { 'STATUS=online' } else { $_ }
+    if (Get-Command -Name Set-NextGpuMachineStatus -ErrorAction SilentlyContinue) {
+        try {
+            $null = Set-NextGpuMachineStatus -Status 'online'
+            Write-Host '[Publish-Online] machine-status.flag=online written.'
         }
-        if (-not ($lines -match '^STATUS=')) { $lines += 'STATUS=online' }
-        $lines | Set-Content -LiteralPath $domainPath -Encoding UTF8
-        Write-Host "[Publish-Online] domain.txt STATUS=online written ($domainPath)."
+        catch {
+            Write-Host "[Publish-Online] ERROR: writing machine-status.flag: $($_.Exception.Message)"
+            return $false
+        }
     }
-    catch {
-        Write-Host "[Publish-Online] ERROR: writing STATUS=online: $($_.Exception.Message)"
-        return $false
+    else {
+        Write-Host '[Publish-Online] WARN: NextGpuMachineIdentity.ps1 not loaded; status flag not updated.'
     }
 
     $payload = @{

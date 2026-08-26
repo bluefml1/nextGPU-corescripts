@@ -1,6 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
-:: Shared Sunshine/Moonlight update entry for auto-update, checking-update, and auto-repair.
+:: Shared Sunshine/Moonlight update entry for checking-update and auto-repair.
 :: Requires: SCRIPT_DIR, COMPUTER_NAME (optional for Moonlight config.json substitution)
 :: Usage: Run-StreamingStackUpdate.bat [SunshineMode] [MoonlightMode] [ForcePairing]
 ::   SunshineMode / MoonlightMode: CheckUpdate | ForceReinstall | Skip

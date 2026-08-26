@@ -165,7 +165,7 @@ Generated logs are centralized in `logs/`, including:
 - Before unplugging every physical monitor: confirm VDD is OK, Sunshine is capturing the intended display (set `output_name` in `sunshine.conf` manually if you need a fixed VDD head), and RDP works.
 - Public URL does not load: check `sc query cloudflared`, Cloudflare tunnel/DNS, and local `http://127.0.0.1:8080`.
 - Heartbeat does not update backend: confirm `domain.txt` exists, `gpu-heartbeat` is running, and inspect `logs/heartbeat.log`.
-- Auto-repair keeps reinstalling: inspect `logs/auto-repair.log`, check Moonlight local HTTP, and confirm `domain.txt` is not stuck at `STATUS=updating`.
+- Auto-repair keeps reinstalling: inspect `logs/auto-repair.log`, check Moonlight local HTTP, and confirm `machine-status.flag` is not stuck at `updating`.
 - Registration failed: inspect `logs/register_api_log.txt`, API key, and payload size.
 - Game list is stale: confirm Moonlight Web returns apps at `http://localhost:8080/api/apps?host_id=0&force_refresh=false`, then run `scripts\maintenance\updateGames.bat`.
 

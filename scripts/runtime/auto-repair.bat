@@ -26,13 +26,16 @@ if errorlevel 1 (timeout /t 5 /nobreak >nul & goto wait_for_network)
 echo.
 
 :: ==============================
-:: CHECK DOMAIN STATUS
+:: CHECK MACHINE STATUS FLAG
 :: ==============================
 set "DOMAIN_FILE=%SCRIPT_DIR%\domain.txt"
 set "DOMAIN_STATUS="
 set "COMPUTER_NAME="
+set "IDENTITY_PS1=%SCRIPT_IMPL_DIR%\Invoke-NextGpuMachineIdentity.ps1"
+if exist "%IDENTITY_PS1%" (
+    for /f "usebackq delims=" %%S in (`powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action GetStatus -RepoRoot "%SCRIPT_DIR%"`) do set "DOMAIN_STATUS=%%S"
+)
 if exist "%DOMAIN_FILE%" (
-    for /f "tokens=2 delims==" %%A in ('findstr "STATUS=" "%DOMAIN_FILE%"') do set "DOMAIN_STATUS=%%A"
     for /f "tokens=2 delims==" %%A in ('findstr "COMPUTER_NAME=" "%DOMAIN_FILE%"') do set "COMPUTER_NAME=%%A"
 )
 if /i "!DOMAIN_STATUS!"=="updating" (

@@ -98,8 +98,7 @@ All other workflows are run from their `scripts/` subfolders.
 
 - `scripts/runtime/heartbeat-only.bat`: Loops every 300 seconds and posts the current machine status to the AWS `updateStatus` endpoint.
 - `scripts/runtime/auto-repair.bat`: Loops every 60 seconds, checks `cloudflared`, Sunshine, `moonlight-web`, and local HTTP `127.0.0.1:8080`. It can reinstall Sunshine/Moonlight and re-pair them.
-- `scripts/runtime/auto-update.bat`: Long-running update loop for Sunshine/Moonlight versions. It is not installed by the main setup script in the current repo.
-- `scripts/runtime/checking-update.bat`: Run-once/logging update checker. It currently skips the backend availability gate and writes to `logs/checking-update.log`.
+- `scripts/runtime/checking-update.bat`: Run-once update checker (EndSession / vendor path). Writes to `logs/checking-update.log`.
 - **Per-user S3 storage (opt-in):** `scripts/runtime/Setup-UserStorage.bat` installs rclone `[nextgpu-user]` under `%ProgramData%\nextGPU\rclone\`, registers `nextGPU-UserStorageMount` / `nextGPU-UserStorageUnmount` for the **nextGPU** user, and mounts `user_<id>/` from bucket `next-gpu-storage` as **`U:`** at logon (Explorer label `{name}'s Storage` from checkDomain `displayName` / `name` / `firstName` / `lastName`). Not wired into `RegisterMachine_Beta.bat` by default.
 - **Clean Session folder rules:** `scripts/runtime/Invoke-SessionFolderRules.ps1` runs **delete** or **replace** rules on nextGPU logoff (primary) with logon fallback. Config: `%ProgramData%\nextGPU\session-folder-rules.json`; golden replace sources: `%ProgramData%\nextGPU\session-templates\{id}\`. Tasks: `nextGPU-SessionFolderRulesLogoff` / `nextGPU-SessionFolderRulesLogon` via `Register-SessionFolderRulesTasks.ps1` (also called from `RegisterMachine_Beta.bat` after the nextGPU user is created). `sunshine/endSession.ps1` runs logoff rules at STEP 0. NextGPU HOST page **Setup Games & Apps** → **Clean Session** tab for CRUD, import/export, seed templates. Host layout (`arrange-games-apps.bat`) is separate on the **Host Setup** tab.
 
@@ -148,7 +147,7 @@ Setup installs rclone/WinFsp, AWS config, publishes scripts, registers **ensure 
 
 These are important because maintenance scripts depend on them:
 
-- `domain.txt`: Created by `RegisterMachine_Beta.bat`. It stores `DOMAIN`, `PUBLIC_IP`, and `COMPUTER_NAME`; update/heartbeat/repair scripts read it. Some scripts also add `STATUS`.
+- `domain.txt`: Created by `RegisterMachine_Beta.bat`. It stores identity only (`DOMAIN`, `PUBLIC_IP`, `COMPUTER_NAME`, vendor fields). Machine STATUS lives in `%ProgramData%\nextGPU\machine-status.flag`; durable identity also in `%ProgramData%\nextGPU\machine-identity.env`.
 - `logs/register_api_log.txt`: Registration payload and backend response.
 - `logs/setup_log_YYYYMMDD.txt`: Setup start timestamp.
 - `logs/wmi-probe.log`: WMI/WMIC probe output.
@@ -196,7 +195,7 @@ scripts\runtime\auto-repair.bat
 
 It waits for network access, checks Cloudflare/Sunshine/Moonlight/local HTTP, and performs a full Sunshine/Moonlight reinstall plus pairing if needed.
 
-If `domain.txt` contains `STATUS=updating`, `scripts/runtime/auto-repair.bat` skips repairs to avoid fighting an update.
+If `%ProgramData%\nextGPU\machine-status.flag` is `updating`, `scripts/runtime/auto-repair.bat` skips repairs to avoid fighting an update.
 
 ### Run A One-Time Update Check
 
@@ -206,7 +205,7 @@ Use:
 scripts\runtime\checking-update.bat
 ```
 
-This logs to `logs/checking-update.log`, sets status to `updating`, checks remote Sunshine/Moonlight versions, applies updates when local version files exist and differ, re-pairs if needed, then sets status back to `online` or `update_fail`.
+This logs to `logs/checking-update.log`, sets `machine-status.flag` to `updating`, checks remote Sunshine/Moonlight versions, applies updates when local version files exist and differ, re-pairs if needed, then sets status back to `online` or `update_fail` (Vendor hosts leave status as `updating` and request shutdown).
 
 ### Apply Wallpaper Only
 
@@ -275,7 +274,7 @@ Start with the script that owns the workflow you want to change:
 - Full setup or service install changes: `scripts/provisioning/RegisterMachine_Beta.bat`.
 - Health check or self-healing behavior: `scripts/runtime/auto-repair.bat`.
 - Periodic status payload: `scripts/runtime/heartbeat-only.bat`.
-- Sunshine/Moonlight update behavior: `scripts/runtime/checking-update.bat` and `scripts/runtime/auto-update.bat`.
+- Sunshine/Moonlight update behavior: `scripts/runtime/checking-update.bat`.
 - Machine registration payload fields: `scripts/provisioning/RegisterMachine_Beta.bat`, `scripts/provisioning/Get-MachineInventory.ps1`, and `scripts/provisioning/Get-BenchmarkScores-Silent.ps1`.
 - Game list payloads: `scripts/maintenance/Update-Games.ps1` and `scripts/maintenance/updateGames.bat`.
 - Wallpaper policy behavior: `scripts/desktop/Setup-Wallpaper.bat` and `scripts/desktop/Set-DesktopWallpaper-Gpo.ps1`.
@@ -283,9 +282,8 @@ Start with the script that owns the workflow you want to change:
 
 ## Known Gaps From This Scan
 
-- `scripts/runtime/auto-update.bat` exists as a long-running updater, but `RegisterMachine_Beta.bat` currently installs `auto-repair` and not an `auto-update` service.
 - `scripts/tasks/launchGameTaskScheduler.ps1` and `scripts/maintenance/garena.bat` depend on `Z:` paths that are not created by this repo.
-- Several scripts duplicate Sunshine/Moonlight pairing logic. When changing pairing behavior, check `scripts/provisioning/RegisterMachine_Beta.bat`, `scripts/runtime/auto-repair.bat`, `scripts/runtime/auto-update.bat`, and `scripts/runtime/checking-update.bat`.
+- Several scripts share Sunshine/Moonlight update logic via `Update-NextGpuStreamingStack.ps1` (`auto-repair.bat`, `checking-update.bat`).
 
 ## Quick Troubleshooting
 
@@ -293,6 +291,6 @@ Start with the script that owns the workflow you want to change:
 - Sunshine has no virtual display: inspect `logs\VDD-VAD.log`, reboot, then run `scripts\provisioning\Get-DisplayDeviceId.ps1 -ListAll -IncludeInactive`.
 - Public URL does not load: check `sc query cloudflared`, Cloudflare tunnel/DNS, and local `http://127.0.0.1:8080`.
 - Heartbeat does not update backend: check `domain.txt`, `gpu-heartbeat`, `logs/heartbeat.log`, and network access to AWS.
-- Auto-repair keeps reinstalling: check `logs/auto-repair.log`, Moonlight local HTTP status, and whether `STATUS=updating` is being set/cleared correctly.
+- Auto-repair keeps reinstalling: check `logs/auto-repair.log`, Moonlight local HTTP status, and whether `machine-status.flag` is stuck at `updating`.
 - Game list is stale: run `scripts/maintenance/updateGames.bat` after confirming Moonlight Web returns apps at `http://localhost:8080/api/apps?host_id=0&force_refresh=false`.
 

@@ -27,21 +27,11 @@ public static class RepoCatalog
         {
             TaskName = "nextGPU-AutoRepair",
             DisplayName = "Auto-Repair",
-            Description = "Health-checks cloudflared, Sunshine, Moonlight, and local HTTP every minute.",
+            Description = "Health-checks cloudflared, Sunshine, Moonlight, and local HTTP every minute. Skips when machine-status.flag=updating.",
             IntervalSummary = "Every 1 min",
             RegisterScriptRelativePath = @"scripts\tasks\Register-AutoRepairTask.ps1",
             StdoutLogFileName = "auto-repair.log",
             StderrLogFileName = "auto-repair-error.log"
-        },
-        new()
-        {
-            TaskName = "nextGPU-AutoUpdate",
-            DisplayName = "Auto-Update",
-            Description = "Checks Sunshine/Moonlight versions and applies updates every hour.",
-            IntervalSummary = "Every 1 hour",
-            RegisterScriptRelativePath = @"scripts\tasks\Register-AutoUpdateTask.ps1",
-            StdoutLogFileName = "auto-update.log",
-            StderrLogFileName = "auto-update-error.log"
         },
         new()
         {
@@ -121,8 +111,6 @@ public static class RepoCatalog
         "heartbeat-error.log",
         "auto-repair.log",
         "auto-repair-error.log",
-        "auto-update.log",
-        "auto-update-error.log",
         "checking-update.log",
         "moonlight-web.log",
         "moonlight-web-error.log",

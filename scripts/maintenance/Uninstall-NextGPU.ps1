@@ -9,7 +9,8 @@
     (including nextGPU-*), optional portable Playnite folder cleanup,
     wallpaper/shutdown policy and Default-user hive
     keys, releases stale NTUSER mounts, removes CLOUDFLARE_TUNNEL_TOKEN, optional
-    nextGPU / NextGPU-Admin local users, %ProgramData%\nextGPU, and generated setup/runtime logs.
+    nextGPU / NextGPU-Admin local users, %ProgramData%\nextGPU (including machine-identity.env
+    and machine-status.flag), and generated setup/runtime logs.
 
     If machine-profile.json has vdd.enabled=false (register skipped VDD/VAD),
     VDD/VAD/VB-CABLE removal is skipped automatically; ViGEmBus is still removed.
@@ -1170,7 +1171,18 @@ Write-Log 'Removing per-user S3 storage env vars and ProgramData\nextGPU...'
 Remove-MachineEnvironmentValue -Name 'NEXTGPU_USER_S3_ACCESS_KEY'
 Remove-MachineEnvironmentValue -Name 'NEXTGPU_USER_S3_SECRET_KEY'
 Remove-MachineEnvironmentValue -Name 'NEXTGPU_ONDEMAND_GPU_HOST_API_KEY'
-Remove-PathSafe -Path (Join-Path $env:ProgramData 'nextGPU')
+foreach ($pdPath in @(
+        (Join-Path $env:ProgramData 'nextGPU\rclone'),
+        (Join-Path $env:ProgramData 'nextGPU\secrets\user-s3.env'),
+        (Join-Path $env:ProgramData 'nextGPU\secrets\ondemand-gpu-host.env'),
+        (Join-Path $env:ProgramData 'nextGPU\heartbeat-suspended.flag'),
+        (Join-Path $env:ProgramData 'nextGPU\startup-publish-pending.flag'),
+        (Join-Path $env:ProgramData 'nextGPU\machine-identity.env'),
+        (Join-Path $env:ProgramData 'nextGPU\machine-status.flag'),
+        (Join-Path $env:ProgramData 'nextGPU\user-storage.json')
+    )) {
+    Remove-PathSafe -Path $pdPath
+}
 
 if ($SkipGeneratedFiles) {
     Write-Log 'Generated file removal skipped by -SkipGeneratedFiles.' -Level SKIP

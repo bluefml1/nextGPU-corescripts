@@ -8,7 +8,6 @@ $ErrorActionPreference = 'Stop'
 $taskScripts = @(
     'Register-HeartbeatTask.ps1',
     'Register-AutoRepairTask.ps1',
-    'Register-AutoUpdateTask.ps1',
     'Register-NvidiaLogonTask.ps1',
     'Register-EndSessionTask.ps1',
     'Register-NextGpuEndSessionRecoveryTask.ps1',
@@ -22,6 +21,13 @@ foreach ($scriptName in $taskScripts) {
     }
     Write-Host "[*] Running $scriptName..."
     & $scriptPath
+}
+
+# Deprecated: hourly auto-update removed; updates run via checking-update.bat (EndSession).
+$legacyAutoUpdate = Get-ScheduledTask -TaskName 'nextGPU-AutoUpdate' -ErrorAction SilentlyContinue
+if ($legacyAutoUpdate) {
+    Unregister-ScheduledTask -TaskName 'nextGPU-AutoUpdate' -Confirm:$false
+    Write-Host '[*] Removed deprecated scheduled task: nextGPU-AutoUpdate'
 }
 
 # Playnite logon lives under PlayNiteWatcher (not scripts/tasks).

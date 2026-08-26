@@ -14,6 +14,7 @@ if defined NEXTGPU_REPO_ROOT (
 set "LOG_DIR=%SCRIPT_DIR%\logs"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
 set "LOG_FILE=%LOG_DIR%\checking-update.log"
+set "IDENTITY_PS1=%SCRIPT_IMPL_DIR%\Invoke-NextGpuMachineIdentity.ps1"
 
 if /i "%~1" neq "__RUN" (
     call "%~f0" __RUN >> "%LOG_FILE%" 2>&1
@@ -32,18 +33,20 @@ set "LOCAL_ML_DIR=%SCRIPT_DIR%\moonlight-web"
 set "MOONLIGHT_ZIP=%SCRIPT_DIR%\moonlight.zip"
 set "NSSM_EXE=%SCRIPT_DIR%\nssm\nssm-2.24\win64\nssm.exe"
 
-set "STATUS_FLAG_FILE=%TEMP%\machine_status_flag.txt"
-
 :run_once
 echo.
 echo ==================================================
-echo [*] [%date% %time%] auto-update cycle started
+echo [*] [%date% %time%] checking-update cycle started
 echo ==================================================
 
 :: ==============================
 :: READ MACHINE INFO
 :: ==============================
 set "DOMAIN_FILE=%SCRIPT_DIR%\domain.txt"
+
+if exist "%IDENTITY_PS1%" (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action RepairDomain -RepoRoot "%SCRIPT_DIR%" >nul 2>&1
+)
 
 if not exist "%DOMAIN_FILE%" (
     echo [ERROR] domain.txt not found at: %DOMAIN_FILE%
@@ -114,10 +117,18 @@ exit /b 0
 
 echo [+] Update check started.
 
-:: Updating status is published by sunshine/endSession.ps1 (STEP 0) before clean-session.
-:: checking-update.bat only runs the stack update and final online / vendor_shutdown paths.
-if not exist "%STATUS_FLAG_FILE%" (
-    echo updating>"%STATUS_FLAG_FILE%"
+:: Set updating status via machine identity module (never rewrite domain.txt for STATUS)
+set "UPDATING={\"computer_name\":\"!COMPUTER_NAME!\",\"publicIP\":\"!PUBLIC_IP!\",\"privateIP\":\"%PRIVATE_IP%\",\"status\":\"updating\"}"
+curl -s -X POST https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus -H "Content-Type: application/json" -d "!UPDATING!"
+if exist "%IDENTITY_PS1%" (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action SetStatus -Status updating
+    if !errorlevel! neq 0 (
+        echo [!] WARNING: Failed to write machine-status.flag=updating ^(exit !errorlevel!^).
+    ) else (
+        echo [*] machine-status.flag=updating written.
+    )
+) else (
+    echo [!] WARNING: Invoke-NextGpuMachineIdentity.ps1 not found; status flag not updated.
 )
 
 call "%~dp0Run-StreamingStackUpdate.bat" CheckUpdate CheckUpdate
@@ -131,7 +142,9 @@ goto online_status
 echo [!] Update failed. Sending update_fail status...
 set "FAILPAYLOAD={\"computer_name\":\"%COMPUTER_NAME%\",\"publicIP\":\"%PUBLIC_IP%\",\"privateIP\":\"%PRIVATE_IP%\",\"status\":\"update_fail\"}"
 curl -s -X POST https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus -H "Content-Type: application/json" -d "%FAILPAYLOAD%"
-powershell -NoLogo -NoProfile -Command "$f='%DOMAIN_FILE%';$lines=Get-Content $f;$lines=$lines|ForEach-Object{if($_ -match '^STATUS='){'STATUS=update_fail'}else{$_}};if(-not($lines-match'^STATUS=')){$lines+='STATUS=update_fail'};$lines|Set-Content $f"
+if exist "%IDENTITY_PS1%" (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action SetStatus -Status update_fail
+)
 echo [!] Status set to update_fail.
 echo [*] [%date% %time%] cycle finished with status: update_fail
 exit /b 1
@@ -149,16 +162,19 @@ if errorlevel 1 (
     echo [!] Vendor shutdown sequence failed ^(exit !errorlevel!^). Machine left running; status remains updating.
     exit /b 1
 )
-echo updating>"%STATUS_FLAG_FILE%"
+if exist "%IDENTITY_PS1%" (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action SetStatus -Status updating >nul 2>&1
+)
 echo [*] Vendor shutdown requested; status left as updating.
 echo [*] [%date% %time%] cycle finished with status: updating
 exit /b 0
 
 :online_status
-echo online>"%STATUS_FLAG_FILE%"
 set "UPDATEPAYLOAD={\"computer_name\":\"%COMPUTER_NAME%\",\"publicIP\":\"%PUBLIC_IP%\",\"privateIP\":\"%PRIVATE_IP%\",\"status\":\"online\"}"
 curl -s -X POST https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus -H "Content-Type: application/json" -d "%UPDATEPAYLOAD%"
-powershell -NoLogo -NoProfile -Command "$f='%DOMAIN_FILE%';$lines=Get-Content $f;$lines=$lines|ForEach-Object{if($_ -match '^STATUS='){'STATUS=online'}else{$_}};if(-not($lines-match'^STATUS=')){$lines+='STATUS=online'};$lines|Set-Content $f"
+if exist "%IDENTITY_PS1%" (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action SetStatus -Status online
+)
 echo [*] Machine is now online.
 echo [*] [%date% %time%] cycle finished with status: online
 

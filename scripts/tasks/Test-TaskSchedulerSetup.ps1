@@ -37,7 +37,6 @@ $expectedChain = @(
     'NextGpuScheduledTaskCommon.ps1',
     'Register-HeartbeatTask.ps1',
     'Register-AutoRepairTask.ps1',
-    'Register-AutoUpdateTask.ps1',
     'Register-NvidiaLogonTask.ps1',
     'Register-EndSessionTask.ps1',
     'Register-NextGpuEndSessionRecoveryTask.ps1'
@@ -49,7 +48,6 @@ $orchestratorText = Get-Content -LiteralPath $orchestrator -Raw
 foreach ($scriptName in @(
     'Register-HeartbeatTask.ps1',
     'Register-AutoRepairTask.ps1',
-    'Register-AutoUpdateTask.ps1',
     'Register-NvidiaLogonTask.ps1',
     'Register-EndSessionTask.ps1',
     'Register-NextGpuEndSessionRecoveryTask.ps1',
@@ -73,7 +71,7 @@ Test-Line 'TaskScheduler.ps1 references Playnite logon' ($orchestratorText -like
 
 Test-Line 'NextGpuScheduledTaskCommon.ps1 exists' (Test-Path -LiteralPath (Join-Path $tasksDir 'NextGpuScheduledTaskCommon.ps1'))
 
-foreach ($bat in @('heartbeat-only.bat', 'auto-repair.bat', 'auto-update.bat')) {
+foreach ($bat in @('heartbeat-only.bat', 'auto-repair.bat', 'checking-update.bat')) {
     $batPath = Join-Path $repoRoot "scripts\runtime\$bat"
     Test-Line "Runtime script $bat" (Test-Path -LiteralPath $batPath) $batPath
 }
@@ -163,7 +161,6 @@ if ($Register) {
         $expectedTasks = @{
             'nextGPU-Heartbeat'  = @{ Interval = 'PT5M'; Bat = 'heartbeat-only.bat' }
             'nextGPU-AutoRepair' = @{ Interval = 'PT1M'; Bat = 'auto-repair.bat' }
-            'nextGPU-AutoUpdate' = @{ Interval = 'PT1H'; Bat = 'auto-update.bat' }
             'nextGPU-NvidiaLogon' = @{ Interval = $null; Bat = 'Start-Nvidia-InSession.ps1' }
             'EndSession'         = @{ Interval = $null; Bat = $null }
             'nextGPU-EndSessionRecoveryStartup' = @{ Interval = $null; Bat = 'Recover-NextGpuEndSessionAtStartup.ps1' }

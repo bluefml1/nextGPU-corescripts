@@ -56,7 +56,7 @@ echo.
 echo This removes local services, Sunshine/Moonlight/cloudflared, drivers
 echo (VDD/VAD/VB-CABLE - reboot if they still appear in Device Manager),
 echo scheduled tasks (including nextGPU-*), wallpaper/shutdown policy,
-echo CLOUDFLARE_TUNNEL_TOKEN, %%ProgramData%%\nextGPU, local users nextGPU and NextGPU-Admin, and generated logs.
+echo CLOUDFLARE_TUNNEL_TOKEN, %%ProgramData%%\nextGPU (targeted per-file cleanup), local users nextGPU and NextGPU-Admin, and generated logs.
 echo It does not delete Cloudflare DNS/tunnel resources from your account.
 echo It does not remove the NextGPU-Authority admin account or this script folder.
 echo.

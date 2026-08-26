@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Shared Sunshine + Moonlight install/update/pairing used by auto-update, checking-update, and auto-repair.
+    Shared Sunshine + Moonlight install/update/pairing used by checking-update and auto-repair.
 .PARAMETER SunshineMode
     CheckUpdate: reinstall only when remote VERSION:... differs from local sunshine-version.txt.
     ForceReinstall: always reinstall Sunshine.

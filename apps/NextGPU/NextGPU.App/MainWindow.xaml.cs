@@ -11,7 +11,7 @@ public partial class MainWindow : Window
     {
         ["Get Started"] = "Step-by-step provisioning and troubleshooting",
         ["Dashboard"] = "Machine health, services, and quick links",
-        ["Task Scheduler"] = "Heartbeat, auto-repair, auto-update, NVIDIA logon, and registration",
+        ["Task Scheduler"] = "Heartbeat, auto-repair, NVIDIA logon, and registration",
         ["User Storage (U:)"] = "One-click S3 setup — auto-mount U: on nextGPU sign-in",
         ["Setup Games & Apps"] = "Host setup (sync, layout, push)",
         ["User Experience"] = "Wallpaper and desktop cleanup",
