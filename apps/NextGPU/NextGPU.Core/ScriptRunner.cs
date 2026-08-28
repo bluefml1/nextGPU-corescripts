@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Principal;
 
 namespace NextGPU.Core;
 
@@ -134,7 +135,12 @@ public sealed class ScriptRunner
 
             if (elevated)
             {
-                psi.Verb = "runas";
+                // Only trigger UAC if we are NOT already elevated.
+                // When NextGPU.exe runs as admin, child processes inherit the elevated token automatically.
+                if (!IsCurrentProcessElevated())
+                {
+                    psi.Verb = "runas";
+                }
                 psi.UseShellExecute = true;
             }
             else if (keepConsoleOpen)
@@ -167,5 +173,12 @@ public sealed class ScriptRunner
         {
             return (false, ex.Message);
         }
+    }
+
+    private static bool IsCurrentProcessElevated()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        var principal = new WindowsPrincipal(identity);
+        return principal.IsInRole(WindowsBuiltInRole.Administrator);
     }
 }

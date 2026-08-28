@@ -13,6 +13,7 @@
     <Company>nextGPU</Company>
     <Product>NextGPU Controller</Product>
     <Description>Operator dashboard for nextGPU-corescripts GPU hosts</Description>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <PropertyGroup Condition="'$(RuntimeIdentifier)'=='win-x64'">
     <PublishSingleFile>true</PublishSingleFile>

@@ -6,7 +6,18 @@ setlocal enabledelayedexpansion
 :: - Resolves dotnet via absolute paths (avoids PATH + CMD (x86) paren bugs)
 :: - Builds app if needed / if existing EXE is corrupt
 :: - Verifies PE (MZ) + minimum size before launch
+:: - ALWAYS requires Administrator privileges
 :: =============================================================================
+
+:: Auto-elevate to Admin
+fltmc >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [*] NextGPU requires Administrator privileges.
+    echo [*] Requesting elevation...
+    powershell -NoProfile -Command "Start-Process cmd.exe -Verb RunAs -WindowStyle Normal -ArgumentList '/k cd /d \"%~dp0\" && call \"%~f0\"'"
+    exit /b
+)
+
 set "REPO_ROOT=%~dp0"
 if "%REPO_ROOT:~-1%"=="\" set "REPO_ROOT=%REPO_ROOT:~0,-1%"
 set "NEXTGPU_REPO_ROOT=%REPO_ROOT%"
@@ -45,7 +56,7 @@ if not defined EXE (
 )
 
 :launch
-echo [*] Starting NextGPU Controller...
+echo [*] Starting NextGPU Controller (Administrator)...
 echo [*] Repo: %REPO_ROOT%
 echo [*] Exe:  %EXE%
 start "" "%EXE%"

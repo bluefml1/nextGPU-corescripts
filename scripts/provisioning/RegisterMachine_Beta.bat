@@ -378,6 +378,27 @@ del "%NSSM_ZIP%" >nul
 echo [*] NSSM ready: %NSSM_EXE%
 
 :: ===================================================================
+:: [2.5/8] VC++ RUNTIME (prerequisite for Moonlight)
+:: ===================================================================
+echo [*] Checking Visual C++ Runtime...
+set "VCRUNTIME_OK="
+call :check_vcruntime
+if not defined VCRUNTIME_OK (
+    echo [!] VCRUNTIME140.dll not found. Installing Visual C++ Redistributable...
+    call :install_vcruntime
+    call :check_vcruntime
+    if not defined VCRUNTIME_OK (
+        echo [ERROR] Failed to install VC++ Runtime. Moonlight Web will not work.
+        echo         Please install manually: https://aka.ms/vs/17/release/vc_redist.x64.exe
+        pause
+    ) else (
+        echo [*] VC++ Runtime installed successfully.
+    )
+) else (
+    echo [*] VC++ Runtime detected.
+)
+
+:: ===================================================================
 :: [3/8] MOONLIGHT
 :: ===================================================================
 echo [3/8] Setting up Moonlight Web...
@@ -427,6 +448,20 @@ if exist "%CONFIG_PATH%" (
 "%NSSM_EXE%" set %MOONLIGHT_SERVICE% DisplayName "Moonlight Web Stream" >nul
 "%NSSM_EXE%" set %MOONLIGHT_SERVICE% Description "Moonlight Web streaming server for remote GPU access" >nul
 net start %MOONLIGHT_SERVICE% >nul
+
+:: Verify Moonlight web server is actually running (catches missing VC++ runtime)
+echo [*] Verifying Moonlight Web service...
+timeout /t 3 /nobreak >nul
+set "ML_VERIFY_FAIL="
+powershell -NoProfile -Command "try { $r = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/api/serverinfo' -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop; if ($r.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }"
+if errorlevel 1 (
+    echo [!] WARNING: Moonlight Web service may not be running properly.
+    echo [!] Check: %LOG_DIR%\moonlight-web-error.log
+    echo [!] Common cause: Missing VCRUNTIME140.dll
+    set "ML_VERIFY_FAIL=1"
+) else (
+    echo [*] Moonlight Web service is running.
+)
 
 :: ===================================================================
 :: [4/8] PAIRING
@@ -783,6 +818,11 @@ if exist "%IDENTITY_PS1%" (
     echo [!] WARNING: Invoke-NextGpuMachineIdentity.ps1 not found; ProgramData identity not saved.
 )
 
+:: Report maintenance status to AWS (local flag stays online; AWS sees this machine as in-setup)
+set "MAINTENANCE_STATUS={\"computer_name\":\"%NAME%\",\"publicIP\":\"%PUBLIC_IP%\",\"status\":\"maintenance\"}"
+echo [*] Reporting maintenance status to AWS...
+curl -s -X POST https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus -H "Content-Type: application/json" -d "!MAINTENANCE_STATUS!"
+
 :: Persist vendor_id for EndSession fallback (vendor machines skip auto-reboot)
 if not exist "%ProgramData%\nextGPU" mkdir "%ProgramData%\nextGPU" >nul 2>&1
 if defined VENDOR_ID if not "!VENDOR_ID!"=="" (
@@ -1076,6 +1116,13 @@ echo Installation Complete!
 echo Your machine is now registered and ready.
 echo ========================================
 echo.
+
+:: Report online status to AWS after successful setup (local flag already set to online)
+set "ONLINE_STATUS={\"computer_name\":\"%NAME%\",\"publicIP\":\"%PUBLIC_IP%\",\"status\":\"online\"}"
+echo [*] Reporting online status to AWS...
+curl -s -X POST https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus -H "Content-Type: application/json" -d "!ONLINE_STATUS!"
+echo.
+
 :: Build NextGPU Controller if .NET SDK is available (self-contained exe at repo root).
 set "NEXTGPU_BUILD=%SCRIPT_DIR%\apps\NextGPU\build-publish.bat"
 if exist "%NEXTGPU_BUILD%" (
@@ -1275,4 +1322,68 @@ if exist "%SUNSHINE_SESSION_PS1%" (
 timeout /t 5 /nobreak >nul
 echo [*] Sunshine restarted with VDD display settings.
 >>"%SUNSHINE_BIND_LOG%" echo [%DATE% %TIME%] DONE: sunshine restarted with VDD display settings
+exit /b 0
+
+:: ---------------------------------------------------------------------------
+:: check_vcruntime: Set VCRUNTIME_OK if VCRUNTIME140.dll is found in System32
+:: ---------------------------------------------------------------------------
+:check_vcruntime
+set "VCRUNTIME_OK="
+if exist "%SystemRoot%\System32\vcruntime140.dll" (
+    set "VCRUNTIME_OK=1"
+    exit /b 0
+)
+if exist "%SystemRoot%\SysWOW64\vcruntime140.dll" (
+    set "VCRUNTIME_OK=1"
+    exit /b 0
+)
+exit /b 0
+
+:: ---------------------------------------------------------------------------
+:: install_vcruntime: Install Visual C++ Redistributable via winget or direct EXE
+:: ---------------------------------------------------------------------------
+:install_vcruntime
+set "VCREDIST_URL=https://aka.ms/vs/17/release/vc_redist.x64.exe"
+set "VCREDIST_EXE=%TEMP%\nextgpu-vcredist-x64.exe"
+
+:: Try winget first
+where winget >nul 2>&1
+if not errorlevel 1 (
+    echo [*] Installing VC++ Runtime via winget...
+    fltmc >nul 2>&1
+    if errorlevel 1 (
+        powershell -NoProfile -Command ^
+          "$wg=(Get-Command winget -EA SilentlyContinue).Source; if (-not $wg) { exit 1 };" ^
+          "$p=Start-Process -FilePath $wg -Verb RunAs -Wait -PassThru -ArgumentList 'install --id Microsoft.VCRedist.2015+.x64 --exact --accept-package-agreements --accept-source-agreements --silent --disable-interactivity';" ^
+          "if ($null -eq $p) { exit 1 }; exit $p.ExitCode"
+    ) else (
+        winget install --id Microsoft.VCRedist.2015+.x64 --exact --accept-package-agreements --accept-source-agreements --silent --disable-interactivity
+    )
+    if not errorlevel 1 (
+        echo [*] VC++ Runtime installed via winget.
+        exit /b 0
+    )
+    echo [!] Winget install failed, trying direct download...
+)
+
+:: Fallback: download and install directly
+echo [*] Downloading VC++ Redistributable...
+powershell -NoProfile -Command ^
+  "$ProgressPreference='SilentlyContinue';" ^
+  "try { Invoke-WebRequest -Uri $env:VCREDIST_URL -OutFile $env:VCREDIST_EXE -UseBasicParsing } catch { exit 1 }"
+if errorlevel 1 (
+    echo [ERROR] Failed to download VC++ Redistributable.
+    exit /b 1
+)
+
+echo [*] Installing VC++ Redistributable (may prompt UAC)...
+fltmc >nul 2>&1
+if errorlevel 1 (
+    powershell -NoProfile -Command ^
+      "$p=Start-Process -FilePath $env:VCREDIST_EXE -Verb RunAs -Wait -PassThru -ArgumentList '/install /quiet /norestart';" ^
+      "if ($null -eq $p) { exit 1 }; exit $p.ExitCode"
+) else (
+    "%VCREDIST_EXE%" /install /quiet /norestart
+)
+echo [*] VC++ Runtime install completed.
 exit /b 0
