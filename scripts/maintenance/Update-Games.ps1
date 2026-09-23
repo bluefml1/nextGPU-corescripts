@@ -1,6 +1,6 @@
 # =====================================================================
 # Update-Games.ps1
-# Fetches apps from Moonlight Web and sends them to the updateNewGame API
+# Restarts Sunshine (API), fetches apps from Moonlight Web, sends to updateNewGame
 # Usage: .\scripts\maintenance\Update-Games.ps1 -ComputerName "MYPC_AB12" -PublicIP "1.2.3.4"
 # Or run without args — it will prompt you.
 # =====================================================================
@@ -8,13 +8,12 @@
 param(
     [string]$ComputerName,
     [string]$PublicIP,
-    [switch]$ForceMoonlightRefresh
+    [switch]$ForceMoonlightRefresh,
+    [switch]$SkipSunshineRestart
 )
 
 $API_URL   = "https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateNewGame"
 $HOST_ID   = 0
-$refreshFlag = if ($ForceMoonlightRefresh) { 'true' } else { 'false' }
-$APPS_URL  = "http://localhost:8080/api/apps?host_id=$HOST_ID&force_refresh=$refreshFlag"
 $DOMAIN    = $null  # auto-read from domain.txt if found
 
 $ScriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
@@ -22,6 +21,23 @@ $RepoRoot = if ($env:NEXTGPU_REPO_ROOT) {
     $env:NEXTGPU_REPO_ROOT
 } else {
     (Resolve-Path (Join-Path $ScriptDir '..\..')).Path
+}
+
+function Wait-MoonlightAppsReady {
+    param(
+        [string]$AppsUrl,
+        [int]$TimeoutSec = 45
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $null = Invoke-RestMethod -Uri $AppsUrl -Method GET -TimeoutSec 5
+            return $true
+        } catch {
+            Start-Sleep -Seconds 2
+        }
+    }
+    return $false
 }
 
 # ===================== READ domain.txt (optional) =====================
@@ -53,11 +69,47 @@ Write-Host "publicIP      : $PublicIP"      -ForegroundColor Cyan
 if ($DOMAIN) { Write-Host "domain        : $DOMAIN" -ForegroundColor Cyan }
 Write-Host ""
 
+# After Sunshine restart, force Moonlight to re-read Sunshine's app list.
+if (-not $SkipSunshineRestart) {
+    $ForceMoonlightRefresh = $true
+}
+$refreshFlag = if ($ForceMoonlightRefresh) { 'true' } else { 'false' }
+$APPS_URL  = "http://localhost:8080/api/apps?host_id=$HOST_ID&force_refresh=$refreshFlag"
+
+# ===================== RESTART SUNSHINE =====================
+if (-not $SkipSunshineRestart) {
+    Write-Host "[1/4] Restarting Sunshine via API (so app list is complete)..." -ForegroundColor Yellow
+    $restartPs1 = Join-Path $RepoRoot "scripts\provisioning\Invoke-SunshineApiRestart.ps1"
+    if (-not (Test-Path -LiteralPath $restartPs1)) {
+        Write-Host "ERROR: Invoke-SunshineApiRestart.ps1 not found at $restartPs1" -ForegroundColor Red
+        exit 1
+    }
+
+    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $restartPs1 `
+        -SkipResetDisplayPersistence `
+        -WaitAfterSec 12
+    $restartExit = $LASTEXITCODE
+    if ($null -eq $restartExit) { $restartExit = 0 }
+    # Invoke-SunshineApiRestart treats connection-closed (52/56) as success during restart.
+    if ($restartExit -ne 0 -and $restartExit -ne 52 -and $restartExit -ne 56) {
+        Write-Host "ERROR: Sunshine API restart failed (exit $restartExit)." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "   Sunshine restart requested. Waiting for Moonlight Web..." -ForegroundColor Green
+
+    if (-not (Wait-MoonlightAppsReady -AppsUrl $APPS_URL -TimeoutSec 45)) {
+        Write-Host "WARN: Moonlight Web not ready yet; will still attempt fetch." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "[1/4] Skipping Sunshine restart (-SkipSunshineRestart)." -ForegroundColor DarkGray
+}
+
 # ===================== FETCH APPS =====================
-Write-Host "[1/3] Fetching apps from Moonlight Web..." -ForegroundColor Yellow
+Write-Host ""
+Write-Host "[2/4] Fetching apps from Moonlight Web (force_refresh=$refreshFlag)..." -ForegroundColor Yellow
 
 try {
-    $Response = Invoke-RestMethod -Uri $APPS_URL -Method GET -TimeoutSec 10
+    $Response = Invoke-RestMethod -Uri $APPS_URL -Method GET -TimeoutSec 30
 } catch {
     Write-Host "ERROR: Could not reach $APPS_URL" -ForegroundColor Red
     Write-Host "       Make sure Moonlight Web service is running." -ForegroundColor DarkGray
@@ -77,7 +129,7 @@ foreach ($App in $Apps) {
 
 # ===================== BUILD PAYLOAD =====================
 Write-Host ""
-Write-Host "[2/3] Building payload..." -ForegroundColor Yellow
+Write-Host "[3/4] Building payload..." -ForegroundColor Yellow
 
 $Payload = [ordered]@{
     computer_name = $ComputerName
@@ -102,7 +154,7 @@ Write-Host "   Payload built with $($Apps.Count) game(s)." -ForegroundColor Gree
 
 # ===================== SEND TO API =====================
 Write-Host ""
-Write-Host "[3/3] Sending to updateNewGame API..." -ForegroundColor Yellow
+Write-Host "[4/4] Sending to updateNewGame API..." -ForegroundColor Yellow
 
 try {
     $Result = Invoke-RestMethod `

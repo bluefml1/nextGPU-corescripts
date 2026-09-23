@@ -714,7 +714,7 @@ if not defined LAST_CHECKIN (
     for /f "delims=" %%t in ('powershell -NoLogo -NoProfile -Command "Get-Date -Format \"yyyy-MM-dd HH:mm\""') do set "LAST_CHECKIN=%%t"
 )
 
-set "STATUS=online"
+set "STATUS=maintenance"
 set "NOTES=ready to use"
 for /f "delims=" %%d in ('powershell -NoLogo -NoProfile -Command "Get-Date -Format yyyyMMdd"') do set "LOG_DATE=%%d"
 set "LOG_FILE=%LOG_DIR%\setup_log_%LOG_DATE%.txt"
@@ -1117,10 +1117,10 @@ echo Your machine is now registered and ready.
 echo ========================================
 echo.
 
-:: Report online status to AWS after successful setup (local flag already set to online)
-set "ONLINE_STATUS={\"computer_name\":\"%NAME%\",\"publicIP\":\"%PUBLIC_IP%\",\"status\":\"online\"}"
-echo [*] Reporting online status to AWS...
-curl -s -X POST https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus -H "Content-Type: application/json" -d "!ONLINE_STATUS!"
+:: Report maintenance status to AWS after setup (host stays in-setup until operator marks online)
+set "MAINTENANCE_STATUS={\"computer_name\":\"%NAME%\",\"publicIP\":\"%PUBLIC_IP%\",\"status\":\"maintenance\"}"
+echo [*] Reporting maintenance status to AWS...
+curl -s -X POST https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus -H "Content-Type: application/json" -d "!MAINTENANCE_STATUS!"
 echo.
 
 :: Build NextGPU Controller if .NET SDK is available (self-contained exe at repo root).

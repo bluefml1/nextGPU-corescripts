@@ -5,6 +5,7 @@
 .DESCRIPTION
     Downloads official Playnite portable (e.g. 10.55.7z from GitHub) into a folder you choose.
     Extraction supports .zip/.7z/.rar using available tools (built-in ZIP, 7-Zip, or WinRAR/UnRAR).
+    If 7-Zip is missing, setup installs it automatically (winget, then silent EXE from 7-zip.org).
     Install path is saved to PlayniteInstall.path in this repo folder.
     Library and settings live in the install folder - all Windows users share the same Playnite when using that path.
     Default run: portable install, Steam/Epic disk-scan config, --updatelibraries, and --updatemetadata (covers). Use -SkipMetadata to skip artwork.
@@ -37,6 +38,7 @@
     Do not remove AppData junctions, installer artifacts, or obsolete PlayniteProfile.path.
 .PARAMETER SkipDesktopImport
     Do not run headless desktop app import from desktop-apps.allowlist.json (default: run when -WithSunshine).
+    Does NOT skip Steam/Epic library update or Steam/Epic Sunshine export — only allowlisted desktop apps (Adobe, etc.).
 .PARAMETER AllowlistPath
     Path to desktop-apps.allowlist.json (default: config\playnite\desktop-apps.allowlist.json).
 .PARAMETER DesktopImportScanMode
@@ -109,6 +111,8 @@ else {
 
 $script:RunSunshinePipeline = (-not $SkipSunshineExport) -or (-not $SkipWatcherInstall)
 $script:RunDesktopImport = (-not $SkipDesktopImport)
+# Skip desktop on Sunshine export when desktop import was skipped/cancelled; Steam/Epic still export.
+$script:SkipDesktopAppsOnExport = (-not $script:RunDesktopImport)
 
 $script:SteamPluginId = "CB91DFC9-B977-43BF-8E70-55F46E410FAB"
 $script:EpicPluginId = "00000002-DBD1-46C6-B5D0-B1BA559D10E4"
@@ -474,6 +478,13 @@ function Expand-PlaynitePortableArchive {
     $extractor = Get-7ZipExecutable
     if (-not $extractor) {
         $extractor = Get-WinRarExecutable
+    }
+    if (-not $extractor) {
+        Write-SetupLog 'No archive extractor found; installing 7-Zip...'
+        $extractor = Ensure-7ZipExecutable -LogAction {
+            param([string]$Message, [string]$Level = 'INFO')
+            Write-SetupLog $Message $Level
+        }
     }
     if (-not $extractor) {
         throw "No archive extractor found. Install 7-Zip or WinRAR/UnRAR to extract .zip/.7z/.rar archives."
@@ -943,7 +954,8 @@ function Invoke-HeadlessSunshinePipeline {
     param(
         [string]$PlayniteInstallDirParam,
         [string]$SunshineConfigDirParam,
-        [string]$AllowlistPathParam = ""
+        [string]$AllowlistPathParam = "",
+        [switch]$SkipDesktopApps
     )
 
     $exportScript = Join-Path $script:PlayNiteWatcherRepoRoot "Export-SunshineFromPlaynite.ps1"
@@ -954,7 +966,12 @@ function Invoke-HeadlessSunshinePipeline {
         if (-not (Test-Path -LiteralPath $exportScript)) {
             throw "Missing script: $exportScript"
         }
-        Write-SetupLog "Running headless Sunshine export (in-process)..."
+        if ($SkipDesktopApps) {
+            Write-SetupLog "Running headless Sunshine export (Steam/Epic only; desktop apps skipped)..."
+        }
+        else {
+            Write-SetupLog "Running headless Sunshine export (Steam/Epic + desktop)..."
+        }
         if (-not (Get-Command Invoke-SunshineExportFromPlaynite -ErrorAction SilentlyContinue)) {
             . $exportScript
         }
@@ -967,6 +984,9 @@ function Invoke-HeadlessSunshinePipeline {
         }
         if (-not [string]::IsNullOrWhiteSpace($AllowlistPathParam)) {
             $exportParams.AllowlistPath = $AllowlistPathParam
+        }
+        if ($SkipDesktopApps) {
+            $exportParams.SkipDesktopApps = $true
         }
         Invoke-SunshineExportFromPlaynite @exportParams
     }
@@ -1028,7 +1048,8 @@ function Invoke-SetupDesktopAppImport {
         -LogAction $logAction
 
     if (-not $scanRoots -or $scanRoots.Count -eq 0) {
-        Write-SetupLog "Desktop allowlist import: no scan roots; skipped."
+        Write-SetupLog "Desktop allowlist import: no scan roots; skipped (Steam/Epic library update and export still run)."
+        $script:SkipDesktopAppsOnExport = $true
         return
     }
 
@@ -1117,10 +1138,18 @@ Desktop apps: imported from config\playnite\desktop-apps.allowlist.json (Everyth
 "@
     }
     if ($script:RunSunshinePipeline) {
-        $text += @"
+        if ($script:SkipDesktopAppsOnExport) {
+            $text += @"
+
+Sunshine/Moonlight (ran during setup): Steam/Epic export and PlayNiteWatcher install completed (desktop apps skipped).
+"@
+        }
+        else {
+            $text += @"
 
 Sunshine/Moonlight (ran during setup): desktop + Steam/Epic export and PlayNiteWatcher install completed.
 "@
+        }
     }
     else {
         $text += @"
@@ -1224,7 +1253,7 @@ try {
                 -SkipEverythingInstallParam:$SkipEverythingInstall
         }
         else {
-            Write-SetupLog "Skipped desktop allowlist import (-SkipDesktopImport or setup without -WithSunshine)."
+            Write-SetupLog "Skipped desktop allowlist import (-SkipDesktopImport). Steam/Epic library update and Sunshine export still run."
         }
 
         Stop-PlayniteProcess -PlayniteExe $playniteExe
@@ -1244,7 +1273,7 @@ try {
         if ($script:RunSunshinePipeline) {
             Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Export to Sunshine and install PlayNiteWatcher"
             $step++
-            Invoke-HeadlessSunshinePipeline -PlayniteInstallDirParam $playniteDir -SunshineConfigDirParam $SunshineConfigDir -AllowlistPathParam $AllowlistPath
+            Invoke-HeadlessSunshinePipeline -PlayniteInstallDirParam $playniteDir -SunshineConfigDirParam $SunshineConfigDir -AllowlistPathParam $AllowlistPath -SkipDesktopApps:$script:SkipDesktopAppsOnExport
         }
         else {
             Write-SetupLog "Skipped Sunshine/Moonlight steps (use -WithSunshine to include export + PlayNiteWatcher)."
@@ -1368,7 +1397,7 @@ try {
                 -SkipEverythingInstallParam:$SkipEverythingInstall
         }
         else {
-            Write-SetupLog "Skipped desktop allowlist import (-SkipDesktopImport or setup without -WithSunshine)."
+            Write-SetupLog "Skipped desktop allowlist import (-SkipDesktopImport or setup without -WithSunshine). Steam/Epic library update and Sunshine export still run."
         }
 
         Stop-PlayniteProcess -PlayniteExe $playniteExe
@@ -1390,7 +1419,7 @@ try {
         if ($script:RunSunshinePipeline) {
             Write-SetupStep -Step $step -Total $script:SetupStepTotal -Name "Export to Sunshine and install PlayNiteWatcher"
             $step++
-            Invoke-HeadlessSunshinePipeline -PlayniteInstallDirParam $playniteDir -SunshineConfigDirParam $SunshineConfigDir -AllowlistPathParam $AllowlistPath
+            Invoke-HeadlessSunshinePipeline -PlayniteInstallDirParam $playniteDir -SunshineConfigDirParam $SunshineConfigDir -AllowlistPathParam $AllowlistPath -SkipDesktopApps:$script:SkipDesktopAppsOnExport
         }
         else {
             Write-SetupLog "Skipped Sunshine/Moonlight steps (use -WithSunshine to include export + PlayNiteWatcher)."

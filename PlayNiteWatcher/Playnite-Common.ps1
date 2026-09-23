@@ -112,6 +112,115 @@ function Get-7ZipExecutable {
     return $null
 }
 
+function Update-NextGpuProcessPathFromMachine {
+    try {
+        $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+        $user = [Environment]::GetEnvironmentVariable('Path', 'User')
+        if ($machine -or $user) {
+            $env:Path = (@($machine, $user) | Where-Object { $_ }) -join ';'
+        }
+    }
+    catch { }
+}
+
+function Ensure-7ZipExecutable {
+    <#
+    .SYNOPSIS
+        Return 7z.exe path; install 7-Zip via winget or silent EXE if missing.
+    #>
+    param(
+        [scriptblock]$LogAction = $null
+    )
+
+    function Write-Ensure7ZipLog {
+        param([string]$Message, [string]$Level = 'INFO')
+        if ($LogAction) {
+            & $LogAction $Message $Level
+        }
+        else {
+            Write-Host "[$Level] $Message"
+        }
+    }
+
+    $existing = Get-7ZipExecutable
+    if ($existing) {
+        return $existing
+    }
+
+    Write-Ensure7ZipLog '7-Zip not found; attempting automatic install...'
+
+    $winget = Get-Command winget -ErrorAction SilentlyContinue
+    if ($winget) {
+        Write-Ensure7ZipLog 'Installing 7-Zip via winget (7zip.7zip)...'
+        try {
+            & winget.exe install --id 7zip.7zip --exact --accept-package-agreements --accept-source-agreements --silent --disable-interactivity --source winget 2>&1 | Out-Null
+        }
+        catch {
+            Write-Ensure7ZipLog ("winget install error: " + $_.Exception.Message) 'WARN'
+        }
+        Update-NextGpuProcessPathFromMachine
+        $existing = Get-7ZipExecutable
+        if ($existing) {
+            Write-Ensure7ZipLog "7-Zip ready: $existing"
+            return $existing
+        }
+        Write-Ensure7ZipLog 'winget did not leave 7z.exe in Program Files; trying direct installer...' 'WARN'
+    }
+    else {
+        Write-Ensure7ZipLog 'winget not available; downloading 7-Zip installer...' 'WARN'
+    }
+
+    $installer = Join-Path $env:TEMP 'nextgpu-7z-setup-x64.exe'
+    $urls = @(
+        'https://www.7-zip.org/a/7z2409-x64.exe',
+        'https://7-zip.org/a/7z2409-x64.exe'
+    )
+    $downloaded = $false
+    foreach ($url in $urls) {
+        try {
+            Write-Ensure7ZipLog "Downloading 7-Zip: $url"
+            Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+            if ((Test-Path -LiteralPath $installer) -and ((Get-Item -LiteralPath $installer).Length -gt 1MB)) {
+                $downloaded = $true
+                break
+            }
+        }
+        catch {
+            Write-Ensure7ZipLog ("Download failed: " + $_.Exception.Message) 'WARN'
+        }
+    }
+
+    if (-not $downloaded) {
+        Write-Ensure7ZipLog 'Could not download 7-Zip installer.' 'ERROR'
+        return $null
+    }
+
+    Write-Ensure7ZipLog 'Running 7-Zip silent install (/S)...'
+    try {
+        $proc = Start-Process -FilePath $installer -ArgumentList '/S' -Wait -PassThru -NoNewWindow
+        if ($null -ne $proc -and $proc.ExitCode -ne 0) {
+            Write-Ensure7ZipLog "7-Zip installer exit $($proc.ExitCode)" 'WARN'
+        }
+    }
+    catch {
+        Write-Ensure7ZipLog ("7-Zip installer failed: " + $_.Exception.Message) 'ERROR'
+        return $null
+    }
+    finally {
+        Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+    }
+
+    Update-NextGpuProcessPathFromMachine
+    $existing = Get-7ZipExecutable
+    if ($existing) {
+        Write-Ensure7ZipLog "7-Zip ready: $existing"
+        return $existing
+    }
+
+    Write-Ensure7ZipLog '7-Zip install finished but 7z.exe was not found.' 'ERROR'
+    return $null
+}
+
 function Get-PlayniteDownloadDir {
     param([string]$InstallDir)
     return Join-Path $InstallDir "Download"
@@ -985,6 +1094,12 @@ function Expand-PlaynitePackageArchive {
     }
 
     $sevenZip = Get-7ZipExecutable
+    if (-not $sevenZip) {
+        if ($LogAction) {
+            & $LogAction '7-Zip not found; attempting automatic install...' 'WARN'
+        }
+        $sevenZip = Ensure-7ZipExecutable -LogAction $LogAction
+    }
     if (-not $sevenZip) {
         throw "Cannot extract $ArchivePath. Install 7-Zip or ensure .pext/.zip packages can be expanded."
     }
@@ -4295,6 +4410,48 @@ function Find-PlayniteGameForAllowlistExe {
         } -Descending | Select-Object -First 1)
 }
 
+function Test-PlayniteGameHasActiveBypassBinding {
+    <#
+        True when a Playnite game is already bound to a Bypass shortcut (.lnk under bypassesPath
+        or matching playniteId). Used so desktop allowlist import does not overwrite bypass launches.
+        Kept in Playnite-Common because Bypass-Shortcuts.psm1 is optional / may be absent.
+    #>
+    param(
+        [object]$Game,
+        [object[]]$Bindings,
+        [string]$BypassesPath = ""
+    )
+
+    if (-not $Game) { return $false }
+
+    foreach ($binding in @($Bindings)) {
+        if (-not $binding) { continue }
+        if ($binding.playniteId -and $Game.Id -and ($Game.Id -ieq $binding.playniteId)) {
+            return $true
+        }
+    }
+
+    $path = $Game.PrimaryPlayPath
+    if ([string]::IsNullOrWhiteSpace($path)) { return $false }
+    if (-not $path.EndsWith('.lnk', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $false
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($BypassesPath)) {
+        $bypassRoot = $BypassesPath.TrimEnd('\') + '\'
+        $normalized = $path
+        if (Get-Command Normalize-EverythingSearchPath -ErrorAction SilentlyContinue) {
+            try { $normalized = Normalize-EverythingSearchPath -Path $path } catch { $normalized = $path }
+        }
+        if ($normalized -and $normalized.StartsWith($bypassRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+
+    # .lnk play action outside known bypass root: treat as bypass-like and do not overwrite.
+    return $true
+}
+
 function Sync-PlayniteDesktopAppsToAllowlist {
     param(
         [string]$InstallDir,
@@ -4335,7 +4492,9 @@ function Sync-PlayniteDesktopAppsToAllowlist {
 
     $bypassBindings = @()
     $bypassesPath = ""
-    if (-not [string]::IsNullOrWhiteSpace($RepoRoot)) {
+    if (-not [string]::IsNullOrWhiteSpace($RepoRoot) -and
+        (Get-Command Get-BypassShortcutsConfig -ErrorAction SilentlyContinue) -and
+        (Get-Command Get-BypassBindingsFromConfig -ErrorAction SilentlyContinue)) {
         try {
             $bypassWrapper = Get-BypassShortcutsConfig -RepoRoot $RepoRoot
             $bypassBindings = @(Get-BypassBindingsFromConfig -Config $bypassWrapper.Config)
@@ -4373,7 +4532,16 @@ function Sync-PlayniteDesktopAppsToAllowlist {
             $existing = Find-PlayniteGameForAllowlistExe -Games $allGames -ExeName $entry.Exe -ScanRoot $ScanRoot
 
             if ($existing) {
-                if (Test-PlayniteGameHasActiveBypassBinding -Game $existing -Bindings $bypassBindings -BypassesPath $bypassesPath) {
+                $skipForBypass = $false
+                if (Get-Command Test-PlayniteGameHasActiveBypassBinding -ErrorAction SilentlyContinue) {
+                    try {
+                        $skipForBypass = [bool](Test-PlayniteGameHasActiveBypassBinding -Game $existing -Bindings $bypassBindings -BypassesPath $bypassesPath)
+                    }
+                    catch {
+                        $skipForBypass = $false
+                    }
+                }
+                if ($skipForBypass) {
                     if ($LogAction) { & $LogAction "Skipped (bypass active): $($entry.Title)" }
                     continue
                 }
@@ -4675,7 +4843,7 @@ function Show-DesktopAppImportScanModeDialog {
 
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "Desktop apps - scan scope"
-    $form.Size = New-Object System.Drawing.Size(480, 220)
+    $form.Size = New-Object System.Drawing.Size(480, 240)
     $form.StartPosition = "CenterScreen"
     $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
     $form.MaximizeBox = $false
@@ -4683,28 +4851,28 @@ function Show-DesktopAppImportScanModeDialog {
 
     $label = New-Object System.Windows.Forms.Label
     $label.Location = New-Object System.Drawing.Point(16, 16)
-    $label.Size = New-Object System.Drawing.Size(440, 56)
-    $label.Text = "Import allowlisted desktop apps (Adobe, etc.).`r`nChoose how to search for executables:"
+    $label.Size = New-Object System.Drawing.Size(440, 72)
+    $label.Text = "Import allowlisted desktop apps (Adobe, etc.).`r`nSteam/Epic games are imported separately and are not affected.`r`nChoose how to search for executables:"
     $form.Controls.Add($label)
 
     $btnFolder = New-Object System.Windows.Forms.Button
-    $btnFolder.Location = New-Object System.Drawing.Point(16, 88)
+    $btnFolder.Location = New-Object System.Drawing.Point(16, 100)
     $btnFolder.Size = New-Object System.Drawing.Size(210, 36)
     $btnFolder.Text = "1. Choose drive or folder..."
     $btnFolder.DialogResult = [System.Windows.Forms.DialogResult]::Yes
     $form.Controls.Add($btnFolder)
 
     $btnAllDrives = New-Object System.Windows.Forms.Button
-    $btnAllDrives.Location = New-Object System.Drawing.Point(246, 88)
+    $btnAllDrives.Location = New-Object System.Drawing.Point(246, 100)
     $btnAllDrives.Size = New-Object System.Drawing.Size(210, 36)
     $btnAllDrives.Text = "2. All drives (not system)"
     $btnAllDrives.DialogResult = [System.Windows.Forms.DialogResult]::No
     $form.Controls.Add($btnAllDrives)
 
     $btnCancel = New-Object System.Windows.Forms.Button
-    $btnCancel.Location = New-Object System.Drawing.Point(16, 136)
+    $btnCancel.Location = New-Object System.Drawing.Point(16, 148)
     $btnCancel.Size = New-Object System.Drawing.Size(440, 28)
-    $btnCancel.Text = "Skip desktop import"
+    $btnCancel.Text = "Skip desktop import (Steam/Epic still continue)"
     $btnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
     $form.Controls.Add($btnCancel)
 
@@ -4743,7 +4911,7 @@ function Resolve-DesktopAppImportScanRoots {
     if ($effectiveMode -eq 'Prompt') {
         $choice = Show-DesktopAppImportScanModeDialog
         if (-not $choice) {
-            & $write "Desktop import skipped (no scan option selected)." "WARN"
+            & $write "Desktop import skipped (no scan option selected). Steam/Epic continue." "WARN"
             return @()
         }
         $effectiveMode = $choice

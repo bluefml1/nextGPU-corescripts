@@ -75,6 +75,7 @@ public partial class SetupGamesAppsPage : Page
             var confirm = $"Push Moonlight games to AWS?\n\n" +
                           $"computer_name: {domain.ComputerName}\n" +
                           $"publicIP: {domain.PublicIp}\n\n" +
+                          "Restarts Sunshine via API first, then fetches Moonlight Web apps.\n" +
                           "Requires Moonlight Web on localhost:8080.";
             if (MessageBox.Show(confirm, "NextGPU", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
                 return;
@@ -85,7 +86,7 @@ public partial class SetupGamesAppsPage : Page
         };
         if (panel is StackPanel stack)
             UiLayoutHelper.AddStretchedActionWithHelp(stack, btn,
-                "Reads COMPUTER_NAME and PUBLIC_IP from domain.txt, fetches apps from Moonlight Web, and posts them to the AWS updateNewGame API.");
+                "Reads COMPUTER_NAME and PUBLIC_IP from domain.txt, restarts Sunshine via API, fetches apps from Moonlight Web, and posts them to the AWS updateNewGame API.");
         else
             panel.Children.Add(btn);
     }

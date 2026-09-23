@@ -5,6 +5,7 @@ setlocal enabledelayedexpansion
 :: update-games.bat — wrapper for Update-Games.ps1
 :: Double-click to run, or call from another script
 ::   /UseDomainTxt  — read COMPUTER_NAME and PUBLIC_IP from domain.txt (no prompts)
+:: Update-Games.ps1 restarts Sunshine via API before fetching Moonlight apps.
 :: =====================================================================
 
 set "USE_DOMAIN_TXT="
