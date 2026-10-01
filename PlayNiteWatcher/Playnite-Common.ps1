@@ -724,12 +724,20 @@ function Resolve-NextGpuSteamExePath {
         [string]$PreferNearPath = ''
     )
 
+    # Take the function from the module object: when this file is dot-sourced inside a function
+    # (Setup -> Export), this wrapper shadows the module export and Get-Command -Module returns $null.
     $pathMod = Join-Path $PSScriptRoot 'src\Playnite-Path.psm1'
     if (Test-Path -LiteralPath $pathMod) {
-        Import-Module $pathMod -Force
-        $cmd = Get-Command -Name Resolve-NextGpuSteamExePath -Module Playnite-Path -ErrorAction SilentlyContinue
-        if ($cmd) {
-            return & $cmd -PreferNearPath $PreferNearPath
+        Import-Module $pathMod -Force -WarningAction SilentlyContinue
+        $mod = $null
+        foreach ($loaded in @(Get-Module -Name 'Playnite-Path')) {
+            if ($loaded.ExportedFunctions.ContainsKey('Resolve-NextGpuSteamExePath')) {
+                $mod = $loaded
+                break
+            }
+        }
+        if ($mod) {
+            return & $mod.ExportedFunctions['Resolve-NextGpuSteamExePath'] -PreferNearPath $PreferNearPath
         }
     }
     return $null
@@ -3406,9 +3414,11 @@ function Ensure-EverythingReady {
         return $false
     }
 
+    $justInstalled = $false
     $esPath = Get-EverythingEsExePath -RepoRoot $RepoRoot
     if (-not $esPath) {
         & $write "Everything check: es.exe not found; downloading voidtools ES CLI..."
+        $justInstalled = $true
         if (-not (Install-EverythingIfMissing -RepoRoot $RepoRoot -LogAction $LogAction)) {
             Write-EverythingDiagnostics -RepoRoot $RepoRoot -LogAction $LogAction
             return $false
@@ -3429,8 +3439,10 @@ function Ensure-EverythingReady {
     }
 
     if (-not $SkipStartEverything) {
-        & $write "Everything check: IPC failed; attempting to start Everything for es.exe..."
-        if (Start-EverythingForEsIpc -RepoRoot $RepoRoot -LogAction $LogAction) {
+        # A fresh install indexes every NTFS volume before es.exe gets an answer (Error 8 until then).
+        $waitSeconds = if ($justInstalled) { 240 } else { 45 }
+        & $write "Everything check: IPC failed; starting Everything for es.exe (waiting up to ${waitSeconds}s for the index)..."
+        if (Start-EverythingForEsIpc -RepoRoot $RepoRoot -WaitSeconds $waitSeconds -LogAction $LogAction) {
             & $write "Everything is ready (es.exe IPC)."
             return $true
         }
@@ -3784,9 +3796,32 @@ function Find-AllowlistedExeHitForEntry {
         return $null
     }
 
-    $walkHits = @(Find-AllowlistedExesUnderPathWalk -ScanRoot $ScanRoot -Allowlist $single)
-    if ($walkHits.Length -gt 0) {
-        return $walkHits[0]
+    # One walk per scan root for the whole allowlist; callers loop entry-by-entry.
+    if ($null -eq $script:DesktopImportWalkCache) {
+        $script:DesktopImportWalkCache = @{}
+    }
+    $cacheKey = $ScanRoot.TrimEnd('\').ToLowerInvariant()
+    if (-not $script:DesktopImportWalkCache.ContainsKey($cacheKey)) {
+        $walkList = if ($Allowlist -and @($Allowlist).Count -gt 0) { @($Allowlist) } else { $single }
+        if ($LogAction) {
+            & $LogAction "Directory walk: $ScanRoot ($(@($walkList).Count) allowlisted exe name(s))..."
+        }
+        $byExe = @{}
+        foreach ($walkHit in @(Find-AllowlistedExesUnderPathWalk -ScanRoot $ScanRoot -Allowlist $walkList)) {
+            $byExe[$walkHit.AllowlistEntry.Exe.ToLowerInvariant()] = $walkHit
+        }
+        $script:DesktopImportWalkCache[$cacheKey] = $byExe
+    }
+
+    $exeKey = $Entry.Exe.ToLowerInvariant()
+    $cached = $script:DesktopImportWalkCache[$cacheKey]
+    if ($cached.ContainsKey($exeKey)) {
+        $walkHit = $cached[$exeKey]
+        return [PSCustomObject]@{
+            AllowlistEntry = $Entry
+            FullPath       = $walkHit.FullPath
+            LastWriteTime  = $walkHit.LastWriteTime
+        }
     }
 
     return $null
@@ -4470,6 +4505,7 @@ function Sync-PlayniteDesktopAppsToAllowlist {
         Missing = New-Object System.Collections.Generic.List[string]
         Extras  = New-Object System.Collections.Generic.List[string]
     }
+    $script:DesktopImportWalkCache = @{}
 
     if ($WhatIf) {
         foreach ($entry in $Allowlist) {
@@ -4999,16 +5035,16 @@ function Invoke-HeadlessDesktopAppImport {
                 & $LogAction "Desktop import: using es.exe only (Everything must stay running in tray/service)."
             }
             else {
-                & $LogAction "Desktop import: skipped allowlist search (Everything not reachable via es.exe)." "WARN"
+                & $LogAction "Desktop import: Everything not reachable via es.exe." "WARN"
             }
         }
     }
 
     if ($script:DesktopImportEverythingOnly -and -not $script:DesktopImportUseEverythingSearch) {
         if ($LogAction) {
-            & $LogAction "Desktop import aborted: start Everything (tray or service), then re-run setup or Import-PlayniteDesktopApps.ps1." "WARN"
+            & $LogAction "Desktop import: Everything not reachable; falling back to directory walk (slower)." "WARN"
         }
-        return @{ Added = 0; Updated = 0; Pruned = 0; RootsScanned = 0 }
+        $script:DesktopImportEverythingOnly = $false
     }
 
     $allowlistFile = Ensure-DesktopAppAllowlistFile -RepoRoot $RepoRoot

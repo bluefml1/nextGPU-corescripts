@@ -414,6 +414,14 @@ public static partial class LaunchInterop
     [LibraryImport("kernel32.dll", EntryPoint = "GetCurrentProcess", SetLastError = true)]
     public static partial IntPtr GetCurrentProcess();
 
+    public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+    [LibraryImport("kernel32.dll", EntryPoint = "OpenProcess", SetLastError = true)]
+    public static partial IntPtr OpenProcess(
+        uint dwDesiredAccess,
+        [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle,
+        uint dwProcessId);
+
     [LibraryImport("advapi32.dll", EntryPoint = "OpenProcessToken", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool OpenProcessToken(

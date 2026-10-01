@@ -823,6 +823,25 @@ function Invoke-ArrangeGarenaLayout {
     $clientDir = Deploy-GarenaClient -SourceClientDir $clientSource -GarenaRoot $bundleRoot -LogPath $logPath -UseGui:$UseGui
     $clientRoot = $bundleRoot
 
+    try {
+        $companionScript = Join-Path $PSScriptRoot 'Register-GarenaLaunchCompanion.ps1'
+        if (Test-Path -LiteralPath $companionScript) {
+            & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $companionScript -ClientDir $clientDir
+            if ($LASTEXITCODE -ne 0) {
+                Write-ArrangeGarenaWarn -LogPath $logPath -Message "Register-GarenaLaunchCompanion.ps1 exited $LASTEXITCODE; gxxapphelper will not auto-start with Garena."
+            }
+            else {
+                Write-ArrangeGarenaLog -LogPath $logPath -Message 'Registered gxxapphelper as NextGPUService launch companion of Garena.exe'
+            }
+        }
+        else {
+            Write-ArrangeGarenaWarn -LogPath $logPath -Message "Register-GarenaLaunchCompanion.ps1 not found: $companionScript"
+        }
+    }
+    catch {
+        Write-ArrangeGarenaWarn -LogPath $logPath -Message ("Could not register Garena launch companion: {0}" -f $_.Exception.Message)
+    }
+
     foreach ($check in @($layoutChecks)) {
         $null = Test-GarenaPostDeployInstallLayout `
             -GarenaRoot $garenaRoot `
@@ -852,6 +871,13 @@ function Invoke-ArrangeGarenaLayout {
         Write-ArrangeGarenaWarn -LogPath $logPath -Message ("Could not seed session-templates from Config: {0}" -f $_.Exception.Message)
     }
 
+    $helperScript = Join-Path $PSScriptRoot 'Start-GarenaAppHelper.ps1'
+    if (Test-Path -LiteralPath $helperScript) {
+        & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $helperScript -ClientDir $clientDir -Quiet
+        if ($LASTEXITCODE -ne 0) {
+            Write-ArrangeGarenaWarn -LogPath $logPath -Message "Could not start gxxapphelper before Garena (exit $LASTEXITCODE)."
+        }
+    }
     $null = Start-GarenaClientAfterArrange -ClientDir $clientDir -LogPath $logPath
 
     Write-ArrangeGarenaLog -LogPath $logPath -Message '=== Arrange Garena layout finished ==='

@@ -436,14 +436,13 @@ Bypass has four tabs: **Setup**, **Allowlist**, **Clean Session**, **Tools & Log
 
 ![Setup NextGPU-Admin dialog](images/setup-beginer/bypass-setup-nextgpu-admin-dialog.png)
 
-**NextGPU Service**
+**NextGPU Service** (moved to its own **NextGPU Service** page in the sidebar)
 
 The service runs elevated game launches for renters. After Register Machine it should show **Running — pipe responsive**.
 
-- **Refresh** — re-query install path and run state.
-- **Smoke Test** — send a ping on the named pipe; use after install or repair.
-- **Re-register (repair)** — re-run `Install-NextGPUService.ps1` if launches fail mysteriously.
-- **Stop / Restart / Uninstall** — maintenance only; active Moonlight sessions cannot launch games while the service is down.
+- **Service tab** — **Refresh**, **Smoke Test** (named-pipe ping), **Re-register (repair)** (re-runs `Install-NextGPUService.ps1`, which also seeds launch companions), **Stop / Restart / Uninstall** (maintenance only; renters cannot launch games while the service is down).
+- **Launch Companions tab** — list of *main app exe → companion exe* (for example `Garena.exe → gxxapphelper.exe`). When the service elevates a listed main app it first starts the companion as NextGPU-Admin; unlisted apps launch alone. **Find Paths with Everything & Seed** resolves the full paths and writes `C:\ProgramData\nextGPU\launch-companions.json` (admin-only ACL; the service ignores the file if non-admins can edit it).
+- **Logs tab** — NextGPUService log, launch companions log, Garena companion log.
 
 **Steam Library ACL**
 
@@ -495,7 +494,7 @@ More detail: [session/clean-session.md](session/clean-session.md)
 
 #### Tools & Logs tab
 
-Shortcuts to **Open Steam Library Folder**, **Open ProgramData\\nextGPU**, **Open Session Rules Log**, **Open NextGPUService Log**, and **Open Admin Setup Log** — use when troubleshooting Step 6.3.
+Shortcuts to **Open Steam Library Folder**, **Open ProgramData\\nextGPU**, **Open Session Rules Log**, **Open NextGPUService Log** (also on the NextGPU Service page), and **Open Admin Setup Log** — use when troubleshooting Step 6.3.
 
 **What "success" looks like for Bypass:**
 

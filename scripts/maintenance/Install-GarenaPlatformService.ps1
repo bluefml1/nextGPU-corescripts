@@ -2,20 +2,21 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    One-time admin install of Garena platform helper (gxxapphelper) for all users.
+    One-time admin install of the Garena platform service, then registers
+    gxxapphelper as a NextGPUService launch companion of Garena.exe.
 .DESCRIPTION
-    Runs during Arrange Garena as administrator. Installs/starts the platform
-    service and registers a machine startup task (SYSTEM) that launches
-    gxxapphelper.exe directly from Z: after reboot.
+    Runs the client's 'Garena platform service.lnk' installer (or gxxapphelper
+    directly if the shortcut is missing), then calls
+    Register-GarenaLaunchCompanion.ps1. No SYSTEM boot task is registered:
+    NextGPUService starts gxxapphelper as NextGPU-Admin before each elevated
+    Garena.exe launch.
 
-    nextGPU (non-admin) does NOT launch the helper — only Garena.exe.
+    nextGPU (non-admin) never launches the helper directly.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string]$ClientDir,
-    [string]$BootTaskName = 'nextGPU-GarenaPlatformService',
-    [string]$LegacyLogonTaskName = 'nextGPU-GarenaAppHelper'
+    [string]$ClientDir
 )
 
 Set-StrictMode -Version Latest
@@ -35,82 +36,6 @@ function Write-GarenaPlatformLog {
         Add-Content -LiteralPath (Join-Path $logDir 'garena-platform-service.log') -Value $line -Encoding UTF8
     }
     catch { }
-}
-
-function Remove-GarenaLegacyLogonTask {
-    param([string]$TaskName)
-    $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-    if ($existing) {
-        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
-        Write-GarenaPlatformLog "[*] Removed legacy logon task: $TaskName"
-    }
-}
-
-function Register-GarenaPlatformBootTask {
-    param(
-        [Parameter(Mandatory)][string]$TaskName,
-        [Parameter(Mandatory)][string]$HelperExe
-    )
-
-    $helperExe = Resolve-GarenaPathSafe -Path $HelperExe
-    if (-not $helperExe) {
-        throw "Invalid helper path for boot task: $HelperExe"
-    }
-    $workDir = Split-Path -Parent $helperExe
-    $escapedExe = [System.Security.SecurityElement]::Escape($helperExe)
-    $escapedWorkDir = [System.Security.SecurityElement]::Escape($workDir)
-
-    $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-    if ($existing) {
-        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
-    }
-
-    $taskXml = @"
-<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo>
-    <Description>Start Garena gxxapphelper at machine startup (SYSTEM). nextGPU users only open Garena.exe.</Description>
-  </RegistrationInfo>
-  <Triggers>
-    <BootTrigger>
-      <Enabled>true</Enabled>
-    </BootTrigger>
-  </Triggers>
-  <Principals>
-    <Principal id="Author">
-      <UserId>S-1-5-18</UserId>
-      <RunLevel>HighestAvailable</RunLevel>
-    </Principal>
-  </Principals>
-  <Settings>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
-    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
-    <AllowHardTerminate>true</AllowHardTerminate>
-    <StartWhenAvailable>true</StartWhenAvailable>
-    <AllowStartOnDemand>true</AllowStartOnDemand>
-    <Enabled>true</Enabled>
-    <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
-  </Settings>
-  <Actions Context="Author">
-    <Exec>
-      <Command>$escapedExe</Command>
-      <WorkingDirectory>$escapedWorkDir</WorkingDirectory>
-    </Exec>
-  </Actions>
-</Task>
-"@
-
-    $xmlPath = Join-Path $env:TEMP "nextgpu-garena-platform-$([Guid]::NewGuid().ToString('N')).xml"
-    try {
-        Set-Content -LiteralPath $xmlPath -Value $taskXml -Encoding Unicode -Force
-        Register-ScheduledTask -TaskName $TaskName -Xml (Get-Content -LiteralPath $xmlPath -Raw) -Force | Out-Null
-    }
-    finally {
-        Remove-Item -LiteralPath $xmlPath -Force -ErrorAction SilentlyContinue
-    }
-
-    Write-GarenaPlatformLog "[OK] Registered startup task: $TaskName -> $helperExe"
 }
 
 function Start-GarenaPlatformServiceInstall {
@@ -164,15 +89,15 @@ if (-not $helperExe) {
     throw "Resolved gxxapphelper path is invalid: $helperExe"
 }
 
-Save-GarenaAppHelperPath -HelperExePath $helperExe -ClientDir $clientDir
-Write-GarenaPlatformLog "[*] Saved helper path to ProgramData and repo maintenance folder"
-
-Remove-GarenaLegacyLogonTask -TaskName $LegacyLogonTaskName
 Start-GarenaPlatformServiceInstall -ClientDir $clientDir -HelperExe $helperExe
-Register-GarenaPlatformBootTask -TaskName $BootTaskName -HelperExe $helperExe
+
+$companionScript = Join-Path $PSScriptRoot 'Register-GarenaLaunchCompanion.ps1'
+& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $companionScript -ClientDir $clientDir
+if ($LASTEXITCODE -ne 0) {
+    throw "Register-GarenaLaunchCompanion.ps1 failed (exit $LASTEXITCODE)."
+}
 
 Write-Host ''
 Write-Host '[OK] Garena platform service installed (admin one-time).' -ForegroundColor Green
 Write-Host "  Helper: $helperExe" -ForegroundColor DarkGray
-Write-Host "  Startup task: $BootTaskName (SYSTEM at boot)" -ForegroundColor DarkGray
-Write-Host '  Renters (nextGPU): open Garena.exe only — do not launch gxxapphelper.' -ForegroundColor DarkGray
+Write-Host '  NextGPUService starts gxxapphelper as NextGPU-Admin before each elevated Garena.exe launch.' -ForegroundColor DarkGray

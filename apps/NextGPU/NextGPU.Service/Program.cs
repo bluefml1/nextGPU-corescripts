@@ -32,6 +32,7 @@ builder.Services
     .AddSingleton<CredentialService>()
     .AddSingleton<SessionLauncher>()
     .AddSingleton<ElevatedLauncher>()
+    .AddSingleton<LaunchCompanionService>()
     .AddSingleton<LaunchPipeServer>()
     .AddHostedService<NextGPUService>();
 

@@ -119,7 +119,9 @@ public partial class RegisterMachineDialog : Window
             ShowError("Original Price must be a valid number (e.g. 10.99).");
             return;
         }
-        if (string.IsNullOrWhiteSpace(adminAccount))
+        var renameAdmin = RenameCombo.SelectedItem is ComboBoxItem renameItem
+            && string.Equals(renameItem.Content?.ToString(), "Yes", StringComparison.OrdinalIgnoreCase);
+        if (renameAdmin && string.IsNullOrWhiteSpace(adminAccount))
         {
             ShowError("Admin account username is required.");
             return;
@@ -153,7 +155,7 @@ public partial class RegisterMachineDialog : Window
             Price = priceText,
             VendorId = string.IsNullOrWhiteSpace(vendorId) ? null : vendorId,
             VendorShutdownApiKey = string.IsNullOrWhiteSpace(vendorShutdownApiKey) ? null : vendorShutdownApiKey,
-            AdminAccountName = adminAccount,
+            AdminAccountName = renameAdmin ? adminAccount : "",
             AdminPasswordEncrypted = EncryptWithDpapi(adminPassword)
         };
         DialogResult = true;

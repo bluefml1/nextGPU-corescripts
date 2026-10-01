@@ -98,7 +98,8 @@ public partial class GetStartedPage : Page
                 {
                     ("1. Run Playnite Setup", (Action)(() => RunBatch(@"PlayNiteWatcher\Setup-PlayniteSteam.bat", keepConsoleOpen: true))),
                     ("2. Setup Games & Apps", (Action)(() => NavigateTo(new SetupGamesAppsPage()))),
-                    ("3. Host admin / Clean Session", (Action)(() => NavigateTo(new BypassPage())))
+                    ("3. Host admin / Clean Session", (Action)(() => NavigateTo(new BypassPage()))),
+                    ("4. NextGPU Service / Companions", (Action)(() => NavigateTo(new NextGPUServicePage())))
                 }),
             new StepItem(
                 "07",

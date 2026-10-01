@@ -9,7 +9,7 @@
                 <StackPanel>
                     <TextBlock Text="Bypass" Style="{StaticResource SectionTitleText}"/>
                     <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
-                               Text="Host home for NextGPU-Admin, launcher service, Steam library ACL, desktop allowlist elevation, and Clean Session folder rules."/>
+                               Text="Host home for NextGPU-Admin, Steam library ACL, desktop allowlist elevation, and Clean Session folder rules. The launcher service and launch companions live on the NextGPU Service page."/>
                 </StackPanel>
             </Border>
 
@@ -23,22 +23,10 @@
                             Margin="0,-1,0,0">
                         <StackPanel>
                             <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12"
-                                       Text="One-time host provisioning: admin account, game launcher service, and Steam library ACL for NextGPU-Admin."/>
+                                       Text="One-time host provisioning: admin account and Steam library ACL for NextGPU-Admin. Install the game launcher service from the NextGPU Service page."/>
 
                             <TextBlock Text="NEXTGPU-ADMIN" Style="{StaticResource LabelCaptionText}" Margin="0,0,0,8"/>
                             <StackPanel x:Name="AdminSetupPanel" Margin="0,0,0,16"/>
-
-                            <TextBlock Text="NEXTGPU SERVICE" Style="{StaticResource LabelCaptionText}" Margin="0,0,0,8"/>
-                            <WrapPanel Margin="0,0,0,8">
-                                <TextBlock x:Name="ServiceStateText" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" VerticalAlignment="Center"/>
-                                <Button x:Name="RefreshServiceBtn" Content="Refresh" Style="{StaticResource GhostButton}" Padding="10,6" Margin="12,0,0,0"
-                                        Click="RefreshService_Click" ToolTip="Re-query NextGPUService installation and run state"/>
-                            </WrapPanel>
-                            <TextBlock x:Name="ServicePathText" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                            <StackPanel x:Name="ServiceProgressPanel" Visibility="Collapsed" Margin="0,0,0,8">
-                                <TextBlock x:Name="ServiceProgressText" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11"/>
-                            </StackPanel>
-                            <WrapPanel x:Name="ServiceActionsPanel" Margin="0,0,0,16"/>
 
                             <TextBlock Text="STEAM LIBRARY ACL" Style="{StaticResource LabelCaptionText}" Margin="0,0,0,8"/>
                             <TextBlock Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"

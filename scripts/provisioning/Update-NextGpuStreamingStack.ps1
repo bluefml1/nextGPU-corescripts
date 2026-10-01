@@ -449,27 +449,95 @@ function Start-InstalledSunshine {
     if (-not (Test-Path -LiteralPath $sunshineExe)) {
         throw "Sunshine executable not found: $sunshineExe"
     }
-    Write-StackLog '[*] Setting Sunshine API credentials (RegisterMachine order: --creds, stop, start)...'
-    & $sunshineExe --creds bluefml1 letmeinpls 2>&1 | Out-Null
-    $credsPath = 'C:\Program Files\Sunshine\config\credentials'
-    if (Test-Path -LiteralPath $credsPath) {
-        Write-StackLog '[*] Sunshine config\credentials created.'
+    Write-StackLog '[*] Setting Sunshine API credentials (stop, --creds, verify sunshine_state.json + HTTP 200)...'
+    $configDir = 'C:\Program Files\Sunshine\config'
+    $statePath = Join-Path $configDir 'sunshine_state.json'
+    $authOk = $false
+    for ($try = 1; $try -le 2 -and -not $authOk; $try++) {
+        Write-StackLog "[*] Sunshine --creds attempt $try (bluefml1)..."
+        Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        if (-not (Test-Path -LiteralPath $configDir)) {
+            New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+        }
+        & $sunshineExe --creds bluefml1 letmeinpls 2>&1 | Out-Null
+        if (Test-Path -LiteralPath $statePath) {
+            try {
+                $state = Get-Content -Raw -LiteralPath $statePath | ConvertFrom-Json
+                if ([string]::IsNullOrWhiteSpace([string]$state.username) -or
+                    [string]::IsNullOrWhiteSpace([string]$state.password) -or
+                    [string]::IsNullOrWhiteSpace([string]$state.salt)) {
+                    Write-StackLog '[WARN] sunshine_state.json missing username/password/salt after --creds.' 'WARN'
+                }
+                else {
+                    Write-StackLog "[*] sunshine_state.json OK username=$($state.username)"
+                }
+            }
+            catch {
+                Write-StackLog "[WARN] sunshine_state.json unreadable: $($_.Exception.Message)" 'WARN'
+            }
+        }
+        else {
+            Write-StackLog '[WARN] sunshine_state.json missing after --creds (PEMs alone are not enough).' 'WARN'
+        }
+        # Official SunshineService holds Web UI in memory — stop it before reload after --creds.
+        foreach ($svcName in @('SunshineService', 'gpu-sunshine')) {
+            $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
+            if ($svc -and $svc.Status -ne 'Stopped') {
+                Write-StackLog "[*] Stopping $svcName before credential reload..."
+                Stop-Service -Name $svcName -Force -ErrorAction SilentlyContinue
+            }
+        }
+        Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        $sessionPs1 = Join-Path $RepoRootPath 'scripts\provisioning\Start-Sunshine-InSession.ps1'
+        if (Test-Path -LiteralPath $sessionPs1) {
+            & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $sessionPs1 -Quiet -ForceRestart | Out-Null
+        }
+        else {
+            $official = Get-Service -Name 'SunshineService' -ErrorAction SilentlyContinue
+            if ($official) {
+                Start-Service -Name 'SunshineService' -ErrorAction SilentlyContinue
+            }
+            else {
+                Start-Process -FilePath $sunshineExe -WorkingDirectory (Split-Path -Parent $sunshineExe) | Out-Null
+            }
+        }
+        Start-Sleep -Seconds 5
+        $portReady = $false
+        for ($i = 0; $i -lt 30; $i++) {
+            try {
+                $c = New-Object System.Net.Sockets.TcpClient
+                $c.Connect('127.0.0.1', 47990)
+                $c.Close()
+                $portReady = $true
+                break
+            }
+            catch {
+                Start-Sleep -Seconds 1
+            }
+        }
+        if (-not $portReady) {
+            Write-StackLog '[WARN] Sunshine HTTPS port 47990 not open after start.' 'WARN'
+            continue
+        }
+        if (-not (Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue)) {
+            Write-StackLog '[WARN] Sunshine process not running after start.' 'WARN'
+            continue
+        }
+        $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+        if (-not $curl) {
+            throw 'curl.exe not found; cannot verify Sunshine login.'
+        }
+        $httpCode = & curl.exe -k --max-redirs 0 -u 'bluefml1:letmeinpls' -s -o NUL -w '%{http_code}' --max-time 15 'https://localhost:47990/api/apps' 2>$null
+        Write-StackLog "[*] Sunshine /api/apps auth check: HTTP $httpCode"
+        if ("$httpCode" -eq '200') {
+            $authOk = $true
+            Write-StackLog '[*] Sunshine login OK: bluefml1 authenticated.'
+        }
     }
-    else {
-        Write-StackLog '[WARN] Sunshine config\credentials missing after --creds; Web UI onboarding may block /api/pin and /api/restart.' 'WARN'
-    }
-    Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-    $sessionPs1 = Join-Path $RepoRootPath 'scripts\provisioning\Start-Sunshine-InSession.ps1'
-    if (Test-Path -LiteralPath $sessionPs1) {
-        & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $sessionPs1 -Quiet | Out-Null
-    }
-    else {
-        Start-Process -FilePath $sunshineExe | Out-Null
-    }
-    Start-Sleep -Seconds 3
-    if (-not (Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue)) {
-        throw 'Sunshine failed to start after install.'
+    if (-not $authOk) {
+        throw 'Sunshine login bluefml1 failed (need sunshine_state.json + HTTP 200 on /api/apps). Web UI will keep asking to register.'
     }
 }
 

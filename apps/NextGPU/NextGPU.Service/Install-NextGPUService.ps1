@@ -211,6 +211,30 @@ if (-not (Test-Path $logDir)) {
     Write-Log "Log directory created: $logDir"
 }
 
+# Launch companions: merge config\launch-companions.defaults.json and resolve paths (non-fatal).
+$companionRepo = if (-not [string]::IsNullOrWhiteSpace($RepoRoot)) { $RepoRoot }
+    else { Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent }
+$companionScript = Join-Path $companionRepo 'scripts\runtime\Update-LaunchCompanions.ps1'
+if (Test-Path -LiteralPath $companionScript) {
+    Write-Log "Seeding launch companions ($companionScript -SeedDefaults -Seed)..."
+    try {
+        & {
+            $ErrorActionPreference = 'Continue'
+            & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $companionScript -SeedDefaults -Seed -NoEverythingInstall 2>&1 |
+                ForEach-Object { Write-Log "  $_" }
+        }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Log "WARN: launch companion seeding exited $LASTEXITCODE; re-run from NextGPU Service > Launch Companions."
+        }
+    }
+    catch {
+        Write-Log "WARN: launch companion seeding failed: $($_.Exception.Message)"
+    }
+}
+else {
+    Write-Log "NOTE: $companionScript not found; launch companions not seeded."
+}
+
 if ($svc.Status -eq 'Running') {
     Write-Log "=== $scriptName completed successfully ==="
 } else {

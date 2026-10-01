@@ -1179,7 +1179,8 @@ foreach ($pdPath in @(
         (Join-Path $env:ProgramData 'nextGPU\startup-publish-pending.flag'),
         (Join-Path $env:ProgramData 'nextGPU\machine-identity.env'),
         (Join-Path $env:ProgramData 'nextGPU\machine-status.flag'),
-        (Join-Path $env:ProgramData 'nextGPU\user-storage.json')
+        (Join-Path $env:ProgramData 'nextGPU\user-storage.json'),
+        (Join-Path $env:ProgramData 'nextGPU\launch-companions.json')
     )) {
     Remove-PathSafe -Path $pdPath
 }

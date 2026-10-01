@@ -30,21 +30,52 @@ function Resolve-RepoRoot {
 $repo = Resolve-RepoRoot -Override $RepoRoot
 $missing = New-Object System.Collections.Generic.List[string]
 
-# --- Sunshine API credentials ---
+# --- Sunshine API credentials (sunshine_state.json = UI password; PEMs are TLS only) ---
+$statePath = 'C:\Program Files\Sunshine\config\sunshine_state.json'
 $credsPath = 'C:\Program Files\Sunshine\config\credentials'
-if (-not (Test-Path -LiteralPath $credsPath)) {
+if (-not (Test-Path -LiteralPath $statePath)) {
     [void]$missing.Add('sunshine-credentials')
-    Write-Output "MISSING: Sunshine credentials folder ($credsPath)"
+        Write-Output "MISSING: Sunshine UI state ($statePath). Run: sunshine.exe --creds bluefml1 letmeinpls"
 }
 else {
-    $credFiles = @(Get-ChildItem -LiteralPath $credsPath -File -ErrorAction SilentlyContinue)
-    if ($credFiles.Count -eq 0) {
+    $stateLen = (Get-Item -LiteralPath $statePath).Length
+    if ($stateLen -lt 8) {
         [void]$missing.Add('sunshine-credentials')
-        Write-Output "MISSING: Sunshine credentials folder is empty ($credsPath)"
+        Write-Output "MISSING: sunshine_state.json too small ($stateLen bytes)"
     }
     else {
-        Write-Output "OK: Sunshine credentials ($($credFiles.Count) file(s))"
+        Write-Output "OK: sunshine_state.json ($stateLen bytes)"
     }
+}
+
+# Optional: TLS material under credentials\ (not sufficient alone)
+if (-not (Test-Path -LiteralPath $credsPath)) {
+    Write-Output "WARN: TLS credentials folder missing ($credsPath)"
+}
+else {
+    $pemCount = @(Get-ChildItem -LiteralPath $credsPath -Filter '*.pem' -File -ErrorAction SilentlyContinue).Count
+    Write-Output "INFO: TLS pem files in credentials\: $pemCount (not a login substitute)"
+}
+
+# Live auth check when Sunshine is up
+try {
+    $tcp = New-Object System.Net.Sockets.TcpClient
+    $tcp.Connect('127.0.0.1', 47990)
+    $tcp.Close()
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($curl) {
+        $httpCode = & curl.exe -k --max-redirs 0 -u 'bluefml1:letmeinpls' -s -o NUL -w '%{http_code}' --max-time 10 'https://localhost:47990/api/apps' 2>$null
+        if ("$httpCode" -eq '200') {
+            Write-Output 'OK: Sunshine /api/apps auth HTTP 200 (bluefml1)'
+        }
+        else {
+            [void]$missing.Add('sunshine-credentials')
+            Write-Output "MISSING: Sunshine /api/apps auth HTTP $httpCode (want 200 for bluefml1)"
+        }
+    }
+}
+catch {
+    Write-Output 'INFO: Sunshine port 47990 not open; skipped live auth check'
 }
 
 # --- Moonlight pairing material ---

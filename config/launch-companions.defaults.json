@@ -1,0 +1,6 @@
+{
+  "_comment": "Default launch companions merged by scripts\\runtime\\Update-LaunchCompanions.ps1 -SeedDefaults (run on NextGPUService install). Exe names only; -Seed resolves paths via Everything. Existing rows in %ProgramData%\\nextGPU\\launch-companions.json are never overwritten.",
+  "companions": [
+    { "mainExe": "Garena.exe", "exeName": "gxxapphelper.exe", "delayMs": 2000 }
+  ]
+}

@@ -1,10 +1,12 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Resolve or start Garena gxxapphelper.exe (admin / diagnostics only).
+    Resolve or start Garena gxxapphelper.exe as the current user (admin use).
 .DESCRIPTION
-    Renters (nextGPU) must NOT use this — platform helper is installed once by admin
-    during Arrange Garena (Install-GarenaPlatformService.ps1).
+    Used by garena.bat and Arrange Garena so admin launches get the helper.
+    Renters (nextGPU) get the helper from NextGPUService: it starts gxxapphelper
+    as NextGPU-Admin before each elevated Garena.exe launch
+    (launch-companions.json, written by Register-GarenaLaunchCompanion.ps1).
 #>
 [CmdletBinding()]
 param(

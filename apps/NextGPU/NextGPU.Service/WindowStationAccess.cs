@@ -104,7 +104,7 @@ internal static class WindowStationAccess
         }
     }
 
-    private static bool TryGetTokenUserSid(
+    internal static bool TryGetTokenUserSid(
         IntPtr hToken,
         out IntPtr pSid,
         out IntPtr ownedBuffer,

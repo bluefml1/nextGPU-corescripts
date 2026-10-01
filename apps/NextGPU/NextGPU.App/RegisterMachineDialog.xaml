@@ -88,9 +88,17 @@
                     <TextBlock Text="Required for elevated launches via NextGPU-Admin (CreateProcessWithLogonW). Stored securely with DPAPI."
                                Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,14"/>
 
+                    <TextBlock Text="CHANGE USERNAME" Style="{StaticResource LabelCaptionText}"/>
+                    <ComboBox x:Name="RenameCombo" Margin="0,0,0,14" SelectedIndex="0">
+                        <ComboBoxItem Content="Yes"/>
+                        <ComboBoxItem Content="No"/>
+                    </ComboBox>
+                    <TextBlock Text="Yes renames the account below to NextGPU-Authority. No keeps the current username. The prefilled name stays on screen either way."
+                               Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,-10,0,14"/>
+
                     <TextBlock Text="ADMIN ACCOUNT TO RENAME" Style="{StaticResource LabelCaptionText}"/>
                     <TextBox x:Name="AdminAccountBox" Margin="0,0,0,4"/>
-                    <TextBlock Text="Renamed to NextGPU-Authority during setup."
+                    <TextBlock Text="Renamed to NextGPU-Authority during setup when Change username is Yes."
                                Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap"/>
                 </StackPanel>
             </ScrollViewer>

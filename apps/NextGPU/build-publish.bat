@@ -345,6 +345,10 @@ goto :svc_check_done
 :svc_running
 echo [OK] NextGPUService is running.
 :svc_check_done
+if not exist "%REPO_ROOT%\scripts\runtime\Update-LaunchCompanions.ps1" exit /b 0
+echo [*] Seeding launch companions from config\launch-companions.defaults.json...
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\runtime\Update-LaunchCompanions.ps1" -SeedDefaults -Seed -NoEverythingInstall <nul
+if errorlevel 1 echo [WARN] Launch companion seeding failed; re-run from NextGPU Service ^> Launch Companions.
 exit /b 0
 
 :: ---------------------------------------------------------------------------

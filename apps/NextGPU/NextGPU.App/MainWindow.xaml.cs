@@ -15,7 +15,8 @@ public partial class MainWindow : Window
         ["User Storage (U:)"] = "One-click S3 setup — auto-mount U: on nextGPU sign-in",
         ["Setup Games & Apps"] = "Host setup (sync, layout, push)",
         ["User Experience"] = "Wallpaper and desktop cleanup",
-        ["Bypass"] = "NextGPU-Admin, launcher service, Steam ACL, allowlist elevate, Clean Session",
+        ["Bypass"] = "NextGPU-Admin, Steam ACL, allowlist elevate, Clean Session",
+        ["NextGPU Service"] = "Launcher service status and launch companions",
         ["Sunshine"] = "Streaming host, display binding, and diagnostics",
         ["PlayNite"] = "Playnite setup, allowlist, Sunshine export, and verify",
         ["Moonlight"] = "Moonlight Web and tunnel controls",
@@ -39,6 +40,7 @@ public partial class MainWindow : Window
             NavSetupGamesAppsBtn,
             NavUserExperienceBtn,
             NavBypassBtn,
+            NavNextGpuServiceBtn,
             NavSunshineBtn,
             NavPlayniteBtn,
             NavMoonlightBtn,
@@ -92,6 +94,9 @@ public partial class MainWindow : Window
 
     private void NavBypass_Click(object sender, RoutedEventArgs e) =>
         NavigateToPage(new BypassPage(), NavBypassBtn, "Bypass");
+
+    private void NavNextGpuService_Click(object sender, RoutedEventArgs e) =>
+        NavigateToPage(new NextGPUServicePage(), NavNextGpuServiceBtn, "NextGPU Service");
 
     private void NavSunshine_Click(object sender, RoutedEventArgs e) =>
         NavigateToPage(new SunshinePage(), NavSunshineBtn, "Sunshine");

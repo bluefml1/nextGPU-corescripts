@@ -158,8 +158,16 @@ set /p "VENDOR_ID=Enter Vendor ID (optional, press Enter to skip): "
 for /f "delims=" %%V in ('powershell -NoLogo -NoProfile -Command "$v='%VENDOR_ID%'; if([string]::IsNullOrWhiteSpace($v)){''} else {$v.Trim()}"') do set "VENDOR_ID=%%V"
 
 :input_admin_account
+echo Some machines cannot rename the local admin username.
+choice /C YN /N /M "Change admin username to NextGPU-Authority? [Y/N]: "
+if !errorlevel! equ 2 (
+    set "ADMIN_ACCOUNT_NAME="
+    goto :config_summary
+)
+
+:input_admin_account_name
 set /p "ADMIN_ACCOUNT_NAME=Enter current admin account username to rename: "
-if "%ADMIN_ACCOUNT_NAME%"=="" (echo ERROR: Admin account username cannot be empty! & goto input_admin_account)
+if "%ADMIN_ACCOUNT_NAME%"=="" (echo ERROR: Admin account username cannot be empty! & goto input_admin_account_name)
 
 :config_summary
 echo.
@@ -169,7 +177,7 @@ echo - API Token: %CF_API_TOKEN:~0,10%...
 echo - Account ID: %ACCOUNT_ID%
 echo - Price: $%PRICE%
 if defined VENDOR_ID if not "!VENDOR_ID!"=="" (echo - Vendor ID: !VENDOR_ID!) else (echo - Vendor ID: ^(not set^))
-echo - Admin account (username + full name): %ADMIN_ACCOUNT_NAME% -^> NextGPU-Authority
+if "!ADMIN_ACCOUNT_NAME!"=="" (echo - Admin account: username unchanged) else (echo - Admin account: !ADMIN_ACCOUNT_NAME! -^> NextGPU-Authority)
 echo.
 if "!RM_UI_CONFIG!"=="1" goto :config_confirmed
 set /p "CONFIRM=Is this correct? (Y/N): "
@@ -310,10 +318,13 @@ echo [*] Installing Sunshine...
 "%SUNSHINE_DIR%\Sunshine.exe" /S
 timeout /t 5 /nobreak >nul
 
-"C:\Program Files\Sunshine\sunshine.exe" --creds bluefml1 letmeinpls
-taskkill /f /im sunshine.exe >nul 2>&1
-timeout /t 2 /nobreak >nul
-start "" "C:\Program Files\Sunshine\sunshine.exe"
+call :set_sunshine_creds
+if errorlevel 1 (
+    echo [!] ERROR: Sunshine bluefml1 login was not established. Stopping RegisterMachine.
+    echo [!] Need: sunshine_state.json + HTTP 200 on https://localhost:47990/api/apps
+    pause
+    exit /b 1
+)
 
 set "POST_SUNSHINE_PS1=%SCRIPT_DIR%\scripts\provisioning\Invoke-PostSunshineSetup.ps1"
 if not exist "%POST_SUNSHINE_PS1%" (
@@ -321,6 +332,14 @@ if not exist "%POST_SUNSHINE_PS1%" (
 ) else (
     echo Running post-Sunshine setup...
     powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%POST_SUNSHINE_PS1%"
+)
+
+:: Re-apply + re-verify after post-setup ^(conf copy must not leave onboarding open^)
+call :set_sunshine_creds
+if errorlevel 1 (
+    echo [!] ERROR: Sunshine bluefml1 login failed after post-setup. Stopping RegisterMachine.
+    pause
+    exit /b 1
 )
 
 if "!ENABLE_VDD!"=="1" (
@@ -457,8 +476,25 @@ powershell -NoProfile -Command "try { $r = Invoke-WebRequest -Uri 'http://127.0.
 if errorlevel 1 (
     echo [!] WARNING: Moonlight Web service may not be running properly.
     echo [!] Check: %LOG_DIR%\moonlight-web-error.log
-    echo [!] Common cause: Missing VCRUNTIME140.dll
+    echo [!] Common cause: Missing VCRUNTIME140.dll - attempting VC++ install + service restart...
     set "ML_VERIFY_FAIL=1"
+    call :install_vcruntime
+    call :check_vcruntime
+    if defined VCRUNTIME_OK (
+        net stop %MOONLIGHT_SERVICE% >nul 2>&1
+        timeout /t 2 /nobreak >nul
+        net start %MOONLIGHT_SERVICE% >nul 2>&1
+        timeout /t 3 /nobreak >nul
+        powershell -NoProfile -Command "try { $r = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/api/serverinfo' -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop; if ($r.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }"
+        if not errorlevel 1 (
+            echo [*] Moonlight Web service is running after VC++ install.
+            set "ML_VERIFY_FAIL="
+        ) else (
+            echo [!] WARNING: Moonlight Web still not responding after VC++ install.
+        )
+    ) else (
+        echo [!] WARNING: VC++ Runtime still missing. Install manually: https://aka.ms/vs/17/release/vc_redist.x64.exe
+    )
 ) else (
     echo [*] Moonlight Web service is running.
 )
@@ -1001,12 +1037,17 @@ echo.
 :: ===================================================================
 :: Post-Registration: Set Admin Account Username and Full Name (after wallpaper)
 :: ===================================================================
+if "!ADMIN_ACCOUNT_NAME!"=="" (
+    echo [*] SKIP: admin username unchanged.
+    goto :after_admin_rename
+)
 echo [*] Setting admin account "%ADMIN_ACCOUNT_NAME%" username and full name to NextGPU-Authority...
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$old='%ADMIN_ACCOUNT_NAME%'.Trim(); $new='NextGPU-Authority'; $u=Get-LocalUser -Name $old -EA SilentlyContinue; if(-not $u){$u=Get-LocalUser -Name $new -EA SilentlyContinue}; if(-not $u){Write-Host '[!] WARN: account not found:' $old; exit 1}; $e=Get-LocalUser -Name $new -EA SilentlyContinue; if($e -and $e.SID -ne $u.SID){Write-Host '[!] ERROR:' $new 'already exists'; exit 1}; if($u.Name -ine $new){Rename-LocalUser -Name $u.Name -NewName $new; Write-Host '[*] OK: renamed username' $u.Name 'to' $new}; if((Get-LocalUser -Name $new).FullName -cne $new){Set-LocalUser -Name $new -FullName $new; Write-Host '[*] OK: full name set to' $new} elseif($u.Name -ieq $new){Write-Host '[*] SKIP: username and full name already' $new}; exit 0"
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$old='%ADMIN_ACCOUNT_NAME%'.Trim(); if([string]::IsNullOrWhiteSpace($old)){Write-Host '[*] SKIP: admin username unchanged'; exit 0}; $new='NextGPU-Authority'; $u=Get-LocalUser -Name $old -EA SilentlyContinue; if(-not $u){$u=Get-LocalUser -Name $new -EA SilentlyContinue}; if(-not $u){Write-Host '[!] WARN: account not found:' $old; exit 1}; $e=Get-LocalUser -Name $new -EA SilentlyContinue; if($e -and $e.SID -ne $u.SID){Write-Host '[!] ERROR:' $new 'already exists'; exit 1}; if($u.Name -ine $new){Rename-LocalUser -Name $u.Name -NewName $new; Write-Host '[*] OK: renamed username' $u.Name 'to' $new}; if((Get-LocalUser -Name $new).FullName -cne $new){Set-LocalUser -Name $new -FullName $new; Write-Host '[*] OK: full name set to' $new} elseif($u.Name -ieq $new){Write-Host '[*] SKIP: username and full name already' $new}; exit 0"
 if !errorlevel! neq 0 (
     echo [!] WARNING: Failed to update admin account. It may not exist or was already configured.
 )
 
+:after_admin_rename
 echo [*] Creating NextGPURestricted group...
 set "NEXTGPU_GROUP_PS1=%PROVISIONING_DIR%\Ensure-NextGpuRestrictedGroup.ps1"
 if exist "%NEXTGPU_GROUP_PS1%" (
@@ -1325,7 +1366,92 @@ echo [*] Sunshine restarted with VDD display settings.
 exit /b 0
 
 :: ---------------------------------------------------------------------------
-:: check_vcruntime: Set VCRUNTIME_OK if VCRUNTIME140.dll is found in System32
+:: set_sunshine_creds: Stop Sunshine, set Web UI login bluefml1 / letmeinpls,
+:: require sunshine_state.json (real UI password store) + HTTP 200 on /api/apps.
+:: PEMs under config\credentials are TLS only — not enough for login.
+:: ---------------------------------------------------------------------------
+:set_sunshine_creds
+if not exist "C:\Program Files\Sunshine\sunshine.exe" (
+    echo [!] ERROR: Sunshine.exe not found; cannot set credentials.
+    exit /b 1
+)
+set "SUN_STATE=C:\Program Files\Sunshine\config\sunshine_state.json"
+set "SUN_AUTH_OK="
+set "SUN_CREDS_TRY=0"
+
+:set_sunshine_creds_try
+set /a SUN_CREDS_TRY+=1
+echo [*] Setting Sunshine Web UI credentials: bluefml1 / letmeinpls ^(attempt !SUN_CREDS_TRY!^)
+net stop SunshineService >nul 2>&1
+sc stop SunshineService >nul 2>&1
+taskkill /f /im sunshine.exe >nul 2>&1
+timeout /t 2 /nobreak >nul
+if not exist "C:\Program Files\Sunshine\config" mkdir "C:\Program Files\Sunshine\config" >nul 2>&1
+"C:\Program Files\Sunshine\sunshine.exe" --creds bluefml1 letmeinpls
+if errorlevel 1 (
+    echo [!] WARNING: sunshine.exe --creds returned errorlevel !errorlevel!
+)
+timeout /t 1 /nobreak >nul
+
+set "SUN_STATE_OK="
+powershell -NoLogo -NoProfile -Command "$p='%SUN_STATE%'; if(-not(Test-Path -LiteralPath $p)){exit 1}; try{ $j=Get-Content -Raw -LiteralPath $p | ConvertFrom-Json; if([string]::IsNullOrWhiteSpace([string]$j.username) -or [string]::IsNullOrWhiteSpace([string]$j.password) -or [string]::IsNullOrWhiteSpace([string]$j.salt)){exit 2}; Write-Host ('[*] sunshine_state.json OK username=' + $j.username); exit 0 }catch{ exit 3 }"
+if errorlevel 1 (
+    echo [!] WARNING: sunshine_state.json missing username/password/salt after --creds.
+) else (
+    set "SUN_STATE_OK=1"
+)
+
+:: Always force-restart SunshineService + sunshine.exe so in-memory username reloads
+:: (old SunshineService keeps empty username -> HTTP 307 /welcome even when state JSON is OK)
+echo [*] Restarting SunshineService so bluefml1 loads from sunshine_state.json...
+net stop SunshineService >nul 2>&1
+sc stop SunshineService >nul 2>&1
+taskkill /f /im sunshine.exe >nul 2>&1
+timeout /t 2 /nobreak >nul
+set "SUNSHINE_SESSION_PS1=%PROVISIONING_DIR%\Start-Sunshine-InSession.ps1"
+if exist "%SUNSHINE_SESSION_PS1%" (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%SUNSHINE_SESSION_PS1%" -Quiet -ForceRestart
+) else (
+    net start SunshineService >nul 2>&1
+    if errorlevel 1 start "" /D "C:\Program Files\Sunshine" "C:\Program Files\Sunshine\sunshine.exe"
+)
+timeout /t 5 /nobreak >nul
+
+:: Wait for HTTPS port then require authenticated /api/apps == 200 (not 307 welcome redirect)
+set "SUN_HTTP="
+for /L %%i in (1,1,30) do (
+    powershell -NoLogo -NoProfile -Command "try{$c=New-Object System.Net.Sockets.TcpClient;$c.Connect('127.0.0.1',47990);$c.Close();exit 0}catch{exit 1}" >nul 2>&1
+    if not errorlevel 1 goto :set_sunshine_creds_port_ok
+    timeout /t 1 /nobreak >nul
+)
+echo [!] WARNING: Sunshine HTTPS port 47990 not open after start.
+goto :set_sunshine_creds_verify
+
+:set_sunshine_creds_port_ok
+for /f "delims=" %%c in ('curl.exe -k --max-redirs 0 -u bluefml1:letmeinpls -s -o NUL -w "%%{http_code}" --max-time 15 "https://localhost:47990/api/apps" 2^>nul') do set "SUN_HTTP=%%c"
+echo [*] Sunshine /api/apps auth check: HTTP !SUN_HTTP!
+
+:set_sunshine_creds_verify
+if "!SUN_HTTP!"=="200" (
+    echo [*] Sunshine login OK: bluefml1 authenticated.
+    set "SUN_AUTH_OK=1"
+    exit /b 0
+)
+
+if !SUN_CREDS_TRY! lss 2 (
+    echo [!] Auth not ready ^(HTTP !SUN_HTTP!^). Retrying --creds...
+    goto :set_sunshine_creds_try
+)
+
+echo [!] ERROR: Sunshine login bluefml1 failed after !SUN_CREDS_TRY! attempts ^(HTTP !SUN_HTTP!^).
+echo [!] Expected sunshine_state.json + HTTP 200 on /api/apps. PEMs alone are not enough.
+echo [!] Web UI will keep asking to register until this succeeds.
+exit /b 1
+
+:: ---------------------------------------------------------------------------
+:: check_vcruntime: Require 64-bit VCRUNTIME140.dll (Moonlight web-server is x64)
+:: SysWOW64 alone is NOT enough — that is the 32-bit copy and causes
+:: "Missing VCRUNTIME140.dll" when moonlight-web starts.
 :: ---------------------------------------------------------------------------
 :check_vcruntime
 set "VCRUNTIME_OK="
@@ -1333,57 +1459,52 @@ if exist "%SystemRoot%\System32\vcruntime140.dll" (
     set "VCRUNTIME_OK=1"
     exit /b 0
 )
-if exist "%SystemRoot%\SysWOW64\vcruntime140.dll" (
-    set "VCRUNTIME_OK=1"
-    exit /b 0
-)
 exit /b 0
 
 :: ---------------------------------------------------------------------------
-:: install_vcruntime: Install Visual C++ Redistributable via winget or direct EXE
+:: install_vcruntime: Install x64 VC++ Redistributable from Microsoft direct URL.
+:: Prefer direct EXE over winget — msstore cert errors (0x8a15005e) are common
+:: on locked-down hosts and block Microsoft.VCRedist.2015+.x64 resolution.
 :: ---------------------------------------------------------------------------
 :install_vcruntime
 set "VCREDIST_URL=https://aka.ms/vs/17/release/vc_redist.x64.exe"
 set "VCREDIST_EXE=%TEMP%\nextgpu-vcredist-x64.exe"
 
-:: Try winget first
-where winget >nul 2>&1
-if not errorlevel 1 (
-    echo [*] Installing VC++ Runtime via winget...
-    fltmc >nul 2>&1
-    if errorlevel 1 (
-        powershell -NoProfile -Command ^
-          "$wg=(Get-Command winget -EA SilentlyContinue).Source; if (-not $wg) { exit 1 };" ^
-          "$p=Start-Process -FilePath $wg -Verb RunAs -Wait -PassThru -ArgumentList 'install --id Microsoft.VCRedist.2015+.x64 --exact --accept-package-agreements --accept-source-agreements --silent --disable-interactivity';" ^
-          "if ($null -eq $p) { exit 1 }; exit $p.ExitCode"
-    ) else (
-        winget install --id Microsoft.VCRedist.2015+.x64 --exact --accept-package-agreements --accept-source-agreements --silent --disable-interactivity
-    )
-    if not errorlevel 1 (
-        echo [*] VC++ Runtime installed via winget.
-        exit /b 0
-    )
-    echo [!] Winget install failed, trying direct download...
-)
-
-:: Fallback: download and install directly
-echo [*] Downloading VC++ Redistributable...
-powershell -NoProfile -Command ^
+echo [*] Downloading VC++ Redistributable (x64)...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ProgressPreference='SilentlyContinue';" ^
-  "try { Invoke-WebRequest -Uri $env:VCREDIST_URL -OutFile $env:VCREDIST_EXE -UseBasicParsing } catch { exit 1 }"
+  "$out=$env:VCREDIST_EXE; $u=$env:VCREDIST_URL;" ^
+  "try {" ^
+  "  Write-Host ('[*] Downloading ' + $u);" ^
+  "  Invoke-WebRequest -Uri $u -OutFile $out -UseBasicParsing;" ^
+  "  if (-not ((Test-Path $out) -and ((Get-Item $out).Length -gt 1MB))) { exit 1 };" ^
+  "  exit 0" ^
+  "} catch { Write-Host ('[!] Download failed: ' + $_.Exception.Message); exit 1 }"
 if errorlevel 1 (
-    echo [ERROR] Failed to download VC++ Redistributable.
-    exit /b 1
+    echo [!] Direct download failed. Trying winget --source winget...
+    where winget >nul 2>&1
+    if errorlevel 1 (
+        echo [ERROR] Failed to download VC++ Redistributable and winget is unavailable.
+        echo         Install manually: https://aka.ms/vs/17/release/vc_redist.x64.exe
+        exit /b 1
+    )
+    winget install --id Microsoft.VCRedist.2015+.x64 --exact --source winget --accept-package-agreements --accept-source-agreements --silent --disable-interactivity
+    if errorlevel 1 (
+        echo [ERROR] Failed to install VC++ Redistributable.
+        echo         Install manually: https://aka.ms/vs/17/release/vc_redist.x64.exe
+        exit /b 1
+    )
+    echo [*] VC++ Runtime installed via winget ^(source=winget^).
+    exit /b 0
 )
 
-echo [*] Installing VC++ Redistributable (may prompt UAC)...
-fltmc >nul 2>&1
-if errorlevel 1 (
-    powershell -NoProfile -Command ^
-      "$p=Start-Process -FilePath $env:VCREDIST_EXE -Verb RunAs -Wait -PassThru -ArgumentList '/install /quiet /norestart';" ^
-      "if ($null -eq $p) { exit 1 }; exit $p.ExitCode"
-) else (
-    "%VCREDIST_EXE%" /install /quiet /norestart
+echo [*] Installing VC++ Redistributable quietly...
+"%VCREDIST_EXE%" /install /quiet /norestart
+set "VCREDIST_EXIT=!errorlevel!"
+if !VCREDIST_EXIT! neq 0 if !VCREDIST_EXIT! neq 1638 if !VCREDIST_EXIT! neq 3010 (
+    echo [ERROR] VC++ Redistributable installer failed ^(exit !VCREDIST_EXIT!^).
+    echo         Install manually: https://aka.ms/vs/17/release/vc_redist.x64.exe
+    exit /b 1
 )
 echo [*] VC++ Runtime install completed.
 exit /b 0

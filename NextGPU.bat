@@ -9,18 +9,21 @@ setlocal enabledelayedexpansion
 :: - ALWAYS requires Administrator privileges
 :: =============================================================================
 
+:: Resolve repo root before elevation (strip trailing \ so cd /d "..." quoting is valid)
+set "REPO_ROOT=%~dp0"
+if "%REPO_ROOT:~-1%"=="\" set "REPO_ROOT=%REPO_ROOT:~0,-1%"
+set "NEXTGPU_REPO_ROOT=%REPO_ROOT%"
+
 :: Auto-elevate to Admin
 fltmc >nul 2>&1
 if %errorlevel% neq 0 (
     echo [*] NextGPU requires Administrator privileges.
     echo [*] Requesting elevation...
-    powershell -NoProfile -Command "Start-Process cmd.exe -Verb RunAs -WindowStyle Normal -ArgumentList '/k cd /d \"%~dp0\" && call \"%~f0\"'"
+    set "NG_ELEVATE_BAT=%~f0"
+    set "NG_ELEVATE_DIR=%REPO_ROOT%"
+    powershell -NoProfile -Command "Start-Process -FilePath cmd.exe -Verb RunAs -WorkingDirectory $env:NG_ELEVATE_DIR -WindowStyle Normal -ArgumentList ('/k call \"{0}\"' -f $env:NG_ELEVATE_BAT)"
     exit /b
 )
-
-set "REPO_ROOT=%~dp0"
-if "%REPO_ROOT:~-1%"=="\" set "REPO_ROOT=%REPO_ROOT:~0,-1%"
-set "NEXTGPU_REPO_ROOT=%REPO_ROOT%"
 set "NEXTGPU_DOTNET="
 set "DOTNET_SDK_URL=https://builds.dotnet.microsoft.com/dotnet/Sdk/8.0.423/dotnet-sdk-8.0.423-win-x64.exe"
 set "DOTNET_SDK_URL2=https://aka.ms/dotnet/8.0/sdk/win-x64/dotnet-sdk-win-x64.exe"

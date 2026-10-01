@@ -46,19 +46,18 @@ $computerName = [string]$config.computerName
 $price = [string]$config.price
 $vendorId = if ($null -ne $config.vendorId) { [string]$config.vendorId } else { '' }
 $vendorShutdownApiKey = if ($null -ne $config.vendorShutdownApiKey) { [string]$config.vendorShutdownApiKey } else { '' }
-$adminAccount = [string]$config.adminAccountName
+$adminAccount = if ($null -ne $config.adminAccountName) { ([string]$config.adminAccountName).Trim() } else { '' }
 $adminPasswordEncrypted = if ($null -ne $config.adminPasswordEncrypted) { [string]$config.adminPasswordEncrypted } else { '' }
 
 Write-Host "[DEBUG] adminPasswordEncrypted length: $($adminPasswordEncrypted.Length)"
 Write-Host "[DEBUG] adminPasswordEncrypted prefix: $($adminPasswordEncrypted.Substring(0, [Math]::Min(20, $adminPasswordEncrypted.Length)))..."
 
 $required = @{
-    cfApiToken       = $cfToken
-    accountId        = $accountId
-    apiKey           = $apiKey
-    computerName     = $computerName
-    price            = $price
-    adminAccountName = $adminAccount
+    cfApiToken   = $cfToken
+    accountId    = $accountId
+    apiKey       = $apiKey
+    computerName = $computerName
+    price        = $price
 }
 foreach ($key in $required.Keys) {
     if ([string]::IsNullOrWhiteSpace($required[$key])) {
@@ -150,7 +149,7 @@ $lines = @(
     "set `"COMPUTER_NAME_CUSTOM=$(Escape-CmdSetValue $computerName.Trim())`"",
     "set `"PRICE=$(Escape-CmdSetValue $price.Trim())`"",
     "set `"VENDOR_ID=$(Escape-CmdSetValue $vendorId)`"",
-    "set `"ADMIN_ACCOUNT_NAME=$(Escape-CmdSetValue $adminAccount.Trim())`"",
+    "set `"ADMIN_ACCOUNT_NAME=$(Escape-CmdSetValue $adminAccount)`"",
     "set `"COMPUTER_NAME_LOWER=$(Escape-CmdSetValue $computerLower)`"",
     'set "RM_UI_CONFIG=1"'
 )

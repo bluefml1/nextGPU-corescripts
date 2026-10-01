@@ -27,6 +27,7 @@ public sealed class LaunchPipeServer : IDisposable
     private readonly AllowlistService _allowlistService;
     private readonly SessionLauncher _sessionLauncher;
     private readonly ElevatedLauncher _elevatedLauncher;
+    private readonly LaunchCompanionService _companionService;
     private readonly Dictionary<int, (DateTime Time, uint Pid)> _dedupWindow = new();
     private readonly object _dedupLock = new();
     private readonly Timer _dedupCleanup;
@@ -37,12 +38,14 @@ public sealed class LaunchPipeServer : IDisposable
         ILogger<LaunchPipeServer> log,
         AllowlistService allowlistService,
         SessionLauncher sessionLauncher,
-        ElevatedLauncher elevatedLauncher)
+        ElevatedLauncher elevatedLauncher,
+        LaunchCompanionService companionService)
     {
         _log = log;
         _allowlistService = allowlistService;
         _sessionLauncher = sessionLauncher;
         _elevatedLauncher = elevatedLauncher;
+        _companionService = companionService;
         _dedupCleanup = new Timer(_ => CleanupDedup(), null, Timeout.Infinite, Timeout.Infinite);
     }
 
@@ -267,6 +270,7 @@ public sealed class LaunchPipeServer : IDisposable
 
         if (wantsElevated)
         {
+            _companionService.EnsureCompanions(app);
             result = _elevatedLauncher.LaunchElevated(app);
         }
         else

@@ -16,6 +16,11 @@ if not defined GARENA_EXE (
     exit /b 1
 )
 
+if exist "%SCRIPT_DIR%Start-GarenaAppHelper.ps1" (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%Start-GarenaAppHelper.ps1" -Quiet
+    if errorlevel 1 echo WARNING: gxxapphelper could not be started.
+)
+
 start "" "%GARENA_EXE%"
 
 exit /b 0
