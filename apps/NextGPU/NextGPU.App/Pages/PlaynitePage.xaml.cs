@@ -100,11 +100,11 @@ public partial class PlaynitePage : Page
         ActionPageTools.AddBatchButton(SetupPanel, "Import Desktop Apps",
             @"PlayNiteWatcher\Import-PlayniteDesktopApps.bat", ImportDesktopAppsHeadlessArgs, keepConsoleOpen: true,
             elevated: false,
-            helpText: "Imports allowlisted desktop apps (Adobe, Autodesk, etc.) into Playnite using Everything (es.exe) to locate executables. Run after editing the allowlist.");
+            helpText: "Imports allowlisted desktop apps (Adobe, Autodesk, etc.) into Playnite using Everything (es.exe) to locate executables on all drives, including the system drive (C:\\). Run after editing the allowlist.");
         ActionPageTools.AddBatchButton(SetupPanel, "Import Desktop Apps (Directory Walk)",
             @"PlayNiteWatcher\Import-PlayniteDesktopApps.bat", ImportDesktopAppsDirectoryWalkArgs, keepConsoleOpen: true,
             elevated: false,
-            helpText: "Imports allowlisted desktop apps without Everything by walking install directories. Slower but works when es.exe is unavailable.");
+            helpText: "Imports allowlisted desktop apps without Everything by walking all drives, including the system drive (C:\\). Slower but works when es.exe is unavailable.");
 
         AddSetupActionButton(SetupPanel, "Launch Playnite", (_, _) => LaunchPlaynite(),
             "Opens Playnite.DesktopApp.exe from the saved portable install path for manual inspection or troubleshooting.");
@@ -145,8 +145,8 @@ public partial class PlaynitePage : Page
             "Opens PlayNiteWatcher runtime log — session start/stop and cleanup events during Moonlight streaming.");
     }
 
-    private const string ImportDesktopAppsHeadlessArgs = "-Headless -DesktopImportScanMode AllDrives";
-    private const string ImportDesktopAppsDirectoryWalkArgs = "-Headless -DesktopImportScanMode AllDrives -SkipEverythingInstall";
+    private const string ImportDesktopAppsHeadlessArgs = "-Headless -DesktopImportScanMode AllDrives -IncludeSystemDrive";
+    private const string ImportDesktopAppsDirectoryWalkArgs = "-Headless -DesktopImportScanMode AllDrives -IncludeSystemDrive -SkipEverythingInstall";
 
     private void BuildAllowlistActionButtons()
     {

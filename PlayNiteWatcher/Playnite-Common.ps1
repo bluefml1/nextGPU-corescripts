@@ -3534,7 +3534,7 @@ function Test-EverythingSearchHitCandidate {
         return $null
     }
 
-    if (Test-DesktopScanPathOnSystemDrive -FullPath $path) {
+    if (-not $script:DesktopImportIncludeSystemDrive -and (Test-DesktopScanPathOnSystemDrive -FullPath $path)) {
         $RejectReason.Value = 'on system/boot drive'
         return $null
     }
@@ -4932,6 +4932,7 @@ function Resolve-DesktopAppImportScanRoots {
         [string]$ScanPath = "",
         [string]$PickerInitialDirectory = "",
         [string]$RepoRoot = "",
+        [switch]$IncludeSystemDrive,
         [scriptblock]$LogAction
     )
 
@@ -4983,6 +4984,16 @@ function Resolve-DesktopAppImportScanRoots {
         return @([System.IO.Path]::GetFullPath($folder))
     }
 
+    if ($effectiveMode -eq 'AllDrives' -and $IncludeSystemDrive) {
+        $roots = Get-FilesystemDriveScanRoots -ExcludeSystemDrive:$false
+        if ($roots.Count -eq 0) {
+            & $write "Desktop import: no fixed/removable drives found." "WARN"
+            return @()
+        }
+        & $write ("Desktop scan mode: all drives including system ({0}): {1}" -f $roots.Count, ($roots -join ', '))
+        return $roots
+    }
+
     if ($effectiveMode -eq 'AllDrives') {
         $excluded = Get-ExcludedSystemDriveRoots
         $roots = Get-FilesystemDriveScanRoots -ExcludeSystemDrive
@@ -5014,6 +5025,7 @@ function Invoke-HeadlessDesktopAppImport {
         [string]$AllowlistPath = "",
         [string[]]$ScanRoots = @(),
         [switch]$SkipEverythingInstall,
+        [switch]$IncludeSystemDrive,
         [scriptblock]$LogAction
     )
 
@@ -5021,6 +5033,7 @@ function Invoke-HeadlessDesktopAppImport {
     $script:DesktopImportRepoRoot = $RepoRoot
     $script:DesktopImportUseEverythingSearch = $false
     $script:DesktopImportEverythingOnly = $false
+    $script:DesktopImportIncludeSystemDrive = [bool]$IncludeSystemDrive
 
     if ($SkipEverythingInstall) {
         if ($LogAction) {

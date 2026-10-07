@@ -146,6 +146,7 @@ if exist "%IDENTITY_PS1%" (
     powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action SetStatus -Status update_fail
 )
 echo [!] Status set to update_fail.
+call :clear_heartbeat_flags
 echo [*] [%date% %time%] cycle finished with status: update_fail
 exit /b 1
 
@@ -176,6 +177,21 @@ if exist "%IDENTITY_PS1%" (
     powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action SetStatus -Status online
 )
 echo [*] Machine is now online.
+call :clear_heartbeat_flags
 echo [*] [%date% %time%] cycle finished with status: online
 
+exit /b 0
+
+:: Vendor shutdown keeps these flags until Publish-OnlineAtStartup runs on next boot.
+:clear_heartbeat_flags
+set "HB_SUSPEND_FLAG=%ProgramData%\nextGPU\heartbeat-suspended.flag"
+set "HB_PENDING_FLAG=%ProgramData%\nextGPU\startup-publish-pending.flag"
+if exist "%HB_SUSPEND_FLAG%" (
+    del /f /q "%HB_SUSPEND_FLAG%" >nul 2>&1
+    echo [*] Cleared heartbeat-suspended.flag.
+)
+if exist "%HB_PENDING_FLAG%" (
+    del /f /q "%HB_PENDING_FLAG%" >nul 2>&1
+    echo [*] Cleared startup-publish-pending.flag.
+)
 exit /b 0

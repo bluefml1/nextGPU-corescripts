@@ -22,6 +22,7 @@ param(
     [switch]$NoPrompt,
     [switch]$Headless,
     [switch]$SkipEverythingInstall,
+    [switch]$IncludeSystemDrive,
     [ValidateSet('Prompt', 'PickPath', 'PickFolder', 'AllDrives', 'Default')]
     [string]$DesktopImportScanMode = "Prompt"
 )
@@ -91,6 +92,7 @@ function Invoke-PlayniteDesktopAppImport {
             -ScanPath $ScanPath `
             -PickerInitialDirectory (Split-Path -Path $installDir -Parent) `
             -RepoRoot $script:ModuleRoot `
+            -IncludeSystemDrive:$IncludeSystemDrive `
             -LogAction $logAction
 
         if (-not $scanRoots -or $scanRoots.Count -eq 0) {
@@ -104,6 +106,7 @@ function Invoke-PlayniteDesktopAppImport {
             -AllowlistPath $AllowlistPath `
             -ScanRoots $scanRoots `
             -SkipEverythingInstall:$SkipEverythingInstall `
+            -IncludeSystemDrive:$IncludeSystemDrive `
             -LogAction $logAction
 
         Write-ImportLog ("Headless import: roots={0} added={1} updated={2}" -f `
