@@ -27,7 +27,7 @@ public static class RepoCatalog
         {
             TaskName = "nextGPU-AutoRepair",
             DisplayName = "Auto-Repair",
-            Description = "Health-checks cloudflared, Sunshine, Moonlight, and local HTTP every minute. Skips when machine-status.flag=updating.",
+            Description = "Health-checks cloudflared, Sunshine, Moonlight, and local HTTP every minute. Skips when machine-status.flag=updating. On failure sets status error, repairs, then sets online; if update_fail, repairs only, then onDemandGPUHost shutdown (vendor) or online.",
             IntervalSummary = "Every 1 min",
             RegisterScriptRelativePath = @"scripts\tasks\Register-AutoRepairTask.ps1",
             StdoutLogFileName = "auto-repair.log",

@@ -230,7 +230,7 @@ Every **60 seconds** (after network is reachable):
 | `moonlight-web` service | `net start` or reinstall Moonlight + NSSM |
 | `http://127.0.0.1:8080` returns 200 | Triggers full repair path |
 
-Skips repair when `%ProgramData%\nextGPU\machine-status.flag` is `updating`.
+Skips repair when `%ProgramData%\nextGPU\machine-status.flag` is `updating`. On a failed check it sets the flag to `error` and sends `error` to `updateStatus`, repairs, then sends `online`. If the flag is `update_fail`, it repairs without changing status; after a successful repair, vendor hosts call only the `onDemandGPUHost` shutdown API and other hosts send `online`.
 
 On full repair, runs `scripts/runtime/Run-StreamingStackUpdate.bat ForceReinstall ForceReinstall ForcePairing` → `Update-NextGpuStreamingStack.ps1` (same Sunshine/Moonlight/pairing path as update scripts, but always reinstalls and re-pairs).
 

@@ -12,6 +12,8 @@
     Skip: do not touch Moonlight.
 .PARAMETER ForcePairing
     Always run Moonlight <-> Sunshine pairing at the end (auto-repair).
+    Without it, pairing still runs after a stack update or when data.json has no pair_info.
+    Pairing failure exits non-zero so callers report update_fail.
 .PARAMETER SkipPairing
     Never pair, even after updates.
 #>
@@ -191,8 +193,22 @@ function Invoke-CurlNative {
     }
 }
 
-function Stop-CurlProcessesQuietly {
-    Get-Process -Name 'curl' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+function Stop-MoonlightPairPoll {
+    <#
+    .SYNOPSIS
+        Kill the pair-poll wrapper and its child curl.exe, then wait for exit.
+        taskkill runs via cmd so its stderr never reaches PowerShell ($ErrorActionPreference = 'Stop').
+    #>
+    param($Process)
+    if ($Process -and -not $Process.HasExited) {
+        & cmd.exe /c "taskkill /T /F /PID $($Process.Id) >nul 2>&1"
+        try { [void]$Process.WaitForExit(5000) } catch { }
+    }
+}
+
+function Remove-MoonlightPinResponseFiles {
+    Get-ChildItem -Path $env:TEMP -Filter 'moonlight_pin_response*.json' -File -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
 }
 
 function Get-MoonlightPairPinFromFile {
@@ -833,45 +849,182 @@ function Wait-HttpStatus {
     return $false
 }
 
-function Wait-SunshineHttpsReady {
-    param([int]$TimeoutSec = 60)
-    $deadline = (Get-Date).AddSeconds($TimeoutSec)
-    while ((Get-Date) -lt $deadline) {
-        try {
-            $tcp = New-Object System.Net.Sockets.TcpClient
-            $async = $tcp.BeginConnect('127.0.0.1', 47990, $null, $null)
-            if ($async.AsyncWaitHandle.WaitOne(2000) -and $tcp.Connected) {
-                $tcp.Close()
-                return $true
-            }
-            $tcp.Close()
-        }
-        catch { }
-        Start-Sleep -Seconds 1
-    }
-    return $false
-}
-
-function Wait-SunshineGameStreamReady {
+function Wait-SunshinePairingReady {
+    <#
+    .SYNOPSIS
+        Wait until Sunshine accepts connections on 47990/47989 and /api/apps answers HTTP 200.
+    #>
     param([int]$TimeoutSec = 90)
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
-        try {
-            $tcp = New-Object System.Net.Sockets.TcpClient
-            $async = $tcp.BeginConnect('127.0.0.1', 47989, $null, $null)
-            if ($async.AsyncWaitHandle.WaitOne(2000) -and $tcp.Connected) {
-                $tcp.Close()
-                return $true
-            }
-            $tcp.Close()
+        if ((Test-TcpPortOpen -Port 47990 -TimeoutMs 1000) -and (Test-TcpPortOpen -Port 47989 -TimeoutMs 1000)) {
+            $resp = Invoke-CurlNative -CaptureOutput @(
+                '-k', '-u', 'bluefml1:letmeinpls', '-o', 'NUL', '-s', '-w', '%{http_code}',
+                '--max-time', '5', 'https://localhost:47990/api/apps'
+            )
+            if ("$($resp.Output)" -eq '200') { return $true }
         }
-        catch { }
-        Start-Sleep -Seconds 1
+        Start-Sleep -Milliseconds 500
     }
     return $false
 }
 
+function Restart-SunshineForPairing {
+    Write-PairingLog 'POST https://localhost:47990/api/restart'
+    $restartExit = Invoke-CurlNative @(
+        '-u', 'bluefml1:letmeinpls', '-X', 'POST', '-k', '-s', '--max-time', '10',
+        'https://localhost:47990/api/restart'
+    )
+    Write-PairingLog "Sunshine restart curl exit=$restartExit"
+    $deadline = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $deadline -and (Test-TcpPortOpen -Port 47990 -TimeoutMs 500)) {
+        Start-Sleep -Milliseconds 500
+    }
+}
+
+function Reset-MoonlightWebForPairing {
+    <#
+    .SYNOPSIS
+        Restart moonlight-web with the template data.json (host 0, no pair_info) and log in.
+        Restarting the service also drops any pairing request still running inside Moonlight Web.
+    #>
+    param(
+        [string]$DataPath,
+        [string]$CookieJar,
+        [string]$LoginBody,
+        [string]$LoginOut
+    )
+    Write-PairingLog "Restarting $($script:MoonlightService) with a fresh data.json"
+    Stop-Service -Name $script:MoonlightService -Force -ErrorAction SilentlyContinue
+    Wait-ServiceStatus -Name $script:MoonlightService -Status 'Stopped'
+
+    if (Test-Path -LiteralPath $DataPath) { Remove-Item -LiteralPath $DataPath -Force -ErrorAction SilentlyContinue }
+    Invoke-DownloadFile -Url $script:MoonlightDataUrl -Destination $DataPath
+    Assert-DownloadedJsonFile -Path $DataPath -Label 'Moonlight data.json'
+
+    Start-Service -Name $script:MoonlightService -ErrorAction Stop
+    Wait-ServiceStatus -Name $script:MoonlightService -Status 'Running'
+    if (-not (Wait-HttpStatus -Url 'http://127.0.0.1:8080' -TimeoutSec 60)) {
+        throw 'Moonlight Web HTTP endpoint not ready on http://127.0.0.1:8080.'
+    }
+
+    if (Test-Path -LiteralPath $CookieJar) { Remove-Item -LiteralPath $CookieJar -Force -ErrorAction SilentlyContinue }
+    Write-MoonlightLoginBodyFile -Path $LoginBody
+    $loginExit = Invoke-CurlNative @(
+        '-c', $CookieJar,
+        '-X', 'POST',
+        'http://127.0.0.1:8080/api/login',
+        '-H', 'Content-Type: application/json',
+        '--data-binary', "@$LoginBody",
+        '-o', $LoginOut,
+        '-s'
+    )
+    if ($loginExit -ne 0 -or -not (Test-MoonlightSessionCookie -CookieJarPath $CookieJar)) {
+        throw "Moonlight login failed (curl exit $loginExit or missing mlSession cookie)."
+    }
+    Write-PairingLog 'Moonlight Web ready and logged in.'
+}
+
+function Invoke-MoonlightPairingRound {
+    <#
+    .SYNOPSIS
+        One pairing request: wait for the PIN, send the same PIN until Sunshine accepts it,
+        then wait for Moonlight's result. Each step waits for the real response up to StepTimeoutSec.
+        Returns $true when paired.
+    #>
+    param(
+        [int]$Round,
+        [string]$RepoRootPath,
+        [string]$CookieJar,
+        [int]$StepTimeoutSec
+    )
+    $pinFile = Join-Path $env:TEMP "moonlight_pin_response_$Round.json"
+    $pinBodyFile = Join-Path $env:TEMP 'moonlight_sunshine_pin_body.json'
+    $pinRespFile = Join-Path $env:TEMP 'moonlight_pair_complete.json'
+    Remove-Item -LiteralPath $pinFile -Force -ErrorAction SilentlyContinue
+
+    $pairProc = Start-MoonlightPairPoll -CookieJar $CookieJar -OutFile $pinFile -HostId 0
+    try {
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $pin = $null
+        $parseNote = ''
+        while (-not $pin -and $sw.Elapsed.TotalSeconds -lt $StepTimeoutSec) {
+            $ended = $pairProc.HasExited
+            $pin = Get-MoonlightPairPinFromFile -Path $pinFile -ParseNote ([ref]$parseNote)
+            if ($pin -or $ended) { break }
+            Start-Sleep -Milliseconds 300
+        }
+        if (-not $pin) {
+            Write-PairingLog "Round ${Round}: no PIN from Moonlight within ${StepTimeoutSec}s (pinFile=$(Get-PinResponseFileStatus -Path $pinFile) parse=$parseNote)." 'WARN'
+            return $false
+        }
+        Write-PairingLog "Round ${Round}: PIN $pin received after $([math]::Round($sw.Elapsed.TotalSeconds, 1))s."
+
+        $pinBody = "{`"pin`":`"$pin`",`"name`":`"$env:COMPUTERNAME`"}"
+        Write-MoonlightJsonBodyFile -Path $pinBodyFile -JsonContent $pinBody
+        Write-PairingLog "POST https://localhost:47990/api/pin content=$pinBody (resend until status true)"
+        $sw.Restart()
+        $accepted = $false
+        $tries = 0
+        $pinResp = ''
+        while (-not $accepted -and -not $pairProc.HasExited -and $sw.Elapsed.TotalSeconds -lt $StepTimeoutSec) {
+            $tries++
+            Remove-Item -LiteralPath $pinRespFile -Force -ErrorAction SilentlyContinue
+            [void](Invoke-CurlNative @(
+                '-u', 'bluefml1:letmeinpls',
+                '-H', 'Content-Type: application/json',
+                '-X', 'POST', '-k',
+                'https://localhost:47990/api/pin',
+                '--data-binary', "@$pinBodyFile",
+                '-o', $pinRespFile,
+                '-s', '--max-time', '10'
+            ))
+            $pinResp = Get-Content -Raw -LiteralPath $pinRespFile -ErrorAction SilentlyContinue
+            if ($pinResp -match '"status"\s*:\s*true') { $accepted = $true }
+            else { Start-Sleep -Milliseconds 500 }
+        }
+        if (-not $accepted) {
+            Write-PairingLog "Round ${Round}: Sunshine did not accept PIN within ${StepTimeoutSec}s ($tries tries, last response=$pinResp, pairPollEnded=$($pairProc.HasExited))." 'WARN'
+            return $false
+        }
+        Write-PairingLog "Round ${Round}: Sunshine accepted PIN after $tries tries ($([math]::Round($sw.Elapsed.TotalSeconds, 1))s)."
+
+        $sw.Restart()
+        $outcome = $null
+        while (-not $outcome -and $sw.Elapsed.TotalSeconds -lt $StepTimeoutSec) {
+            $ended = $pairProc.HasExited
+            $pairText = Get-Content -Raw -LiteralPath $pinFile -ErrorAction SilentlyContinue
+            if ($pairText -match 'PairError') { $outcome = 'PairError' }
+            elseif ($pairText -match '\bPaired\b') { $outcome = 'Paired' }
+            elseif ($ended) { $outcome = "pair poll ended (exit=$($pairProc.ExitCode))" }
+            else { Start-Sleep -Milliseconds 300 }
+        }
+        if (-not $outcome) { $outcome = "no result within ${StepTimeoutSec}s" }
+        Write-PairingLog "Round ${Round}: Moonlight result=$outcome after $([math]::Round($sw.Elapsed.TotalSeconds, 1))s response=$(Get-PinResponseFileStatus -Path $pinFile)"
+        if ($outcome -eq 'Paired') { return $true }
+        if ($outcome -eq 'PairError') { return $false }
+
+        $deadline = (Get-Date).AddSeconds($StepTimeoutSec)
+        while ((Get-Date) -lt $deadline) {
+            if (Test-MoonlightPaired -RepoRootPath $RepoRootPath) {
+                Write-PairingLog "Round ${Round}: no Paired message, but data.json has pair_info; treating as paired."
+                return $true
+            }
+            Start-Sleep -Milliseconds 500
+        }
+        return $false
+    }
+    finally {
+        Stop-MoonlightPairPoll $pairProc
+    }
+}
+
 function Invoke-MoonlightSunshinePairing {
+    <#
+    .SYNOPSIS
+        Pair Moonlight Web with Sunshine in rounds. Round 1 uses the running Sunshine; each later
+        round restarts Sunshine and moonlight-web first so no stale pairing request survives.
+    #>
     param(
         [string]$RepoRootPath,
         [switch]$Strict
@@ -879,187 +1032,77 @@ function Invoke-MoonlightSunshinePairing {
 
     Initialize-PairingLog -RepoRootPath $RepoRootPath
     Write-PairingLog '=== Moonlight <-> Sunshine pairing ==='
-    $moonlightDir = Join-Path $RepoRootPath 'moonlight-web'
-    $dataPath = Join-Path $moonlightDir 'server\data.json'
-    $hostName = $env:COMPUTERNAME
-    $maxRetries = 10
-    $pinWaitSeconds = 30
+    $dataPath = Join-Path $RepoRootPath 'moonlight-web\server\data.json'
+    $maxRounds = 3
+    $stepTimeoutSeconds = 15
     $cookies = Join-Path $env:TEMP 'moonlight_cookies.txt'
     $loginOut = Join-Path $env:TEMP 'moonlight_login.json'
     $loginBody = Join-Path $env:TEMP 'moonlight_login_body.json'
-    $pinFile = Join-Path $env:TEMP 'moonlight_pin_response.json'
 
     $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
     if (-not $curl) { throw 'curl.exe is required for Moonlight pairing.' }
 
-    Write-PairingEnvironmentDiagnostics -DataPath $dataPath -CookieJar $cookies -PinFile $pinFile
+    Remove-MoonlightPinResponseFiles
+    Write-PairingEnvironmentDiagnostics -DataPath $dataPath -CookieJar $cookies -PinFile (Join-Path $env:TEMP 'moonlight_pin_response_<round>.json')
 
-    if (-not (Wait-SunshineHttpsReady -TimeoutSec 90)) {
-        Write-PairingLog 'Sunshine HTTPS port 47990 not ready before pairing restart.' 'WARN'
-    }
-    else {
-        Write-PairingLog 'Sunshine HTTPS port 47990 ready.'
-    }
-    Write-PairingLog 'POST https://localhost:47990/api/restart'
-    $restartExit = Invoke-CurlNative @(
-        '-u', 'bluefml1:letmeinpls',
-        '-H', 'Content-Type: application/json',
-        '-X', 'POST',
-        '-k',
-        'https://localhost:47990/api/restart'
-    )
-    Write-PairingLog "Sunshine restart curl exit=$restartExit"
-    if ($restartExit -ne 0 -and $restartExit -ne 56 -and $restartExit -ne 52) {
-        Write-PairingLog "Sunshine restart API returned curl exit $restartExit (continuing)." 'WARN'
-    }
-    Start-Sleep -Seconds 3
-    if (-not (Wait-SunshineGameStreamReady -TimeoutSec 90)) {
-        Write-PairingLog 'Sunshine GameStream port 47989 not ready before Moonlight pairing.' 'WARN'
-    }
-    else {
-        Write-PairingLog 'Sunshine GameStream port 47989 ready.'
-    }
-
-    Write-PairingLog "Stopping service $($script:MoonlightService) and refreshing data.json"
-    Stop-Service -Name $script:MoonlightService -Force -ErrorAction SilentlyContinue
-    Wait-ServiceStatus -Name $script:MoonlightService -Status 'Stopped'
-
-    if (Test-Path -LiteralPath $dataPath) { Remove-Item -LiteralPath $dataPath -Force }
-    Invoke-DownloadFile -Url $script:MoonlightDataUrl -Destination $dataPath
-    Assert-DownloadedJsonFile -Path $dataPath -Label 'Moonlight data.json'
-    Write-PairingLog "Downloaded data.json -> $dataPath"
-
-    Start-Service -Name $script:MoonlightService -ErrorAction Stop
-    Wait-ServiceStatus -Name $script:MoonlightService -Status 'Running'
-    Write-PairingLog "Service $($script:MoonlightService) running."
-    if (-not (Wait-HttpStatus -Url 'http://127.0.0.1:8080' -TimeoutSec 60)) {
-        $msg = 'Moonlight Web HTTP endpoint not ready on http://127.0.0.1:8080.'
-        Write-PairingLog $msg 'ERROR'
-        if ($Strict) { throw $msg }
-        Write-PairingLog "$msg Skipping pairing." 'WARN'
-        return
-    }
-    Write-PairingLog 'Moonlight Web http://127.0.0.1:8080 returns HTTP 200.'
-
-    if (Test-Path -LiteralPath $cookies) { Remove-Item -LiteralPath $cookies -Force -ErrorAction SilentlyContinue }
-    Write-MoonlightLoginBodyFile -Path $loginBody
-    Write-PairingLog "POST http://127.0.0.1:8080/api/login bodyFile=$loginBody"
-    $loginExit = Invoke-CurlNative @(
-        '-c', $cookies,
-        '-X', 'POST',
-        'http://127.0.0.1:8080/api/login',
-        '-H', 'Content-Type: application/json',
-        '--data-binary', "@$loginBody",
-        '-o', $loginOut,
-        '-s'
-    )
-    $hasSession = Test-MoonlightSessionCookie -CookieJarPath $cookies
-    Write-PairingLog "Login curl exit=$loginExit mlSessionCookie=$hasSession loginOut=$(Get-PinResponseFileStatus -Path $loginOut)"
-    if ($loginExit -ne 0 -or -not $hasSession) {
-        $msg = 'Moonlight login failed (curl exit or missing mlSession cookie).'
-        Write-PairingLog $msg 'ERROR'
-        if ($Strict) { throw $msg }
-        Write-PairingLog "$msg Skipping pairing." 'WARN'
-        return
-    }
-
-    Write-PairingLog "[*] Using pre-configured host: ID=0 Name=$hostName"
-    Write-PairingEnvironmentDiagnostics -DataPath $dataPath -CookieJar $cookies -PinFile $pinFile
-    Start-Sleep -Seconds 2
-
-    for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
-        Write-PairingLog "--- Pairing attempt $attempt/$maxRetries ---"
-        Stop-CurlProcessesQuietly
-        if (Test-Path -LiteralPath $pinFile) { Remove-Item -LiteralPath $pinFile -Force }
-
-        $pairProc = Start-MoonlightPairPoll -CookieJar $cookies -OutFile $pinFile -HostId 0
-
-        $pin = $null
-        $parseNote = ''
-        for ($i = 1; $i -le $pinWaitSeconds; $i++) {
-            Start-Sleep -Seconds 1
-            $pin = Get-MoonlightPairPinFromFile -Path $pinFile -ParseNote ([ref]$parseNote)
-            if ($pin) {
-                Write-PairingLog "PIN received after ${i}s: $pin ($parseNote)"
-                break
+    $pairingTimer = [System.Diagnostics.Stopwatch]::StartNew()
+    for ($round = 1; $round -le $maxRounds; $round++) {
+        Write-PairingLog "--- Pairing round $round/$maxRounds (elapsed $([int]$pairingTimer.Elapsed.TotalSeconds)s) ---"
+        try {
+            if ($round -gt 1) { Restart-SunshineForPairing }
+            if (-not (Wait-SunshinePairingReady -TimeoutSec 90)) {
+                throw 'Sunshine not ready within 90s (ports 47990/47989 or /api/apps HTTP 200).'
             }
-            if ($i % 5 -eq 0) {
-                $curlRunning = -not $pairProc.HasExited
-                $curlExit = if ($pairProc.HasExited) { $pairProc.ExitCode } else { 'running' }
-                Write-PairingLog "Wait ${i}/${pinWaitSeconds}s curlExit=$curlExit pinFile=$(Get-PinResponseFileStatus -Path $pinFile) parse=$parseNote port47989=$(Test-TcpPortOpen -Port 47989)"
-            }
-        }
+            Write-PairingLog 'Sunshine ready (47990, 47989, /api/apps HTTP 200).'
 
-        if (-not $pin) {
-            if (-not $pairProc.HasExited) {
-                Write-PairingLog 'Stopping pair poll wrapper after timeout.' 'WARN'
-                Stop-Process -Id $pairProc.Id -Force -ErrorAction SilentlyContinue
-            }
-            else {
-                Write-PairingLog "Pair poll wrapper ended exit=$($pairProc.ExitCode)" 'WARN'
-            }
-            Write-PairingLog "Pair poll final pinFile=$(Get-PinResponseFileStatus -Path $pinFile) parse=$parseNote" 'WARN'
-            Write-PairingLog "Pairing attempt ${attempt}: no PIN within ${pinWaitSeconds}s." 'WARN'
-            Start-Sleep -Seconds 2
-            continue
-        }
+            Reset-MoonlightWebForPairing -DataPath $dataPath -CookieJar $cookies -LoginBody $loginBody -LoginOut $loginOut
+            Write-PairingLog "[*] Using pre-configured host: ID=0 Name=$env:COMPUTERNAME"
 
-        Write-PairingLog "[*] Pairing attempt ${attempt}: sending PIN to Sunshine..."
-        $completeFile = Join-Path $env:TEMP 'moonlight_pair_complete.json'
-        $sunshinePinBodyFile = Join-Path $env:TEMP 'moonlight_sunshine_pin_body.json'
-        $pinBody = "{`"pin`":`"$pin`",`"name`":`"$hostName`"}"
-        Write-MoonlightJsonBodyFile -Path $sunshinePinBodyFile -JsonContent $pinBody
-        Write-PairingLog "POST https://localhost:47990/api/pin bodyFile=$sunshinePinBodyFile content=$pinBody"
-        $pinHeadersFile = Join-Path $env:TEMP 'moonlight_sunshine_pin_headers.txt'
-        if (Test-Path -LiteralPath $pinHeadersFile) { Remove-Item -LiteralPath $pinHeadersFile -Force -ErrorAction SilentlyContinue }
-        $pinExit = Invoke-CurlNative @(
-            '-u', 'bluefml1:letmeinpls',
-            '-H', 'Content-Type: application/json',
-            '-X', 'POST',
-            '-k',
-            'https://localhost:47990/api/pin',
-            '--data-binary', "@$sunshinePinBodyFile",
-            '-D', $pinHeadersFile,
-            '-o', $completeFile,
-            '-s', '--max-time', '30'
-        )
-        $pinHttp = 'unknown'
-        if (Test-Path -LiteralPath $pinHeadersFile) {
-            $headerText = Get-Content -Raw -LiteralPath $pinHeadersFile -ErrorAction SilentlyContinue
-            if ($headerText -match 'HTTP/[\d.]+\s+(\d{3})') { $pinHttp = $Matches[1] }
-        }
-        Write-PairingLog "Sunshine pin API curl exit=$pinExit http=$pinHttp response=$(Get-PinResponseFileStatus -Path $completeFile)"
-
-        $status = $null
-        try { $status = (Get-Content -Raw -LiteralPath $completeFile | ConvertFrom-Json).status } catch { }
-        if ($status -eq $true -or $status -eq 'True') {
-            Start-Sleep -Seconds 3
-            $pairText = Get-Content -Raw -LiteralPath $pinFile -ErrorAction SilentlyContinue
-            Write-PairingLog "Moonlight pair response=$(Get-PinResponseFileStatus -Path $pinFile)"
-            if ($pairText -match 'Paired') {
-                Write-PairingLog '[*] Pairing successful.'
-                Stop-CurlProcessesQuietly
-                foreach ($tempFile in @($loginOut, $loginBody, (Join-Path $env:TEMP 'moonlight_pair_body.json'), (Join-Path $env:TEMP 'moonlight_pair_poll.ps1'), (Join-Path $env:TEMP 'moonlight_sunshine_pin_body.json'), $pinFile, $completeFile, $cookies)) {
-                    if (Test-Path -LiteralPath $tempFile) { Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue }
+            if (Invoke-MoonlightPairingRound -Round $round -RepoRootPath $RepoRootPath -CookieJar $cookies -StepTimeoutSec $stepTimeoutSeconds) {
+                Write-PairingLog "[*] Pairing successful (round $round, $([int]$pairingTimer.Elapsed.TotalSeconds)s)."
+                Remove-MoonlightPinResponseFiles
+                foreach ($tempFile in @($loginOut, $loginBody, $cookies,
+                        (Join-Path $env:TEMP 'moonlight_pair_body.json'),
+                        (Join-Path $env:TEMP 'moonlight_pair_poll.ps1'),
+                        (Join-Path $env:TEMP 'moonlight_sunshine_pin_body.json'),
+                        (Join-Path $env:TEMP 'moonlight_pair_complete.json'))) {
+                    Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue
                 }
                 return
             }
-            Write-PairingLog 'Sunshine accepted PIN but Moonlight did not report Paired.' 'WARN'
         }
-        else {
-            Write-PairingLog 'Sunshine pin API did not return status True.' 'WARN'
+        catch {
+            Write-PairingLog "Round ${round} error: $($_.Exception.Message)" 'WARN'
         }
-        Start-Sleep -Seconds 2
     }
 
-    Stop-CurlProcessesQuietly
-    Write-PairingLog "Pairing failed after $maxRetries attempts." 'ERROR'
-    Write-PairingLog "Debug files kept: cookies=$cookies pairBody=$(Join-Path $env:TEMP 'moonlight_pair_body.json') pairPoll=$(Join-Path $env:TEMP 'moonlight_pair_poll.ps1') sunshinePinBody=$(Join-Path $env:TEMP 'moonlight_sunshine_pin_body.json') pinFile=$pinFile loginOut=$loginOut complete=$(Join-Path $env:TEMP 'moonlight_pair_complete.json')" 'WARN'
+    Remove-MoonlightPinResponseFiles
+    Write-PairingLog "Pairing failed after $maxRounds rounds ($([int]$pairingTimer.Elapsed.TotalSeconds)s)." 'ERROR'
     Write-PairingLog "Full log: $script:PairingLogPath"
 
-    $failMsg = "Pairing failed after $maxRetries attempts."
+    $failMsg = "Pairing failed after $maxRounds rounds."
     if ($Strict) { throw $failMsg }
     Write-PairingLog "$failMsg Sunshine/Moonlight updates were applied; pairing can be retried on next repair cycle." 'WARN'
+}
+
+function Test-MoonlightPaired {
+    param([string]$RepoRootPath)
+    $dataPath = Join-Path $RepoRootPath 'moonlight-web\server\data.json'
+    if (-not (Test-Path -LiteralPath $dataPath)) { return $false }
+    try {
+        $data = Get-Content -Raw -LiteralPath $dataPath -Encoding UTF8 | ConvertFrom-Json
+        $host0 = $null
+        if ($data.hosts -and $data.hosts.PSObject.Properties['0']) { $host0 = $data.hosts.'0' }
+        elseif ($data.hosts -and $data.hosts[0]) { $host0 = $data.hosts[0] }
+        if (-not $host0) { return $false }
+        $pair = $host0.pair_info
+        return ([string]$pair.client_certificate -match 'BEGIN CERTIFICATE') -and
+            ([string]$pair.server_certificate -match 'BEGIN CERTIFICATE') -and
+            -not [string]::IsNullOrWhiteSpace([string]$pair.client_private_key)
+    }
+    catch {
+        return $false
+    }
 }
 
 $repo = Resolve-RepoRootPath -Override $RepoRoot
@@ -1091,12 +1134,16 @@ elseif ($MoonlightMode -eq 'CheckUpdate') {
 $shouldPair = $false
 if ($ForcePairing) { $shouldPair = $true }
 elseif (-not $SkipPairing -and ($updatedSunshine -or $updatedMoonlight)) { $shouldPair = $true }
+elseif (-not $SkipPairing -and -not (Test-MoonlightPaired -RepoRootPath $repo)) {
+    Write-StackLog '[*] Moonlight is not paired (data.json has no pair_info); pairing required.' 'WARN'
+    $shouldPair = $true
+}
 
 if ($shouldPair) {
-    Invoke-MoonlightSunshinePairing -RepoRootPath $repo -Strict:$ForcePairing
+    Invoke-MoonlightSunshinePairing -RepoRootPath $repo -Strict
 }
 else {
-    Write-StackLog '[*] Skipping Moonlight pairing (no stack updates or SkipPairing).'
+    Write-StackLog '[*] Skipping Moonlight pairing (no stack updates, already paired, or SkipPairing).'
 }
 
 Write-StackLog '=== Update-NextGpuStreamingStack finished ==='

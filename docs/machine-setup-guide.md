@@ -545,7 +545,7 @@ Run after Sunshine/Moonlight apps change.
 scripts\runtime\auto-repair.bat
 ```
 
-Skips repair when `%ProgramData%\nextGPU\machine-status.flag` is `updating`.
+Skips repair when `%ProgramData%\nextGPU\machine-status.flag` is `updating`. On a failed check it sets the flag to `error` and sends `error` to `updateStatus`, repairs, then sends `online`. If the flag is `update_fail`, it repairs without changing status; after a successful repair, vendor hosts call only the `onDemandGPUHost` shutdown API and other hosts send `online`.
 
 ### Streaming stack update
 

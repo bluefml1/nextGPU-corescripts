@@ -55,7 +55,7 @@ public static class DomainFileReader
             var status = raw.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)[0]
                 .Trim()
                 .ToLowerInvariant();
-            return status is "online" or "updating" or "update_fail" ? status : "online";
+            return status is "online" or "updating" or "update_fail" or "error" ? status : "online";
         }
         catch
         {

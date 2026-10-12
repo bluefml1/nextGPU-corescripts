@@ -146,6 +146,7 @@ if exist "%IDENTITY_PS1%" (
     powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action SetStatus -Status update_fail
 )
 echo [!] Status set to update_fail.
+echo [*] update_fail: stopping here - onDemandGPUHost is NOT called.
 call :clear_heartbeat_flags
 echo [*] [%date% %time%] cycle finished with status: update_fail
 exit /b 1

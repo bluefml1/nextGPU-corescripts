@@ -195,7 +195,13 @@ scripts\runtime\auto-repair.bat
 
 It waits for network access, checks Cloudflare/Sunshine/Moonlight/local HTTP, and performs a full Sunshine/Moonlight reinstall plus pairing if needed.
 
-If `%ProgramData%\nextGPU\machine-status.flag` is `updating`, `scripts/runtime/auto-repair.bat` skips repairs to avoid fighting an update.
+If `%ProgramData%\nextGPU\machine-status.flag` is `updating`, `scripts/runtime/auto-repair.bat` skips repairs to avoid fighting an update. Otherwise, when a check fails:
+
+- Flag `online`: the flag is set to `error` and `error` is sent to `updateStatus` immediately, then the repair runs. After a successful repair, `online` is sent and the flag is set to `online`.
+- Flag `error`: `error` is not re-sent. Once the machine is healthy again (repaired or recovered), `online` is sent.
+- Flag `update_fail`: repair only (no status change). After a successful repair, vendor hosts (`VENDOR_ID_ENABLED=yes`) call only the `onDemandGPUHost` shutdown API and keep `update_fail`; other hosts send `online`.
+
+If `checking-update` sets `updating` while a repair is running, auto-repair stops without overwriting the status. If cloudflared cannot be restarted, the status stays `error`.
 
 ### Run A One-Time Update Check
 

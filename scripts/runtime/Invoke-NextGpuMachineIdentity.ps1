@@ -14,7 +14,7 @@ param(
     [ValidateSet('GetStatus', 'SetStatus', 'RepairDomain', 'SaveIdentity', 'WriteDomain')]
     [string]$Action,
 
-    [ValidateSet('online', 'updating', 'update_fail')]
+    [ValidateSet('online', 'updating', 'update_fail', 'error')]
     [string]$Status = 'online',
 
     [string]$RepoRoot = '',

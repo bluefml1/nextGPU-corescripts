@@ -7,7 +7,7 @@
 $script:NextGpuMachineProgramDataDir = Join-Path $env:ProgramData 'nextGPU'
 $script:NextGpuMachineIdentityPath = Join-Path $script:NextGpuMachineProgramDataDir 'machine-identity.env'
 $script:NextGpuMachineStatusFlagPath = Join-Path $script:NextGpuMachineProgramDataDir 'machine-status.flag'
-$script:NextGpuValidStatuses = @('online', 'updating', 'update_fail')
+$script:NextGpuValidStatuses = @('online', 'updating', 'update_fail', 'error')
 
 function Get-NextGpuIdentityPath {
     return $script:NextGpuMachineIdentityPath
@@ -346,7 +346,7 @@ function Get-NextGpuMachineStatus {
 function Set-NextGpuMachineStatus {
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('online', 'updating', 'update_fail')]
+        [ValidateSet('online', 'updating', 'update_fail', 'error')]
         [string]$Status
     )
 
