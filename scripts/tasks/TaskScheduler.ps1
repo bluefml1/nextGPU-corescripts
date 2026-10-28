@@ -10,6 +10,7 @@ $taskScripts = @(
     'Register-AutoRepairTask.ps1',
     'Register-NvidiaLogonTask.ps1',
     'Register-EndSessionTask.ps1',
+    'Register-RentalUserResetTask.ps1',
     'Register-NextGpuEndSessionRecoveryTask.ps1',
     'launchGameTaskScheduler.ps1'
 )

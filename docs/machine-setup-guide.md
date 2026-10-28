@@ -288,7 +288,7 @@ Right-click → **Run as administrator** (or run from an elevated prompt). The s
 | **2 — Streaming** | Sunshine install, Moonlight Web service, Moonlight ↔ Sunshine pairing, ViGEmBus            |
 | **3 — Tunnel**    | cloudflared download, tunnel + DNS on `{id}.next-gpu.com`, `cloudflared` service           |
 | **4 — Register**  | Hardware inventory, benchmarks, game list, `POST registerMachine`, write `**domain.txt`**  |
-| **5 — Services**  | `gpu-heartbeat`, `auto-repair`, scheduled tasks (EndSession, game launch)                  |
+| **5 — Tasks**     | Sunshine logon task, `nextGPU-Heartbeat`, `nextGPU-AutoRepair`, EndSession, game launch    |
 | **6 — Finish**    | Wallpaper policy, rename admin → `NextGPU-Authority`, create `nextGPU` user, shutdown lock |
 
 
@@ -297,7 +297,7 @@ Right-click → **Run as administrator** (or run from an elevated prompt). The s
 
 | File / artifact                 | Contents                                                                         |
 | ------------------------------- | -------------------------------------------------------------------------------- |
-| `**domain.txt`**                | `DOMAIN`, `PUBLIC_IP`, `COMPUTER_NAME` — required for heartbeat and user storage |
+| `**domain.txt`**                | `DOMAIN`, `PUBLIC_IP`, `COMPUTER_NAME`, vendor fields — required for heartbeat and user storage (status is in `%ProgramData%\nextGPU\machine-status.flag`) |
 | `**logs/register_api_log.txt`** | Registration payload and API response                                            |
 | `**logs/VDD-VAD.log`**          | Virtual driver install log                                                       |
 | `**logs/sunshine-bind.log**`    | Sunshine display binding (if present)                                            |
@@ -310,16 +310,14 @@ Right-click → **Run as administrator** (or run from an elevated prompt). The s
 | --------------- | ----------------------------------------- |
 | `moonlight-web` | Browser client on `http://127.0.0.1:8080` |
 | `cloudflared`   | Public HTTPS tunnel to Moonlight          |
-| `gpu-heartbeat` | Status updates every 300 s                |
-| `auto-repair`   | Self-healing every 60 s                   |
 
 
-Sunshine runs in the **logged-on user session** via scheduled task `nextGPU-SunshineLogon`, not as a persistent LocalSystem service.
+Heartbeat and self-healing are **scheduled tasks**, not services: `nextGPU-Heartbeat` (status update every 5 minutes) and `nextGPU-AutoRepair` (health check every 1 minute). Sunshine runs in the **logged-on user session** via scheduled task `nextGPU-SunshineLogon`, not as a persistent LocalSystem service (`gpu-sunshine` exists only as a manual-start fallback).
 
 ### After RegisterMachine
 
 1. **Reboot manually** when prompted — drivers, display paths, and account renames apply more reliably after restart.
-2. Confirm services: `sc query cloudflared`, `sc query moonlight-web`, `sc query gpu-heartbeat`, `sc query auto-repair`
+2. Confirm services: `sc query cloudflared`, `sc query moonlight-web`; confirm tasks: `schtasks /Query /TN nextGPU-Heartbeat`, `schtasks /Query /TN nextGPU-AutoRepair`
 3. Open the URL from `**domain.txt`** and confirm Moonlight Web loads.
 4. **RDP or console logon once** after reboot so Sunshine can enumerate the virtual display.
 
@@ -491,7 +489,7 @@ Complete every item that applies to your deployment:
 | 1   | **Sunshine session starts**        | Log on as nextGPU; Sunshine process running; stream connects via Moonlight                                                                         |
 | 2   | **Wallpaper policy applied**       | Run `scripts\desktop\Test-WallpaperPolicy.ps1` — look for `**[OK] WallpaperStyle = 6`** (Fit), desktop path to `**nextgputobu-4k.bmp`** or 4K JPEG |
 | 3   | **Required drivers exist**         | VDD: `DISPLAY\MTT1337`* device; VAD playback device (optional); ViGEmBus installed                                                                 |
-| 4   | **Key services healthy**           | `cloudflared`, `moonlight-web`, `gpu-heartbeat`, `auto-repair` all running                                                                         |
+| 4   | **Key services healthy**           | `cloudflared`, `moonlight-web` running; tasks `nextGPU-Heartbeat`, `nextGPU-AutoRepair` exist with a recent last-run time                          |
 | 5   | **U: tenant storage** *(Step 05)*  | Log on as nextGPU; `U:` mounted with correct label                                                                                                 |
 | 6   | **Sunshine apps.json** *(Step 06)* | PlayNite-exported games visible in Moonlight app list                                                                                              |
 | 7   | **No critical log errors**         | Review `logs\register_api_log.txt`, `logs\auto-repair.log`, `logs\heartbeat.log`, provisioning logs                                                |

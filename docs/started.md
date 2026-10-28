@@ -2,27 +2,31 @@
 
 This repo is a Windows automation toolkit for turning a GPU machine into a remote gaming or rental host. The main setup script installs streaming software, virtual display/audio drivers, Cloudflare Tunnel exposure, backend registration, health reporting, repair loops, wallpaper policy, scheduled tasks, and local user/account changes.
 
-Use this file as the fast orientation guide. Use `README.md` when you need the full phase-by-phase detail.
+Use this file as the fast orientation guide. Use [`README.md`](README.md) when you need the full phase-by-phase detail.
 
 ## Big Picture
 
 The main product flow is:
 
-1. Run `RegisterMachine_Beta.bat` once on a fresh Windows GPU machine as Administrator.
+1. Run `RegisterMachine_Beta.bat` once on a fresh Windows GPU machine as Administrator (or use **Register Machine** in the NextGPU app, which runs it with `/UiConfig`).
 2. The script installs/repairs prerequisites:
-   - Virtual Display Driver and Virtual Audio Driver.
-   - Sunshine streaming host.
+   - Virtual Display Driver and Virtual Audio Driver (optional per machine; the choice is saved in `machine-profile.json`).
+   - Sunshine streaming host (credentials verified before setup continues).
+   - VC++ Runtime (x64) for Moonlight Web.
    - Moonlight Web browser client.
    - NSSM for Windows services.
    - ViGEmBus for controller input.
    - Cloudflare Tunnel for public HTTPS access.
-3. It pairs Moonlight Web to Sunshine, creates a Cloudflare DNS hostname under `next-gpu.com`, collects hardware inventory, registers the machine with the AWS backend, and writes `domain.txt`.
-4. It installs background services:
+3. It pairs Moonlight Web to Sunshine, creates a Cloudflare DNS hostname under `next-gpu.com`, collects hardware inventory, registers the machine with the AWS backend, and writes `domain.txt` plus `%ProgramData%\nextGPU\machine-identity.env` / `machine-status.flag`.
+4. It installs Windows services:
    - `moonlight-web`
    - `cloudflared`
-   - `gpu-heartbeat`
-   - `auto-repair`
-5. It applies the nextGPU wallpaper policy, renames the chosen admin account to `NextGPU-Authority`, creates a standard `nextGPU` user, and asks for a reboot.
+   - `gpu-sunshine` (manual-start fallback only; Sunshine normally starts in the user session via `nextGPU-SunshineLogon`)
+5. It registers scheduled tasks, including:
+   - `nextGPU-Heartbeat` (every 5 minutes)
+   - `nextGPU-AutoRepair` (every 1 minute)
+   - `EndSession`, `nextGPU-EndSessionRecoveryStartup`, `auto game launch`, `nextGPU-NvidiaLogon`
+6. It applies the nextGPU wallpaper policy, optionally renames the chosen admin account to `NextGPU-Authority`, creates a standard `nextGPU` user (group `NextGPURestricted`), registers desktop-cleanup and Clean Session tasks, locks shutdown, reports `online`, builds the NextGPU app if the .NET 8 SDK is present, and asks for a reboot.
 
 Most other scripts are helpers for that flow or maintenance tools after setup.
 
@@ -44,38 +48,44 @@ Before running it, have these values ready:
 - Machine display name, for example `GPU-RENTAL-01`.
 - Original rental/listing price.
 - Optional vendor ID.
-- Existing local admin username that should become `NextGPU-Authority`.
+- Whether to rename the local admin to `NextGPU-Authority` and, if yes, its current username.
+- Whether this machine needs VDD/VAD (or pass `/UseVdd` / `/NoVdd`).
 
 After it finishes, reboot manually. Driver enumeration, display paths, scheduled tasks, and user/account changes are more reliable after a restart.
 
 ## Repo Layout
 
-The root folder now keeps compatibility launchers and shared runtime artifacts. The real implementation files live under named folders:
+The root folder keeps launchers and shared runtime artifacts. The real implementation files live under named folders:
 
 ```text
 nextGPU-corescripts/
 ├── RegisterMachine_Beta.bat      # main setup launcher
-├── uninstall-all.bat              # uninstall launcher
+├── NextGPU.bat                   # NextGPU operator dashboard
+├── Start-Sunshine.bat            # start Sunshine in the current session
+├── uninstall-all.bat             # uninstall launcher
+├── apps/NextGPU/                 # NextGPU app + NextGPUService (.NET 8)
+├── config/                       # launch-companion defaults, session rules template
+├── templates/session/            # Clean Session template notes
+├── PlayNiteWatcher/              # PlayNite setup and Sunshine app export
 ├── logs/                         # generated repo logs
 ├── assets/                       # static files such as nextgputobu.jpeg
-├── docs/                         # README, this guide, manual checklist
-├── scripts/
-│   ├── provisioning/             # one-time setup and inventory helpers
-│   ├── runtime/                  # heartbeat, repair, update loops
-│   ├── drivers/                  # VDD/VAD and ViGEmBus installers
-│   ├── desktop/                  # wallpaper policy setup
-│   ├── tasks/                    # scheduled task registration
-│   └── maintenance/              # games, copy/extract, uninstall helpers
-└── tools/                        # reserved for future local tools
+├── docs/                         # README, this guide, setup guides
+└── scripts/
+    ├── provisioning/             # one-time setup, Sunshine/VDD helpers, inventory
+    ├── runtime/                  # heartbeat, repair, update, user storage, session rules
+    ├── drivers/                  # VDD/VAD and ViGEmBus installers
+    ├── desktop/                  # wallpaper, shutdown policy, desktop cleanup
+    ├── tasks/                    # scheduled task registration
+    └── maintenance/              # games/apps sync + layout, clients, disk, uninstall
 ```
 
 ## Script Map
 
 ### Root Launchers
 
-Only the primary setup and uninstall launchers are kept at the repo root:
-
-- `RegisterMachine_Beta.bat`: delegates to `scripts/provisioning/RegisterMachine_Beta.bat`.
+- `RegisterMachine_Beta.bat`: delegates to `scripts/provisioning/RegisterMachine_Beta.bat`. Flags: `/UseVdd`, `/NoVdd`, `/UiConfig`.
+- `NextGPU.bat`: opens the NextGPU dashboard (installs the .NET 8 SDK and builds `NextGPU.exe` if needed). See [`nextgpu-app/README.md`](nextgpu-app/README.md).
+- `Start-Sunshine.bat`: runs `scripts/provisioning/Start-Sunshine-InSession.ps1`.
 - `uninstall-all.bat`: delegates to `scripts/maintenance/uninstall-all.bat`.
 
 All other workflows are run from their `scripts/` subfolders.
@@ -87,6 +97,10 @@ All other workflows are run from their `scripts/` subfolders.
 - `scripts/provisioning/Get-DisplayDeviceId.ps1`: Computes the Sunshine `output_name` device ID for the virtual display.
 - `scripts/provisioning/Get-MachineInventory.ps1`: Emits OS, CPU, RAM, GPU, and check-in fields for registration.
 - `scripts/provisioning/Get-BenchmarkScores-Silent.ps1`: Attempts to scrape CPU/GPU benchmark scores and outputs `CPU_SCORE|GPU_SCORE`.
+- `scripts/provisioning/Invoke-PostSunshineSetup.ps1`: After any Sunshine install: deploys repo `sunshine.conf` and support scripts, resolves VDD `output_name` (VDD hosts only), and exports PlayNite games to Sunshine.
+- `scripts/provisioning/Update-NextGpuStreamingStack.ps1`: Shared Sunshine/Moonlight install, update, and pairing logic used by auto-repair and checking-update (via `scripts/runtime/Run-StreamingStackUpdate.bat`).
+- `scripts/provisioning/MachineProfile.ps1`: Reads/writes `machine-profile.json` (VDD enabled/disabled).
+- `scripts/provisioning/Start-Sunshine-InSession.ps1` / `Register-SunshineLogonTask.ps1`: Start Sunshine in the logged-on user session and register `nextGPU-SunshineLogon`.
 
 ### Drivers
 
@@ -94,11 +108,15 @@ All other workflows are run from their `scripts/` subfolders.
 - `scripts/drivers/InstallVDD-VAD.bat`: One-click wrapper for the virtual display/audio installer.
 - `scripts/drivers/ViGEmBus.bat`: Downloads and silently installs ViGEmBus if it is not already installed.
 
-### Runtime Services
+### Runtime Tasks
 
-- `scripts/runtime/heartbeat-only.bat`: Loops every 300 seconds and posts the current machine status to the AWS `updateStatus` endpoint.
-- `scripts/runtime/auto-repair.bat`: Loops every 60 seconds, checks `cloudflared`, Sunshine, `moonlight-web`, and local HTTP `127.0.0.1:8080`. It can reinstall Sunshine/Moonlight and re-pair them.
+- `scripts/runtime/heartbeat-only.bat`: Runs one heartbeat per call (task `nextGPU-Heartbeat`, at boot and every 5 minutes) and posts the status from `machine-status.flag` to the AWS `updateStatus` endpoint. Skips while `heartbeat-suspended.flag` or `startup-publish-pending.flag` exists in `%ProgramData%\nextGPU`.
+- `scripts/runtime/auto-repair.bat`: Runs one health check per call (task `nextGPU-AutoRepair`, at boot and every 1 minute). Checks `cloudflared`, Sunshine, `moonlight-web`, local HTTP `127.0.0.1:8080`, and Sunshine credentials / Moonlight pairing. It can restore credentials, re-pair, or fully reinstall Sunshine/Moonlight.
 - `scripts/runtime/checking-update.bat`: Run-once update checker (EndSession / vendor path). Writes to `logs/checking-update.log`.
+- `scripts/runtime/Invoke-NextGpuMachineIdentity.ps1`: Reads/writes `%ProgramData%\nextGPU\machine-identity.env` and `machine-status.flag` (`online`, `updating`, `update_fail`, `error`).
+- `scripts/runtime/Recover-NextGpuEndSessionAtStartup.ps1`: Task `nextGPU-EndSessionRecoveryStartup`; finishes an interrupted EndSession reset at boot and publishes `online`.
+- `scripts/runtime/Invoke-VendorOfflineShutdown.ps1`: Calls the `onDemandGPUHost` shutdown API for vendor hosts (secrets in `ondemand-gpu-host.env`, see `ondemand-gpu-host.env.example`).
+- `scripts/runtime/NextGPU-PlayElevated.*` / `Update-LaunchCompanions.ps1`: Ask `NextGPUService` to launch games elevated, and manage its launch companions.
 - **Per-user S3 storage (opt-in):** `scripts/runtime/Setup-UserStorage.bat` installs rclone `[nextgpu-user]` under `%ProgramData%\nextGPU\rclone\`, registers `nextGPU-UserStorageMount` / `nextGPU-UserStorageUnmount` for the **nextGPU** user, and mounts `user_<id>/` from bucket `next-gpu-storage` as **`U:`** at logon (Explorer label `{name}'s Storage` from checkDomain `displayName` / `name` / `firstName` / `lastName`). Not wired into `RegisterMachine_Beta.bat` by default.
 - **Clean Session folder rules:** `scripts/runtime/Invoke-SessionFolderRules.ps1` runs **delete** or **replace** rules on nextGPU logoff (primary) with logon fallback. Config: `%ProgramData%\nextGPU\session-folder-rules.json`; golden replace sources: `%ProgramData%\nextGPU\session-templates\{id}\`. Tasks: `nextGPU-SessionFolderRulesLogoff` / `nextGPU-SessionFolderRulesLogon` via `Register-SessionFolderRulesTasks.ps1` (also called from `RegisterMachine_Beta.bat` after the nextGPU user is created). `sunshine/endSession.ps1` runs logoff rules at STEP 0. NextGPU HOST page **Setup Games & Apps** → **Clean Session** tab for CRUD, import/export, seed templates. Host layout (`arrange-games-apps.bat`) is separate on the **Host Setup** tab.
 
@@ -122,8 +140,14 @@ Setup installs rclone/WinFsp, AWS config, publishes scripts, registers **ensure 
 
 ### Games, Desktop, And Maintenance
 
-- `scripts/maintenance/Update-Games.ps1`: Reads apps from Moonlight Web and sends stream URLs to the AWS `updateNewGame` endpoint.
-- `scripts/maintenance/updateGames.bat`: Admin wrapper for `Update-Games.ps1`; can read `COMPUTER_NAME` and `PUBLIC_IP` from `domain.txt`.
+- `scripts/maintenance/Update-Games.ps1`: Restarts Sunshine via API, reads apps from Moonlight Web, and sends stream URLs to the AWS `updateNewGame` endpoint.
+- `scripts/maintenance/updateGames.bat`: Admin wrapper for `Update-Games.ps1`; can read `COMPUTER_NAME` and `PUBLIC_IP` from `domain.txt` (`/UseDomainTxt` skips prompts).
+- `scripts/maintenance/sync-games-apps-official.bat` / `push-games-apps-to-r2.bat`: Download / upload official game and app archives on Cloudflare R2 via rclone (`Sync-GamesApps-Official.ps1`).
+- `scripts/maintenance/arrange-games-apps.bat`: Arranges synced games/apps into Steam, Garena, LevelUp, and HoYoPlay layouts (`Arrange-GamesApps.ps1`, `Invoke-Arrange*Layout.ps1`).
+- `scripts/maintenance/Install-SteamClient.ps1`, `Install-GarenaClient.ps1`, `Install-LevelUpClient.ps1`, `Install-HoYoPlayClient.ps1`: Launcher client installers.
+- `scripts/maintenance/Install-GarenaPlatformService.ps1` / `Register-GarenaLaunchCompanion.ps1`: Garena platform service and the `gxxapphelper.exe` launch companion for `NextGPUService`.
+- `scripts/maintenance/Create-Z-Partition.ps1`: Shrinks a volume and creates/extends the `Z:` partition.
+- `scripts/maintenance/Run-ChkDsk-Repair.ps1`: Runs `chkdsk /f` on one or all fixed drives, then prompts for reboot.
 - `scripts/maintenance/copy.bat`: Connects to an SMB share, copies files into the repo root, then runs `scripts/maintenance/extract.bat`.
 - `scripts/maintenance/extract.bat`: Recursively extracts `.zip` and `.rar` files from the repo root using `C:\Program Files\7-Zip\7z.exe`, then deletes the archives.
 - `scripts/maintenance/garena.bat`: Starts Garena from `Z:\Garena\...`.
@@ -135,26 +159,32 @@ Setup installs rclone/WinFsp, AWS config, publishes scripts, registers **ensure 
 - `scripts/desktop/Apply-WallpaperFit-Logon.ps1` / `Register-WallpaperFitLogonTask.ps1`: Per-logon Fit wallpaper, hide icons, clear nextGPU Desktop files.
 - `scripts/desktop/Clear-NextGpuUserDesktop.ps1`: Deletes everything under the **nextGPU** user’s Desktop folder (used by the `nextGPU-DesktopCleanupLogon` task at each nextGPU logon).
 - `scripts/desktop/Register-NextGpuDesktopCleanupTask.ps1`: Registers that logon task (run elevated; `RegisterMachine_Beta.bat` calls it after `net user nextGPU /add`).
-- `scripts/tasks/TaskScheduler.ps1`: Registers the `EndSession` task.
-- `scripts/tasks/launchGameTaskScheduler.ps1`: Registers `auto game launch` at user logon and runs `Z:\launchGame.ps1`.
+- `scripts/desktop/Setup-Shutdown-Policy.bat` / `Set-ShutdownPolicy.ps1`: Only `NextGPU-Authority` may shut down or restart.
+- `scripts/tasks/TaskScheduler.ps1`: Registers the core tasks by calling `Register-HeartbeatTask.ps1`, `Register-AutoRepairTask.ps1`, `Register-NvidiaLogonTask.ps1`, `Register-EndSessionTask.ps1`, `Register-NextGpuEndSessionRecoveryTask.ps1`, `launchGameTaskScheduler.ps1`, and (if present) `PlayNiteWatcher\Register-PlayniteLogonTask.ps1`. Removes the deprecated `nextGPU-AutoUpdate` task.
+- `scripts/tasks/launchGameTaskScheduler.ps1`: Registers `auto game launch` at user logon and runs `C:\Program Files\Sunshine\scripts\launchGame.ps1` (falls back to repo `sunshine\launchGame.ps1` or `Z:\launchGame.ps1`).
+- `scripts/tasks/Test-TaskSchedulerSetup.ps1`: Verifies the task registration wiring.
 
 ### Notes
 
-- `docs/Main script to do.txt`: Small manual checklist for image preparation steps, including game/app deletion, disk shrinking, copy operations, user creation, and reboot.
-- `docs/README.md`: Existing detailed reference for setup phases, services, logs, dependencies, and troubleshooting.
+- [`README.md`](README.md): Detailed reference for setup phases, services, scheduled tasks, status flags, logs, dependencies, and troubleshooting. (`register-machine.md` is a copy of it.)
+- [`setup-beginer.md`](setup-beginer.md), [`machine-setup-beginer.md`](machine-setup-beginer.md), [`machine-setup-guide.md`](machine-setup-guide.md): Step-by-step host setup guides.
 
 ## Files Created At Runtime
 
 These are important because maintenance scripts depend on them:
 
-- `domain.txt`: Created by `RegisterMachine_Beta.bat`. It stores identity only (`DOMAIN`, `PUBLIC_IP`, `COMPUTER_NAME`, vendor fields). Machine STATUS lives in `%ProgramData%\nextGPU\machine-status.flag`; durable identity also in `%ProgramData%\nextGPU\machine-identity.env`.
+- `domain.txt`: Created by `RegisterMachine_Beta.bat`. It stores identity only (`DOMAIN`, `PUBLIC_IP`, `COMPUTER_NAME`, `VENDOR_ID`, `VENDOR_ID_ENABLED`). Machine STATUS lives in `%ProgramData%\nextGPU\machine-status.flag`; durable identity also in `%ProgramData%\nextGPU\machine-identity.env`.
+- `machine-profile.json`: Per-machine settings, currently whether VDD/VAD is enabled.
+- `%ProgramData%\nextGPU\vendor-id.txt`: Present only on vendor hosts.
 - `logs/register_api_log.txt`: Registration payload and backend response.
 - `logs/setup_log_YYYYMMDD.txt`: Setup start timestamp.
 - `logs/wmi-probe.log`: WMI/WMIC probe output.
 - `logs/VDD-VAD.log`: Virtual display/audio installer log.
 - `logs/ViGEmBus.log`: ViGEmBus installer log.
-- `logs/heartbeat.log` and `logs/heartbeat-error.log`: NSSM service logs.
-- `logs/auto-repair.log` and `logs/auto-repair-error.log`: NSSM service logs.
+- `logs/sunshine-bind.log` and `logs/sunshine-vdd-setup.log`: Sunshine VDD display binding.
+- `logs/moonlight-web.log` and `logs/moonlight-web-error.log`: Moonlight Web service output.
+- `logs/heartbeat.log` and `logs/heartbeat-error.log`: `nextGPU-Heartbeat` task output.
+- `logs/auto-repair.log` and `logs/auto-repair-error.log`: `nextGPU-AutoRepair` task output.
 - `logs/checking-update.log`: Run-once update checker log.
 - `logs/uninstall-nextgpu.log`: Uninstaller log.
 - Downloaded folders/binaries still stay at the repo root, such as `sunshine\`, `moonlight-web\`, `nssm\`, `VDD-VAD-Install\`, and `cloudflared.exe`.
@@ -165,15 +195,12 @@ These are important because maintenance scripts depend on them:
 
 1. Copy or clone this repo onto the Windows target machine.
 2. Open an elevated command prompt or right-click `RegisterMachine_Beta.bat` and run as Administrator.
-3. Enter Cloudflare, API, pricing, machine, vendor, and admin-account inputs.
-4. Wait for the install, pairing, Cloudflare tunnel creation, backend registration, and service installation.
-5. Reboot.
-6. Confirm these services are running:
-   - `cloudflared`
-   - `moonlight-web`
-   - `gpu-heartbeat`
-   - `auto-repair`
-7. Open the generated domain from `domain.txt` and confirm Moonlight Web loads.
+3. Choose VDD/VAD, then enter Cloudflare, API, machine name, price, vendor, and admin-rename inputs.
+4. Wait for the install, pairing, Cloudflare tunnel creation, backend registration, and service/task registration.
+5. Reboot, then log on once (RDP or console) so Sunshine starts in the user session.
+6. Confirm the services are running: `sc query cloudflared`, `sc query moonlight-web`.
+7. Confirm the scheduled tasks exist and have run: `schtasks /Query /TN nextGPU-Heartbeat` and `schtasks /Query /TN nextGPU-AutoRepair`.
+8. Open the generated domain from `domain.txt` and confirm Moonlight Web loads.
 
 ### Refresh The Game List
 
@@ -187,13 +214,13 @@ It reads `domain.txt` when available, asks you to confirm the detected values, t
 
 ### Repair Streaming Stack Manually
 
-If the service is not already installed, run:
+Run one repair cycle manually (as Administrator), or trigger the task with `schtasks /Run /TN nextGPU-AutoRepair`:
 
 ```bat
 scripts\runtime\auto-repair.bat
 ```
 
-It waits for network access, checks Cloudflare/Sunshine/Moonlight/local HTTP, and performs a full Sunshine/Moonlight reinstall plus pairing if needed.
+It waits for network access, checks Cloudflare/Sunshine/Moonlight/local HTTP and credentials/pairing, and restores credentials, re-pairs, or performs a full Sunshine/Moonlight reinstall plus pairing as needed. Cloudflared failures only restart the tunnel service; they never trigger a streaming-stack reinstall.
 
 If `%ProgramData%\nextGPU\machine-status.flag` is `updating`, `scripts/runtime/auto-repair.bat` skips repairs to avoid fighting an update. Otherwise, when a check fails:
 
@@ -243,7 +270,7 @@ To skip the confirmation prompt:
 uninstall-all.bat force
 ```
 
-Optional flags: `skipdrivers`, `skipfiles`, `keepusers` (retain local user `nextGPU`). Combine with `force`, for example `uninstall-all.bat force skipdrivers`.
+Optional flags: `skipdrivers`, `skipfiles`, `keepusers` (retain local users `nextGPU` and `NextGPU-Admin`). Combine with `force`, for example `uninstall-all.bat force skipdrivers`.
 
 The uninstaller removes local Windows services, Sunshine (Program Files + AppData), Moonlight Web, NSSM, `cloudflared.exe`, VDD/VAD (`DISPLAY\MTT1337*`), ViGEmBus, scheduled tasks including `nextGPU-*`, wallpaper and shutdown policy (Default user hive included), `CLOUDFLARE_TUNNEL_TOKEN`, the `nextGPU` user (unless `keepusers`), and generated files/logs such as `domain.txt` and `logs/*`.
 
@@ -296,7 +323,7 @@ Start with the script that owns the workflow you want to change:
 - Setup fails early: check `logs/wmi-probe.log`; run `scripts/provisioning/Ensure-WmiSupport.ps1` manually.
 - Sunshine has no virtual display: inspect `logs\VDD-VAD.log`, reboot, then run `scripts\provisioning\Get-DisplayDeviceId.ps1 -ListAll -IncludeInactive`.
 - Public URL does not load: check `sc query cloudflared`, Cloudflare tunnel/DNS, and local `http://127.0.0.1:8080`.
-- Heartbeat does not update backend: check `domain.txt`, `gpu-heartbeat`, `logs/heartbeat.log`, and network access to AWS.
+- Heartbeat does not update backend: check `domain.txt`, the `nextGPU-Heartbeat` task, `logs/heartbeat.log`, that no `heartbeat-suspended.flag` is left in `%ProgramData%\nextGPU`, and network access to AWS.
 - Auto-repair keeps reinstalling: check `logs/auto-repair.log`, Moonlight local HTTP status, and whether `machine-status.flag` is stuck at `updating`.
 - Game list is stale: run `scripts/maintenance/updateGames.bat` after confirming Moonlight Web returns apps at `http://localhost:8080/api/apps?host_id=0&force_refresh=false`.
 

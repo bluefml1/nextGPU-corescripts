@@ -39,6 +39,7 @@ $expectedChain = @(
     'Register-AutoRepairTask.ps1',
     'Register-NvidiaLogonTask.ps1',
     'Register-EndSessionTask.ps1',
+    'Register-RentalUserResetTask.ps1',
     'Register-NextGpuEndSessionRecoveryTask.ps1'
 )
 
@@ -50,6 +51,7 @@ foreach ($scriptName in @(
     'Register-AutoRepairTask.ps1',
     'Register-NvidiaLogonTask.ps1',
     'Register-EndSessionTask.ps1',
+    'Register-RentalUserResetTask.ps1',
     'Register-NextGpuEndSessionRecoveryTask.ps1',
     'launchGameTaskScheduler.ps1'
 )) {
@@ -163,6 +165,7 @@ if ($Register) {
             'nextGPU-AutoRepair' = @{ Interval = 'PT1M'; Bat = 'auto-repair.bat' }
             'nextGPU-NvidiaLogon' = @{ Interval = $null; Bat = 'Start-Nvidia-InSession.ps1' }
             'EndSession'         = @{ Interval = $null; Bat = $null }
+            'RentalUserReset'    = @{ Interval = $null; Bat = 'resetRentalUser.ps1' }
             'nextGPU-EndSessionRecoveryStartup' = @{ Interval = $null; Bat = 'Recover-NextGpuEndSessionAtStartup.ps1' }
         }
         foreach ($entry in $expectedTasks.GetEnumerator()) {

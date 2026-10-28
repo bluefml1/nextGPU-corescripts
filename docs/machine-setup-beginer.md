@@ -535,7 +535,7 @@ When Steps 6.1–6.3 are done, run this checklist before you move on.
 | 1   | Streaming starts                | Log in as `nextGPU`; a test stream connects through Moonlight without a black screen         |
 | 2   | Wallpaper looks right           | The verification script reports `[OK]`, and the desktop image isn't stretched or cropped     |
 | 3   | Drivers are present             | Virtual display and audio devices show up in Device Manager                                  |
-| 4   | Background services are running | `cloudflared`, `moonlight-web`, `gpu-heartbeat`, and `auto-repair` are all listed as running |
+| 4   | Background services are running | `cloudflared` and `moonlight-web` are running, and the scheduled tasks `nextGPU-Heartbeat` and `nextGPU-AutoRepair` exist and have a recent last-run time |
 | 5   | Renter storage works            | Log in as `nextGPU`; the `U:` drive appears with the right label                             |
 | 6   | Games show up                   | The PlayNite-exported games appear in the Moonlight app list                                 |
 | 7   | No alarming errors in the logs  | A quick skim of the recent logs doesn't show repeated failures                               |

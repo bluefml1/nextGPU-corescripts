@@ -440,7 +440,7 @@ Details: [machine-setup-beginer.md#step-6-add-games-with-playnite](machine-setup
 | 1 | Streaming | `nextGPU` login → Moonlight stream, no black screen; picture scales to client's requested resolution (see [wrong scaling](#stream-does-not-scale-to-requested-resolution)) |
 | 2 | Wallpaper | Verification `[OK]`, image not stretched |
 | 3 | Drivers | VDD/VAD in Device Manager |
-| 4 | Services | `cloudflared`, `moonlight-web`, `gpu-heartbeat`, `auto-repair` running |
+| 4 | Services + tasks | `cloudflared`, `moonlight-web` running; tasks `nextGPU-Heartbeat`, `nextGPU-AutoRepair` exist and ran |
 | 5 | U: drive | Appears after `nextGPU` logon (~22s) |
 | 6 | Games | Show in Moonlight app list |
 | 7 | Logs | No repeated failures |

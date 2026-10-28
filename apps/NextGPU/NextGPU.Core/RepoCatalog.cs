@@ -69,6 +69,14 @@ public static class RepoCatalog
         },
         new()
         {
+            TaskName = "RentalUserReset",
+            DisplayName = "Rental User Reset",
+            Description = "Runs resetRentalUser.ps1 when LogoffManager event 2003 fires (new rental found a stale nextGPU profile).",
+            IntervalSummary = "On reset event",
+            RegisterScriptRelativePath = @"scripts\tasks\Register-RentalUserResetTask.ps1"
+        },
+        new()
+        {
             TaskName = "nextGPU-EndSessionRecoveryStartup",
             DisplayName = "End Session Recovery (Startup)",
             Description = "At startup (PT20S): EndSession recovery if pending flag exists; then publish updateStatus online on every boot.",

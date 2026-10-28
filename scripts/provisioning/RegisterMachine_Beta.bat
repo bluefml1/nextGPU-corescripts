@@ -962,6 +962,7 @@ set "TASK_HEARTBEAT=%TASKS_DIR%\Register-HeartbeatTask.ps1"
 set "TASK_AUTO_REPAIR=%TASKS_DIR%\Register-AutoRepairTask.ps1"
 set "TASK_NVIDIA_LOGON=%TASKS_DIR%\Register-NvidiaLogonTask.ps1"
 set "TASK_END_SESSION=%TASKS_DIR%\Register-EndSessionTask.ps1"
+set "TASK_RENTAL_USER_RESET=%TASKS_DIR%\Register-RentalUserResetTask.ps1"
 set "TASK_SCHEDULER_SCRIPT=%TASKS_DIR%\TaskScheduler.ps1"
 
 for %%F in (
@@ -969,6 +970,7 @@ for %%F in (
     "%TASK_AUTO_REPAIR%"
     "%TASK_NVIDIA_LOGON%"
     "%TASK_END_SESSION%"
+    "%TASK_RENTAL_USER_RESET%"
 ) do (
     if not exist %%~F (
         echo [!] WARNING: Task script not found: %%~F

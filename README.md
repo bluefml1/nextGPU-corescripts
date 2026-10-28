@@ -6,9 +6,10 @@ The root folder exposes the main launchers:
 
 - `RegisterMachine_Beta.bat` — full machine setup
 - `NextGPU.bat` — operator dashboard (health, logs, maintenance)
+- `Start-Sunshine.bat` — start Sunshine in the current user session
 - `uninstall-all.bat`
 
-Detailed docs live in `docs/README.md` and `docs/started.md`.
+Detailed docs live in [`docs/README.md`](docs/README.md) (full reference: setup phases, services, scheduled tasks, status flags, logs) and [`docs/started.md`](docs/started.md) (orientation and script map).
 
 **First-time host setup (beginner):**
 
@@ -26,22 +27,26 @@ nextGPU-corescripts/
 ├── RegisterMachine_Beta.bat      # main install launcher
 ├── NextGPU.bat                   # operator dashboard (double-click)
 ├── NextGPU.exe                   # built by apps\NextGPU\build-publish.bat
+├── Start-Sunshine.bat            # start Sunshine in the current user session
 ├── uninstall-all.bat             # uninstall launcher
+├── config/                       # launch-companion defaults, session rules template
+├── templates/session/            # Clean Session template notes
+├── PlayNiteWatcher/              # PlayNite setup + Sunshine app export
 ├── logs/                         # generated logs
 ├── assets/                       # static assets, including wallpaper
-├── docs/                         # detailed docs and checklist
-└── scripts/
-    ├── provisioning/             # setup, inventory, display helpers
-    ├── runtime/                  # heartbeat, repair, update scripts
-    ├── drivers/                  # VDD/VAD and ViGEmBus installers
-    ├── desktop/                  # wallpaper policy scripts
-    ├── tasks/                    # scheduled task registration
-    └── maintenance/              # game update, copy/extract, uninstall internals
+├── docs/                         # detailed docs and setup guides
 ├── apps/
-│   └── NextGPU/                  # controller source + build-publish.bat
+│   └── NextGPU/                  # controller + NextGPUService source, build-publish.bat
+└── scripts/
+    ├── provisioning/             # setup, Sunshine/VDD helpers, inventory
+    ├── runtime/                  # heartbeat, repair, update, user storage, session rules
+    ├── drivers/                  # VDD/VAD and ViGEmBus installers
+    ├── desktop/                  # wallpaper, shutdown policy, desktop cleanup
+    ├── tasks/                    # scheduled task registration
+    └── maintenance/              # games/apps sync + layout, clients, disk, uninstall
 ```
 
-Runtime state such as `domain.txt`, `sunshine/`, `moonlight-web/`, `nssm/`, `VDD-VAD-Install/`, and `cloudflared.exe` stays at the repo root for compatibility.
+Runtime state such as `domain.txt`, `machine-profile.json`, `sunshine/`, `moonlight-web/`, `nssm/`, `VDD-VAD-Install/`, and `cloudflared.exe` stays at the repo root for compatibility.
 
 ## Before You Start
 
@@ -68,17 +73,16 @@ RegisterMachine_Beta.bat
 Recommended flow:
 
 1. Right-click `RegisterMachine_Beta.bat` and choose **Run as administrator**.
-2. Enter the requested Cloudflare, AWS API, machine, price, vendor, and admin-account values.
-3. Choose whether to install/refresh VDD/VAD when prompted. If VDD is missing or fails, setup warns but still continues so Sunshine can install.
-4. Wait for setup to install Sunshine, Moonlight Web, NSSM, ViGEmBus, Cloudflare Tunnel, scheduled tasks, heartbeat, auto-repair, wallpaper policy, and backend registration.
-5. Reboot manually when setup finishes.
-6. Confirm these services are running:
-   - `cloudflared`
-   - `moonlight-web`
-   - `gpu-heartbeat`
-   - `auto-repair`
+2. Choose whether this machine needs VDD/VAD (or pass `/UseVdd` / `/NoVdd`). The choice is saved to `machine-profile.json`. If VDD is missing or fails, setup warns but still continues so Sunshine can install.
+3. Enter the requested Cloudflare, AWS API, machine, price, and vendor values, and choose whether to rename the local admin to `NextGPU-Authority`.
+4. Wait for setup to install Sunshine, VC++ Runtime, Moonlight Web, NSSM, ViGEmBus, Cloudflare Tunnel, backend registration, scheduled tasks (heartbeat, auto-repair, EndSession, logon helpers), wallpaper policy, the `nextGPU` user, and the shutdown lock.
+5. Reboot manually when setup finishes, then log on once (RDP or console) so Sunshine starts in the user session.
+6. Confirm these services are running: `cloudflared`, `moonlight-web`.
+7. Confirm these scheduled tasks exist: `nextGPU-Heartbeat` (every 5 minutes) and `nextGPU-AutoRepair` (every 1 minute).
 
-After setup, `domain.txt` is created at the repo root and logs are written under `logs/`.
+You can also run setup from the NextGPU app (**Register Machine**), which passes the form values with `/UiConfig` instead of console prompts.
+
+After setup, `domain.txt` (identity) is created at the repo root, machine status is kept in `%ProgramData%\nextGPU\machine-status.flag`, and logs are written under `logs/`.
 
 ## NextGPU Controller (ready to use)
 
@@ -132,10 +136,16 @@ Lock shutdown/restart to **NextGPU-Authority** only (`nextGPU` and other users c
 scripts\desktop\Setup-Shutdown-Policy.bat
 ```
 
-Run auto-repair manually:
+Run one auto-repair cycle manually (normally run every minute by the `nextGPU-AutoRepair` task):
 
 ```bat
 scripts\runtime\auto-repair.bat
+```
+
+Re-register the core scheduled tasks:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\tasks\TaskScheduler.ps1
 ```
 
 ## Logs
@@ -147,6 +157,8 @@ Generated logs are centralized in `logs/`, including:
 - `logs/ViGEmBus.log`
 - `logs/register_api_log.txt`
 - `logs/setup_log_*.txt`
+- `logs/sunshine-bind.log`
+- `logs/sunshine-vdd-setup.log`
 - `logs/heartbeat.log`
 - `logs/heartbeat-error.log`
 - `logs/auto-repair.log`
@@ -164,7 +176,9 @@ Generated logs are centralized in `logs/`, including:
 - Virtual audio shows Code 52: VDD can still be used headless. VAD is non-blocking by default because some Windows 11 24H2 / Server 2025 images reject the upstream audio driver signature.
 - Before unplugging every physical monitor: confirm VDD is OK, Sunshine is capturing the intended display (set `output_name` in `sunshine.conf` manually if you need a fixed VDD head), and RDP works.
 - Public URL does not load: check `sc query cloudflared`, Cloudflare tunnel/DNS, and local `http://127.0.0.1:8080`.
-- Heartbeat does not update backend: confirm `domain.txt` exists, `gpu-heartbeat` is running, and inspect `logs/heartbeat.log`.
+- Setup stops at the Sunshine login check: confirm `C:\Program Files\Sunshine\config\sunshine_state.json` exists and `https://localhost:47990/api/apps` returns 200 for `bluefml1` / `letmeinpls`.
+- Moonlight Web does not respond after install: inspect `logs/moonlight-web-error.log`; the usual cause is a missing x64 `vcruntime140.dll` (install `vc_redist.x64.exe`, then restart `moonlight-web`).
+- Heartbeat does not update backend: confirm `domain.txt` exists, the `nextGPU-Heartbeat` task exists and runs, no `heartbeat-suspended.flag` is left in `%ProgramData%\nextGPU`, and inspect `logs/heartbeat.log`.
 - Auto-repair keeps reinstalling: inspect `logs/auto-repair.log`, check Moonlight local HTTP, and confirm `machine-status.flag` is not stuck at `updating`.
 - Registration failed: inspect `logs/register_api_log.txt`, API key, and payload size.
 - Game list is stale: confirm Moonlight Web returns apps at `http://localhost:8080/api/apps?host_id=0&force_refresh=false`, then run `scripts\maintenance\updateGames.bat`.
@@ -197,7 +211,9 @@ uninstall-all.bat force skipfiles
 uninstall-all.bat force keepusers
 ```
 
-The uninstaller removes local nextGPU services, Sunshine (including AppData config), Moonlight Web, NSSM, `cloudflared.exe`, VDD/VAD (`DISPLAY\MTT1337*` + driver packages), ViGEmBus, all `nextGPU-*` scheduled tasks, wallpaper and shutdown policy (including Default user hive keys), `CLOUDFLARE_TUNNEL_TOKEN`, the `nextGPU` local user (unless `keepusers`), and generated files/logs. It does not delete Cloudflare DNS/tunnel resources from your Cloudflare account, and it does not remove the `NextGPU-Authority` admin account.
+`keepusers` keeps the local `nextGPU` and `NextGPU-Admin` users.
+
+The uninstaller removes local nextGPU services (including legacy `gpu-heartbeat` / `auto-repair` and `NextGPUService`), Sunshine (including AppData config), Moonlight Web, NSSM, `cloudflared.exe`, VDD/VAD (`DISPLAY\MTT1337*` + driver packages), ViGEmBus, all `nextGPU-*` scheduled tasks, wallpaper and shutdown policy (including Default user hive keys), `CLOUDFLARE_TUNNEL_TOKEN`, the `nextGPU` local user (unless `keepusers`), and generated files/logs. It does not delete Cloudflare DNS/tunnel resources from your Cloudflare account, and it does not remove the `NextGPU-Authority` admin account.
 
 Reboot after uninstall, especially if drivers were removed.
 

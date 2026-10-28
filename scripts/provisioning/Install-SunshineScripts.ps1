@@ -125,7 +125,9 @@ function Install-SunshineSupportScripts {
         'launchGame.ps1',
         'nextGpuSessionCommon.ps1',
         'startSession.ps1',
-        'cancelSession.ps1'
+        'cancelSession.ps1',
+        'resetRentalUser.ps1',
+        'resetRentalUserEvent.ps1'
     )
 
     Write-SetupMessage '=== Installing Sunshine support scripts ==='

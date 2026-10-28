@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Post-Sunshine setup: deploy repo sunshine.conf + dd_* settings, support scripts, VDD output_name via Set-SunshineVddOutput.ps1, and re-export games via PlayNiteWatcher when configured.
+    Post-Sunshine setup: deploy repo sunshine.conf + dd_* settings, support scripts, VDD output_name via Set-SunshineVddOutput.ps1, re-export games via PlayNiteWatcher when configured, then restart Sunshine via /api/restart so it loads them.
 .DESCRIPTION
     By default exports apps already present in Playnite games.db without rescanning Steam/Epic.
     Use -RefreshPlayniteLibrary when new games were installed on disk and Playnite needs --updatelibraries.
@@ -107,6 +107,74 @@ function Invoke-ExternalPowerShellAllowFailure {
     return $process.ExitCode
 }
 
+function Test-LocalTcpPortOpen {
+    param([int]$Port)
+
+    try {
+        $client = New-Object System.Net.Sockets.TcpClient
+        $client.Connect('127.0.0.1', $Port)
+        $client.Close()
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Wait-SunshineRestarted {
+    param(
+        [int[]]$OldProcessIds = @(),
+        [int]$TimeoutSec = 60
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        $fresh = @(Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue |
+            Where-Object { $OldProcessIds -notcontains $_.Id })
+        if ($fresh.Count -gt 0 -and (Test-LocalTcpPortOpen -Port 47989)) {
+            return $true
+        }
+        Start-Sleep -Seconds 1
+    }
+    return $false
+}
+
+function Restart-SunshineToApplySetup {
+    # Sunshine reads sunshine.conf and apps.json only at startup; Moonlight's /applist serves the
+    # in-memory list, so without a restart Moonlight keeps the apps Sunshine started with.
+    $restartPs1 = Join-Path $PSScriptRoot "Invoke-SunshineApiRestart.ps1"
+    $sessionPs1 = Join-Path $PSScriptRoot "Start-Sunshine-InSession.ps1"
+
+    Write-SetupMessage "[*] Restarting Sunshine via Web UI API so it loads sunshine.conf and apps.json..."
+    $oldPids = @(Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+
+    $restartExit = 1
+    if (Test-Path -LiteralPath $restartPs1) {
+        $restartExit = Invoke-ExternalPowerShellAllowFailure -ScriptPath $restartPs1 `
+            -ArgumentList @("-SkipResetDisplayPersistence", "-WaitAfterSec", "0")
+    }
+    else {
+        Write-SetupMessage "Invoke-SunshineApiRestart.ps1 not found at $restartPs1" "WARN"
+    }
+
+    if ($restartExit -eq 0 -and (Wait-SunshineRestarted -OldProcessIds $oldPids -TimeoutSec 60)) {
+        Write-SetupMessage "[*] Sunshine restarted; Moonlight now lists the exported apps."
+        return
+    }
+
+    Write-SetupMessage "[!] Sunshine API restart failed or Sunshine did not come back (exit $restartExit); force-restarting Sunshine..." "WARN"
+    if (Test-Path -LiteralPath $sessionPs1) {
+        $oldPids = @(Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+        $sessionExit = Invoke-ExternalPowerShellAllowFailure -ScriptPath $sessionPs1 -ArgumentList @("-Quiet", "-ForceRestart")
+        if ($sessionExit -eq 0 -and (Wait-SunshineRestarted -OldProcessIds $oldPids -TimeoutSec 60)) {
+            Write-SetupMessage "[*] Sunshine force-restarted; Moonlight now lists the exported apps."
+            return
+        }
+    }
+
+    Write-SetupMessage "[!] Sunshine is not running with the new apps.json; restart SunshineService manually so Moonlight lists the apps." "WARN"
+}
+
 $repoRoot = Resolve-RepoRoot -Override $RepoRoot
 . (Join-Path $PSScriptRoot "MachineProfile.ps1")
 $vddEnabled = -not $SkipVddBinding.IsPresent -and (Get-NextGpuVddEnabled -RepoRoot $repoRoot)
@@ -141,6 +209,7 @@ if ($vddEnabled) {
 
 if (-not (Test-Path -LiteralPath $playnitePathFile)) {
     Write-SetupMessage "[!] PlayNite not configured - skipping game export. Run PlayNiteWatcher\Setup-PlayniteSteam.bat" "WARN"
+    Restart-SunshineToApplySetup
     Write-SetupMessage "=== Post-Sunshine setup finished ==="
     exit 0
 }
@@ -195,6 +264,7 @@ else {
 
 if (-not (Test-Path -LiteralPath $exportSunshinePs1)) {
     Write-SetupMessage "Export-SunshineFromPlaynite.ps1 not found at $exportSunshinePs1" "ERROR"
+    Restart-SunshineToApplySetup
     exit 1
 }
 
@@ -203,5 +273,7 @@ $exportExit = Invoke-ExternalPowerShellAllowFailure -ScriptPath $exportSunshineP
 if ($exportExit -ne 0) {
     Write-SetupMessage "[!] Sunshine app export failed (exit $exportExit). Sunshine update completed; re-run PlayNiteWatcher\Export-SunshineFromPlaynite.ps1 or Setup-PlayniteSteam.bat -SkipInstall." "WARN"
 }
+
+Restart-SunshineToApplySetup
 
 Write-SetupMessage "=== Post-Sunshine setup finished ==="

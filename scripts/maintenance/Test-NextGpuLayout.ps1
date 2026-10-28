@@ -72,6 +72,7 @@ $required = @(
     @('scripts\tasks\Register-AutoRepairTask.ps1', 'Auto-repair scheduled task'),
     @('scripts\tasks\Register-NvidiaLogonTask.ps1', 'NVIDIA logon scheduled task'),
     @('scripts\tasks\Register-EndSessionTask.ps1', 'EndSession scheduled task'),
+    @('scripts\tasks\Register-RentalUserResetTask.ps1', 'RentalUserReset scheduled task'),
     @('scripts\tasks\Register-NextGpuEndSessionRecoveryTask.ps1', 'EndSession recovery AtStartup task'),
     @('scripts\runtime\Recover-NextGpuEndSessionAtStartup.ps1', 'EndSession recovery runner'),
     @('scripts\runtime\NextGpuEndSessionCommon.ps1', 'EndSession pending-flag helpers'),
