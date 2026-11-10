@@ -18,6 +18,7 @@ set "NSSM_EXE=%SCRIPT_DIR%\nssm\nssm-2.24\win64\nssm.exe"
 set "SUNSHINE_SERVICE=gpu-sunshine"
 set "LOG_DIR=%SCRIPT_DIR%\logs"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
+set "NEXTGPU_STATUS_SOURCE=auto-repair.bat"
 
 :wait_for_network
 ping -n 1 8.8.8.8 >nul
@@ -212,6 +213,7 @@ if "!REPAIR_NEEDED!"=="1" (
     echo [!] Starting full repair...
     echo ====================================================================
     echo.
+    call :status_event REPAIR "full repair started: !REPAIR_REASON!"
     call "%~dp0Run-StreamingStackUpdate.bat" ForceReinstall ForceReinstall ForcePairing
     if errorlevel 1 goto repair_failed
     echo [*] Repair complete.
@@ -322,12 +324,21 @@ if /i "!CURRENT_STATUS!"=="updating" (
 if exist "%IDENTITY_PS1%" (
     powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action SetStatus -Status %~1 >nul
     if errorlevel 1 echo [!] WARNING: Failed to write machine-status.flag=%~1.
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action PostStatus -Status %~1 -ComputerName "!COMPUTER_NAME!" -PublicIp "!PUBLIC_IP!" -PrivateIp "!PRIVATE_IP!"
+    if errorlevel 1 echo [!] updateStatus %~1 failed - see %ProgramData%\nextGPU\Logs\status-events.log
+) else (
+    set "STATUS_PAYLOAD={\"computer_name\":\"!COMPUTER_NAME!\",\"publicIP\":\"!PUBLIC_IP!\",\"privateIP\":\"!PRIVATE_IP!\",\"status\":\"%~1\"}"
+    curl -s --max-time 15 -X POST "!STATUS_API!" -H "Content-Type: application/json" -d "!STATUS_PAYLOAD!"
 )
-set "STATUS_PAYLOAD={\"computer_name\":\"!COMPUTER_NAME!\",\"publicIP\":\"!PUBLIC_IP!\",\"privateIP\":\"!PRIVATE_IP!\",\"status\":\"%~1\"}"
-curl -s --max-time 15 -X POST "!STATUS_API!" -H "Content-Type: application/json" -d "!STATUS_PAYLOAD!"
 echo.
 set "DOMAIN_STATUS=%~1"
 echo [*] Status set to %~1 ^(machine-status.flag + updateStatus API^).
+exit /b 0
+
+:status_event
+if exist "%IDENTITY_PS1%" (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action LogEvent -Event %~1 -Message "%~2" >nul 2>&1
+)
 exit /b 0
 
 :read_current_status
@@ -339,6 +350,7 @@ exit /b 0
 
 :repair_failed
 echo [!] Repair failed.
+call :status_event REPAIR "repair failed (reason: !REPAIR_REASON!)"
 if exist "%TEMP%\moonlight_login.json" del "%TEMP%\moonlight_login.json" >nul 2>&1
 if exist "%TEMP%\moonlight_pin_response.json" del "%TEMP%\moonlight_pin_response.json" >nul 2>&1
 if exist "%TEMP%\moonlight_pair_complete.json" del "%TEMP%\moonlight_pair_complete.json" >nul 2>&1

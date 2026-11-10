@@ -13,6 +13,8 @@ param()
 $ErrorActionPreference = 'Continue'
 $script:ExitCode = 0
 $script:LogPath = $null
+$script:Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+$script:RecoveryPath = 'normal'
 
 function Write-RecoverLog {
     param([string]$Message)
@@ -66,6 +68,122 @@ if (-not (Test-Path -LiteralPath $commonPath)) {
 }
 . $commonPath
 
+function Write-BootContext {
+    <#
+    .SYNOPSIS
+        Log when/how this boot happened and the status state the boot starts from.
+    #>
+    $bootTime = $null
+    $uptimeSec = 'unknown'
+    try {
+        $bootTime = (Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop).LastBootUpTime
+        $uptimeSec = [int]((Get-Date) - $bootTime).TotalSeconds
+        Write-RecoverLog ("Boot: LastBootUpTime={0:yyyy-MM-dd HH:mm:ss} uptime={1}s (task delay PT20S)" -f $bootTime, $uptimeSec)
+    }
+    catch {
+        Write-RecoverLog "WARN: could not read boot time: $($_.Exception.Message)"
+    }
+
+    # 1074 = planned shutdown/restart (process, user, reason); 6006 = clean stop;
+    # 6008 / Kernel-Power 41 after boot = previous run ended without a clean shutdown (power cut / hard off).
+    $previousShutdown = 'unknown'
+    try {
+        $since = if ($bootTime) { $bootTime.AddDays(-1) } else { (Get-Date).AddDays(-1) }
+        $events = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Id = 1074, 6006, 6008, 41; StartTime = $since } -MaxEvents 10 -ErrorAction SilentlyContinue)
+        foreach ($e in $events) {
+            $text = (($e.Message -replace '\s*\r?\n\s*', ' ').Trim())
+            if ($text.Length -gt 400) { $text = $text.Substring(0, 400) + '...' }
+            Write-RecoverLog ("Shutdown history: {0:yyyy-MM-dd HH:mm:ss} id={1} {2}" -f $e.TimeCreated, $e.Id, $text)
+        }
+        if ($bootTime) {
+            $unexpected = @($events | Where-Object { ($_.Id -in @(6008, 41)) -and ($_.TimeCreated -ge $bootTime) })
+            $before = @($events | Where-Object { $_.TimeCreated -lt $bootTime })
+            $cleanStop = @($before | Where-Object { $_.Id -eq 6006 } | Select-Object -First 1)
+            # Only a 1074 from the shutdown that ended the previous run counts, not an older one.
+            $plannedAfter = if ($cleanStop.Count -gt 0) { $cleanStop[0].TimeCreated.AddMinutes(-15) } else { $bootTime.AddMinutes(-15) }
+            $planned = @($before | Where-Object { $_.Id -eq 1074 -and $_.TimeCreated -ge $plannedAfter } | Select-Object -First 1)
+            if ($unexpected.Count -gt 0) {
+                $previousShutdown = 'unexpected (no clean shutdown: power cut / hard off)'
+            }
+            elseif ($planned.Count -gt 0) {
+                $previousShutdown = 'planned'
+                if ($planned[0].Message -match '(?i)process\s+(\S+)') { $previousShutdown = "planned by $($Matches[1])" }
+            }
+            elseif ($cleanStop.Count -gt 0) {
+                $previousShutdown = 'clean (initiator not logged)'
+            }
+        }
+    }
+    catch {
+        Write-RecoverLog "WARN: could not read shutdown history: $($_.Exception.Message)"
+    }
+    Write-RecoverLog "Previous shutdown: $previousShutdown"
+
+    $flags = Get-NextGpuStatusFlagSnapshot
+    Write-RecoverLog ("Flags: machine-status={0} heartbeat-suspended={1} startup-publish-pending={2} endsession-pending={3}" -f
+        $flags.status, $flags.heartbeatSuspended, $flags.publishPending, $flags.endSessionPending)
+
+    $autoLogon = '(unset)'
+    $defaultUser = '(unset)'
+    try {
+        $winlogon = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -ErrorAction Stop
+        if ($null -ne $winlogon.AutoAdminLogon) { $autoLogon = [string]$winlogon.AutoAdminLogon }
+        if ($null -ne $winlogon.DefaultUserName) { $defaultUser = [string]$winlogon.DefaultUserName }
+    }
+    catch { }
+    Write-RecoverLog "Autologon: AutoAdminLogon=$autoLogon DefaultUserName=$defaultUser"
+
+    if (Get-Command quser.exe -ErrorAction SilentlyContinue) {
+        try {
+            $sessions = @(& quser.exe 2>&1 | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ })
+            if ($sessions.Count -eq 0) { $sessions = @('(none)') }
+            foreach ($s in $sessions) { Write-RecoverLog "Session: $s" }
+        }
+        catch {
+            Write-RecoverLog "Session: (quser failed: $($_.Exception.Message))"
+        }
+    }
+    else {
+        Write-RecoverLog 'Session: (quser.exe not available)'
+    }
+
+    $privateIp = Get-NextGpuPrivateIp
+    Write-RecoverLog "Network: privateIP=$privateIp"
+
+    $data = [ordered]@{
+        lastBoot           = $(if ($bootTime) { $bootTime.ToString('yyyy-MM-dd HH:mm:ss') } else { 'unknown' })
+        uptimeSec          = $uptimeSec
+        previousShutdown   = $previousShutdown
+        status             = $flags.status
+        heartbeatSuspended = $flags.heartbeatSuspended
+        publishPending     = $flags.publishPending
+        endSessionPending  = $flags.endSessionPending
+        autoLogon          = $autoLogon
+        privateIP          = $privateIp
+    }
+    Write-NextGpuStatusLog -Event 'BOOT_START' -Data $data -Message "log=$script:LogPath"
+}
+
+function Complete-Recovery {
+    param([int]$Code)
+    $script:ExitCode = $Code
+    $ms = $script:Stopwatch.ElapsedMilliseconds
+    $flags = Get-NextGpuStatusFlagSnapshot
+    Write-NextGpuStatusLog -Event 'BOOT_DONE' -Data ([ordered]@{
+            exit               = $Code
+            path               = $script:RecoveryPath
+            ms                 = $ms
+            status             = $flags.status
+            heartbeatSuspended = $flags.heartbeatSuspended
+            publishPending     = $flags.publishPending
+            endSessionPending  = $flags.endSessionPending
+        })
+    Write-RecoverLog "Finished ExitCode=$Code path=$script:RecoveryPath duration=${ms}ms"
+    exit $Code
+}
+
+Write-BootContext
+
 $credPath = $null
 if ($repoRoot) {
     $credPath = Join-Path $repoRoot 'scripts\provisioning\NextGPU-AdminCredential.ps1'
@@ -102,25 +220,22 @@ if (-not $script:RunEndSessionRecovery) {
     Write-RecoverLog "Publishing online at startup..."
     if (Publish-OnlineAtStartup) {
         Write-RecoverLog "SUCCESS: Publish-OnlineAtStartup completed."
-        $script:ExitCode = 0
+        Complete-Recovery -Code 0
     }
-    else {
-        Write-RecoverLog "ERROR: Publish-OnlineAtStartup failed."
-        $script:ExitCode = 1
-    }
-    Write-RecoverLog "Finished ExitCode=$script:ExitCode"
-    exit $script:ExitCode
+    Write-RecoverLog "ERROR: Publish-OnlineAtStartup failed."
+    Complete-Recovery -Code 1
 }
 
 # --- EndSession recovery path (pending flag present) ---
+$script:RecoveryPath = 'endsession-recovery'
 $pendingUsers = @(Get-NextGpuEndSessionPendingUsers)
+Write-NextGpuStatusLog -Event 'BOOT_RECOVERY' -Data @{ users = ($pendingUsers -join ',') }
 if ($pendingUsers.Count -eq 0) {
     Write-RecoverLog "Publishing online after empty pending clear..."
     if (-not (Publish-OnlineAtStartup)) {
-        $script:ExitCode = 1
+        Complete-Recovery -Code 1
     }
-    Write-RecoverLog "Finished ExitCode=$script:ExitCode"
-    exit $script:ExitCode
+    Complete-Recovery -Code 0
 }
 
 function Get-ProfileForUser {
@@ -261,12 +376,16 @@ function Ensure-RentalUser {
         try { Add-LocalGroupMember -Group $g -Member $User -ErrorAction Stop } catch { }
     }
 
+    # Recreate only: an unattended first sign-in of the fresh profile can be interrupted
+    # mid app-provisioning, which leaves sihost.exe crashing (0xC0000409) for that user.
     $reg = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
-    Set-ItemProperty -Path $reg -Name AutoAdminLogon -Value '1' -Force
-    Set-ItemProperty -Path $reg -Name DefaultUserName -Value $User -Force
-    Set-ItemProperty -Path $reg -Name DefaultPassword -Value '' -Force
-    Set-ItemProperty -Path $reg -Name DefaultDomainName -Value '.' -Force
-    Write-RecoverLog "Autologon set for '$User'."
+    try {
+        Set-ItemProperty -Path $reg -Name AutoAdminLogon -Value '0' -Force -ErrorAction Stop
+        Write-RecoverLog "Autologon disabled ('$User' recreated only, not signed in)."
+    }
+    catch {
+        Write-RecoverLog "WARN: disable autologon: $_"
+    }
     return $true
 }
 
@@ -362,17 +481,12 @@ if ($allOk) {
     Write-RecoverLog "Publishing online after successful EndSession recovery..."
     if (Publish-OnlineAtStartup) {
         Write-RecoverLog "SUCCESS: Publish-OnlineAtStartup completed."
-        $script:ExitCode = 0
+        Complete-Recovery -Code 0
     }
-    else {
-        Write-RecoverLog "ERROR: Publish-OnlineAtStartup failed after recovery."
-        $script:ExitCode = 1
-    }
-}
-else {
-    Write-RecoverLog "ERROR: recovery incomplete; pending flag retained for next boot; skipping publish online."
-    $script:ExitCode = 1
+    Write-RecoverLog "ERROR: Publish-OnlineAtStartup failed after recovery."
+    Complete-Recovery -Code 1
 }
 
-Write-RecoverLog "Finished ExitCode=$script:ExitCode"
-exit $script:ExitCode
+Write-RecoverLog "ERROR: recovery incomplete; pending flag retained for next boot; skipping publish online."
+Write-NextGpuStatusLog -Event 'BOOT_RECOVERY' -Data @{ result = 'incomplete'; users = ($pendingUsers -join ',') }
+Complete-Recovery -Code 1

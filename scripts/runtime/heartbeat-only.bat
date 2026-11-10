@@ -12,13 +12,18 @@ if defined NEXTGPU_REPO_ROOT (
     for %%I in ("%SCRIPT_IMPL_DIR%\..\..") do set "SCRIPT_DIR=%%~fI"
 )
 
+set "NEXTGPU_STATUS_SOURCE=heartbeat-only.bat"
+set "IDENTITY_PS1=%SCRIPT_IMPL_DIR%\Invoke-NextGpuMachineIdentity.ps1"
+
 :: Skip if vendor shutdown / startup publish is coordinating status
 if exist "%ProgramData%\nextGPU\heartbeat-suspended.flag" (
     echo [*] Heartbeat suspended flag present - skipping updateStatus post.
+    if exist "%IDENTITY_PS1%" powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action LogEvent -Event HEARTBEAT_SKIP -Message "heartbeat-suspended.flag present" >nul 2>&1
     exit /b 0
 )
 if exist "%ProgramData%\nextGPU\startup-publish-pending.flag" (
     echo [*] Startup publish pending - skipping updateStatus post.
+    if exist "%IDENTITY_PS1%" powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action LogEvent -Event HEARTBEAT_SKIP -Message "startup-publish-pending.flag present" >nul 2>&1
     exit /b 0
 )
 
@@ -64,19 +69,24 @@ if not defined PRIVATE_IP set "PRIVATE_IP=127.0.0.1"
 :: DETERMINE STATUS FROM ProgramData FLAG
 :: ==============================
 set "CURRENT_STATUS="
-set "IDENTITY_PS1=%SCRIPT_IMPL_DIR%\Invoke-NextGpuMachineIdentity.ps1"
 if exist "%IDENTITY_PS1%" (
     for /f "usebackq delims=" %%S in (`powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action GetStatus -RepoRoot "%SCRIPT_DIR%"`) do set "CURRENT_STATUS=%%S"
 )
 if "!CURRENT_STATUS!"=="" set "CURRENT_STATUS=%DEFAULT_STATUS%"
 
-:: Build and send payload
-set "PAYLOAD={\"computer_name\":\"%COMPUTER_NAME%\",\"publicIP\":\"%PUBLIC_IP%\",\"privateIP\":\"%PRIVATE_IP%\",\"status\":\"!CURRENT_STATUS!\"}"
+:: Send payload (PostStatus logs request, HTTP code, duration and response to status-events.log)
 echo %TIMESTAMP% STATUS=!CURRENT_STATUS! PUBLIC=%PUBLIC_IP% PRIVATE=%PRIVATE_IP%
-set "RESPONSE_FILE=%TEMP%\api_resp_heartbeat.txt"
-curl -s -X POST "%API_UPDATE_URL%" -H "Content-Type: application/json" -d "%PAYLOAD%" -o "%RESPONSE_FILE%"
-echo %TIMESTAMP% RESPONSE:
-type "%RESPONSE_FILE%"
-del "%RESPONSE_FILE%" >nul 2>&1
+if exist "%IDENTITY_PS1%" (
+    echo %TIMESTAMP% RESPONSE:
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action PostStatus -Status !CURRENT_STATUS! -ComputerName "%COMPUTER_NAME%" -PublicIp "%PUBLIC_IP%" -PrivateIp "%PRIVATE_IP%"
+    if errorlevel 1 echo [!] updateStatus !CURRENT_STATUS! failed - see %ProgramData%\nextGPU\Logs\status-events.log
+) else (
+    set "PAYLOAD={\"computer_name\":\"%COMPUTER_NAME%\",\"publicIP\":\"%PUBLIC_IP%\",\"privateIP\":\"%PRIVATE_IP%\",\"status\":\"!CURRENT_STATUS!\"}"
+    set "RESPONSE_FILE=%TEMP%\api_resp_heartbeat.txt"
+    curl -s -X POST "%API_UPDATE_URL%" -H "Content-Type: application/json" -d "!PAYLOAD!" -o "!RESPONSE_FILE!"
+    echo %TIMESTAMP% RESPONSE:
+    type "!RESPONSE_FILE!"
+    del "!RESPONSE_FILE!" >nul 2>&1
+)
 echo.
 exit /b 0

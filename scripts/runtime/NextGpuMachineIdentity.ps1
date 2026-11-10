@@ -9,6 +9,14 @@ $script:NextGpuMachineIdentityPath = Join-Path $script:NextGpuMachineProgramData
 $script:NextGpuMachineStatusFlagPath = Join-Path $script:NextGpuMachineProgramDataDir 'machine-status.flag'
 $script:NextGpuValidStatuses = @('online', 'updating', 'update_fail', 'error')
 
+$nextGpuStatusLogHelper = Join-Path $PSScriptRoot 'NextGpuStatusLog.ps1'
+if (Test-Path -LiteralPath $nextGpuStatusLogHelper) {
+    . $nextGpuStatusLogHelper
+}
+elseif (-not (Get-Command Write-NextGpuStatusLog -ErrorAction SilentlyContinue)) {
+    function Write-NextGpuStatusLog { param([string]$Event, [string]$Message, [System.Collections.IDictionary]$Data) }
+}
+
 function Get-NextGpuIdentityPath {
     return $script:NextGpuMachineIdentityPath
 }
@@ -351,6 +359,15 @@ function Set-NextGpuMachineStatus {
     )
 
     $value = $Status.Trim().ToLowerInvariant()
+    $previous = '(none)'
+    if (Test-Path -LiteralPath $script:NextGpuMachineStatusFlagPath) {
+        try {
+            $previous = ((Get-Content -LiteralPath $script:NextGpuMachineStatusFlagPath -Raw -ErrorAction Stop).Trim() -split '\r?\n')[0].Trim().ToLowerInvariant()
+        }
+        catch { $previous = '(unreadable)' }
+    }
     Write-NextGpuAtomicTextFile -Path $script:NextGpuMachineStatusFlagPath -Lines @($value) -Encoding ASCII
+    $statusEvent = if ($previous -eq $value) { 'STATUS_SAME' } else { 'STATUS_CHANGE' }
+    Write-NextGpuStatusLog -Event $statusEvent -Data ([ordered]@{ from = $previous; to = $value })
     return $value
 }

@@ -7,11 +7,13 @@
     powershell -File Invoke-NextGpuMachineIdentity.ps1 -Action GetStatus
     powershell -File Invoke-NextGpuMachineIdentity.ps1 -Action RepairDomain
     powershell -File Invoke-NextGpuMachineIdentity.ps1 -Action SaveIdentity -Domain x -PublicIp y -ComputerName z -VendorId v -VendorIdEnabled yes
+    powershell -File Invoke-NextGpuMachineIdentity.ps1 -Action PostStatus -Status online -ComputerName z -PublicIp y -PrivateIp p
+    powershell -File Invoke-NextGpuMachineIdentity.ps1 -Action LogEvent -Event CYCLE -Message "checking-update started"
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('GetStatus', 'SetStatus', 'RepairDomain', 'SaveIdentity', 'WriteDomain')]
+    [ValidateSet('GetStatus', 'SetStatus', 'RepairDomain', 'SaveIdentity', 'WriteDomain', 'PostStatus', 'LogEvent')]
     [string]$Action,
 
     [ValidateSet('online', 'updating', 'update_fail', 'error')]
@@ -21,9 +23,14 @@ param(
     [string]$Domain = '',
     [string]$PublicIp = '',
     [string]$ComputerName = '',
+    [string]$PrivateIp = '',
     [string]$VendorId = '',
-    [string]$VendorIdEnabled = ''
+    [string]$VendorIdEnabled = '',
+    [string]$Event = 'INFO',
+    [string]$Message = ''
 )
+
+$script:NextGpuUpdateStatusUrl = 'https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus'
 
 $ErrorActionPreference = 'Stop'
 $helper = Join-Path $PSScriptRoot 'NextGpuMachineIdentity.ps1'
@@ -74,6 +81,25 @@ try {
         'WriteDomain' {
             $path = Write-NextGpuDomainTxtFromIdentity -RepoRoot $RepoRoot -PublishProgramDataCopy
             Write-Output $path
+            exit 0
+        }
+        'PostStatus' {
+            if ([string]::IsNullOrWhiteSpace($ComputerName) -or [string]::IsNullOrWhiteSpace($PublicIp)) {
+                throw 'PostStatus requires -ComputerName and -PublicIp.'
+            }
+            if ([string]::IsNullOrWhiteSpace($PrivateIp)) { $PrivateIp = '127.0.0.1' }
+            $payload = [ordered]@{
+                computer_name = $ComputerName
+                publicIP      = $PublicIp
+                privateIP     = $PrivateIp
+                status        = $Status
+            } | ConvertTo-Json -Compress
+            $response = Invoke-NextGpuStatusApiPost -Uri $script:NextGpuUpdateStatusUrl -Body $payload -TimeoutSec 30
+            Write-Output $response
+            exit 0
+        }
+        'LogEvent' {
+            Write-NextGpuStatusLog -Event $Event -Message $Message
             exit 0
         }
     }

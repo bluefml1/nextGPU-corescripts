@@ -15,6 +15,7 @@ set "LOG_DIR=%SCRIPT_DIR%\logs"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
 set "LOG_FILE=%LOG_DIR%\checking-update.log"
 set "IDENTITY_PS1=%SCRIPT_IMPL_DIR%\Invoke-NextGpuMachineIdentity.ps1"
+set "NEXTGPU_STATUS_SOURCE=checking-update.bat"
 
 if /i "%~1" neq "__RUN" (
     call "%~f0" __RUN >> "%LOG_FILE%" 2>&1
@@ -38,6 +39,7 @@ echo.
 echo ==================================================
 echo [*] [%date% %time%] checking-update cycle started
 echo ==================================================
+call :status_event CYCLE "checking-update started"
 
 :: ==============================
 :: READ MACHINE INFO
@@ -118,8 +120,7 @@ exit /b 0
 echo [+] Update check started.
 
 :: Set updating status via machine identity module (never rewrite domain.txt for STATUS)
-set "UPDATING={\"computer_name\":\"!COMPUTER_NAME!\",\"publicIP\":\"!PUBLIC_IP!\",\"privateIP\":\"%PRIVATE_IP%\",\"status\":\"updating\"}"
-curl -s -X POST https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus -H "Content-Type: application/json" -d "!UPDATING!"
+call :post_status updating
 if exist "%IDENTITY_PS1%" (
     powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action SetStatus -Status updating
     if !errorlevel! neq 0 (
@@ -140,8 +141,7 @@ goto online_status
 
 :update_fail
 echo [!] Update failed. Sending update_fail status...
-set "FAILPAYLOAD={\"computer_name\":\"%COMPUTER_NAME%\",\"publicIP\":\"%PUBLIC_IP%\",\"privateIP\":\"%PRIVATE_IP%\",\"status\":\"update_fail\"}"
-curl -s -X POST https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus -H "Content-Type: application/json" -d "%FAILPAYLOAD%"
+if defined COMPUTER_NAME if defined PUBLIC_IP call :post_status update_fail
 if exist "%IDENTITY_PS1%" (
     powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action SetStatus -Status update_fail
 )
@@ -149,6 +149,7 @@ echo [!] Status set to update_fail.
 echo [*] update_fail: stopping here - onDemandGPUHost is NOT called.
 call :clear_heartbeat_flags
 echo [*] [%date% %time%] cycle finished with status: update_fail
+call :status_event CYCLE "checking-update finished: update_fail"
 exit /b 1
 
 :vendor_shutdown
@@ -162,6 +163,7 @@ if not exist "%VENDOR_SHUTDOWN_PS1%" (
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%VENDOR_SHUTDOWN_PS1%" -ComputerName "%COMPUTER_NAME%"
 if errorlevel 1 (
     echo [!] Vendor shutdown sequence failed ^(exit !errorlevel!^). Machine left running; status remains updating.
+    call :status_event CYCLE "checking-update finished: vendor shutdown failed, machine left running"
     exit /b 1
 )
 if exist "%IDENTITY_PS1%" (
@@ -169,18 +171,37 @@ if exist "%IDENTITY_PS1%" (
 )
 echo [*] Vendor shutdown requested; status left as updating.
 echo [*] [%date% %time%] cycle finished with status: updating
+call :status_event CYCLE "checking-update finished: vendor shutdown requested, status updating"
 exit /b 0
 
 :online_status
-set "UPDATEPAYLOAD={\"computer_name\":\"%COMPUTER_NAME%\",\"publicIP\":\"%PUBLIC_IP%\",\"privateIP\":\"%PRIVATE_IP%\",\"status\":\"online\"}"
-curl -s -X POST https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus -H "Content-Type: application/json" -d "%UPDATEPAYLOAD%"
+call :post_status online
 if exist "%IDENTITY_PS1%" (
     powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action SetStatus -Status online
 )
 echo [*] Machine is now online.
 call :clear_heartbeat_flags
 echo [*] [%date% %time%] cycle finished with status: online
+call :status_event CYCLE "checking-update finished: online"
 
+exit /b 0
+
+:: POST updateStatus %1; request, HTTP code, duration and response go to status-events.log
+:post_status
+if exist "%IDENTITY_PS1%" (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action PostStatus -Status %~1 -ComputerName "!COMPUTER_NAME!" -PublicIp "!PUBLIC_IP!" -PrivateIp "!PRIVATE_IP!"
+    if errorlevel 1 echo [!] updateStatus %~1 failed - see %ProgramData%\nextGPU\Logs\status-events.log
+) else (
+    set "STATUS_PAYLOAD={\"computer_name\":\"!COMPUTER_NAME!\",\"publicIP\":\"!PUBLIC_IP!\",\"privateIP\":\"!PRIVATE_IP!\",\"status\":\"%~1\"}"
+    curl -s -X POST https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus -H "Content-Type: application/json" -d "!STATUS_PAYLOAD!"
+)
+echo.
+exit /b 0
+
+:status_event
+if exist "%IDENTITY_PS1%" (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%IDENTITY_PS1%" -Action LogEvent -Event %~1 -Message "%~2" >nul 2>&1
+)
 exit /b 0
 
 :: Vendor shutdown keeps these flags until Publish-OnlineAtStartup runs on next boot.

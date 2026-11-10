@@ -21,6 +21,7 @@ if (-not (Test-Path -LiteralPath $secretsHelper)) {
 $cred = Get-NextGpuOnDemandGpuHostApiKey
 if (-not $cred -or [string]::IsNullOrWhiteSpace($cred.ApiKey)) {
     Write-Host '[ERROR] On-demand GPU host API key missing. Set NEXTGPU_ONDEMAND_GPU_HOST_API_KEY or %ProgramData%\nextGPU\secrets\ondemand-gpu-host.env'
+    Write-NextGpuStatusLog -Event 'VENDOR_SHUTDOWN' -Data @{ result = 'skipped'; reason = 'API key missing'; computer_name = $ComputerName }
     Clear-NextGpuStatusCoordinationFlags
     exit 2
 }
@@ -33,14 +34,14 @@ $shutdownBody = @{
     computer_name = $ComputerName
 } | ConvertTo-Json -Compress
 
+Write-NextGpuStatusLog -Event 'VENDOR_SHUTDOWN' -Data @{ result = 'requesting'; computer_name = $ComputerName; keySource = $cred.Source }
 try {
     $headers = @{ 'x-api-key' = $cred.ApiKey }
-    Invoke-RestMethod -Method Post `
+    $response = Invoke-NextGpuStatusApiPost `
         -Uri 'https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/onDemandGPUHost' `
         -Headers $headers `
-        -ContentType 'application/json' `
-        -Body $shutdownBody | Out-Null
-    Write-Host '[*] onDemandGPUHost shutdown requested (status left as updating).'
+        -Body $shutdownBody
+    Write-Host "[*] onDemandGPUHost shutdown requested (status left as updating). Response: $response"
 }
 catch {
     Write-Host ('[ERROR] onDemandGPUHost shutdown failed: ' + $_.Exception.Message)

@@ -14,6 +14,14 @@ $script:NextGpuOnDemandEnvVarName = 'NEXTGPU_ONDEMAND_GPU_HOST_API_KEY'
 $script:NextGpuHeartbeatSuspendedFlag = Join-Path $script:NextGpuOnDemandProgramDataDir 'heartbeat-suspended.flag'
 $script:NextGpuStartupPublishPendingFlag = Join-Path $script:NextGpuOnDemandProgramDataDir 'startup-publish-pending.flag'
 
+$nextGpuStatusLogHelper = Join-Path $PSScriptRoot 'NextGpuStatusLog.ps1'
+if (Test-Path -LiteralPath $nextGpuStatusLogHelper) {
+    . $nextGpuStatusLogHelper
+}
+elseif (-not (Get-Command Write-NextGpuStatusLog -ErrorAction SilentlyContinue)) {
+    function Write-NextGpuStatusLog { param([string]$Event, [string]$Message, [System.Collections.IDictionary]$Data) }
+}
+
 function Get-NextGpuOnDemandGpuHostApiKey {
     <#
     .SYNOPSIS
@@ -108,11 +116,16 @@ function Set-NextGpuHeartbeatSuspendedFlag {
     if ($Clear) {
         if (Test-Path -LiteralPath $script:NextGpuHeartbeatSuspendedFlag) {
             Remove-Item -LiteralPath $script:NextGpuHeartbeatSuspendedFlag -Force -ErrorAction SilentlyContinue
+            Write-NextGpuStatusLog -Event 'FLAG_CLEAR' -Data @{ flag = 'heartbeat-suspended' }
         }
         return
     }
 
+    $existed = Test-Path -LiteralPath $script:NextGpuHeartbeatSuspendedFlag
     Set-Content -LiteralPath $script:NextGpuHeartbeatSuspendedFlag -Value '1' -Encoding ASCII -Force
+    if (-not $existed) {
+        Write-NextGpuStatusLog -Event 'FLAG_SET' -Data @{ flag = 'heartbeat-suspended' }
+    }
 }
 
 function Set-NextGpuStartupPublishPendingFlag {
@@ -125,11 +138,16 @@ function Set-NextGpuStartupPublishPendingFlag {
     if ($Clear) {
         if (Test-Path -LiteralPath $script:NextGpuStartupPublishPendingFlag) {
             Remove-Item -LiteralPath $script:NextGpuStartupPublishPendingFlag -Force -ErrorAction SilentlyContinue
+            Write-NextGpuStatusLog -Event 'FLAG_CLEAR' -Data @{ flag = 'startup-publish-pending' }
         }
         return
     }
 
+    $existed = Test-Path -LiteralPath $script:NextGpuStartupPublishPendingFlag
     Set-Content -LiteralPath $script:NextGpuStartupPublishPendingFlag -Value '1' -Encoding ASCII -Force
+    if (-not $existed) {
+        Write-NextGpuStatusLog -Event 'FLAG_SET' -Data @{ flag = 'startup-publish-pending' }
+    }
 }
 
 function Test-NextGpuHeartbeatShouldSkip {

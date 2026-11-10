@@ -7,6 +7,26 @@
 $script:NextGpuProgramDataDir = Join-Path $env:ProgramData 'nextGPU'
 $script:NextGpuVendorIdPath = Join-Path $script:NextGpuProgramDataDir 'vendor-id.txt'
 $script:NextGpuEndSessionPendingFlagPath = Join-Path $script:NextGpuProgramDataDir 'endsession-reset-pending.flag'
+$script:NextGpuUpdateStatusUrl = 'https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus'
+
+$nextGpuStatusLogHelper = Join-Path $PSScriptRoot 'NextGpuStatusLog.ps1'
+if (Test-Path -LiteralPath $nextGpuStatusLogHelper) {
+    . $nextGpuStatusLogHelper
+}
+elseif (-not (Get-Command Write-NextGpuStatusLog -ErrorAction SilentlyContinue)) {
+    function Write-NextGpuStatusLog { param([string]$Event, [string]$Message, [System.Collections.IDictionary]$Data) }
+}
+
+function Write-NextGpuCommonLog {
+    <#
+    .SYNOPSIS
+        Write to the calling script's log file (AtStartup recovery or EndSession), else the console.
+    #>
+    param([string]$Message)
+    if (Get-Command Write-RecoverLog -ErrorAction SilentlyContinue) { Write-RecoverLog $Message; return }
+    if (Get-Command Write-Log -CommandType Function -ErrorAction SilentlyContinue) { Write-Log $Message; return }
+    Write-Host $Message
+}
 
 function Get-NextGpuVendorId {
     <#
@@ -159,12 +179,14 @@ function Set-NextGpuEndSessionPendingFlag {
     } | ConvertTo-Json -Compress
 
     Set-Content -LiteralPath $script:NextGpuEndSessionPendingFlagPath -Value $payload -Encoding UTF8 -Force
+    Write-NextGpuStatusLog -Event 'FLAG_SET' -Data ([ordered]@{ flag = 'endsession-reset-pending'; users = ($merged -join ',') })
     return $merged
 }
 
 function Clear-NextGpuEndSessionPendingFlag {
     if (Test-Path -LiteralPath $script:NextGpuEndSessionPendingFlagPath) {
         Remove-Item -LiteralPath $script:NextGpuEndSessionPendingFlagPath -Force -ErrorAction SilentlyContinue
+        Write-NextGpuStatusLog -Event 'FLAG_CLEAR' -Data @{ flag = 'endsession-reset-pending' }
     }
 }
 
@@ -308,9 +330,12 @@ function Publish-UpdatingAtEndSession {
         Set-Content -LiteralPath $suspend -Value '1' -Encoding ASCII -Force
     }
 
+    Write-NextGpuCommonLog '[Publish-Updating] heartbeat-suspended.flag set.'
+
     $domainPath = Resolve-NextGpuDomainTxtPath
     if (-not $domainPath) {
-        Write-Host '[Publish-Updating] ERROR: domain.txt not found; cannot publish updating.'
+        Write-NextGpuCommonLog '[Publish-Updating] ERROR: domain.txt not found; cannot publish updating.'
+        Write-NextGpuStatusLog -Event 'PUBLISH_FAIL' -Data @{ status = 'updating'; reason = 'domain.txt not found' }
         return $false
     }
 
@@ -323,16 +348,19 @@ function Publish-UpdatingAtEndSession {
         }
     }
     catch {
-        Write-Host "[Publish-Updating] ERROR: reading domain.txt: $($_.Exception.Message)"
+        Write-NextGpuCommonLog "[Publish-Updating] ERROR: reading domain.txt: $($_.Exception.Message)"
+        Write-NextGpuStatusLog -Event 'PUBLISH_FAIL' -Data @{ status = 'updating'; reason = "read domain.txt: $($_.Exception.Message)" }
         return $false
     }
 
     if ([string]::IsNullOrWhiteSpace($computerName) -or [string]::IsNullOrWhiteSpace($publicIp)) {
-        Write-Host '[Publish-Updating] ERROR: COMPUTER_NAME or PUBLIC_IP missing in domain.txt.'
+        Write-NextGpuCommonLog '[Publish-Updating] ERROR: COMPUTER_NAME or PUBLIC_IP missing in domain.txt.'
+        Write-NextGpuStatusLog -Event 'PUBLISH_FAIL' -Data @{ status = 'updating'; reason = 'COMPUTER_NAME or PUBLIC_IP missing' }
         return $false
     }
 
     $privateIp = Get-NextGpuPrivateIp
+    Write-NextGpuCommonLog "[Publish-Updating] identity: domain.txt=$domainPath computer_name=$computerName publicIP=$publicIp privateIP=$privateIp"
 
     try {
         $lines = Get-Content -LiteralPath $domainPath -ErrorAction Stop
@@ -341,10 +369,12 @@ function Publish-UpdatingAtEndSession {
         }
         if (-not ($lines -match '^STATUS=')) { $lines += 'STATUS=updating' }
         $lines | Set-Content -LiteralPath $domainPath -Encoding UTF8
-        Write-Host "[Publish-Updating] domain.txt STATUS=updating written ($domainPath)."
+        Write-NextGpuCommonLog "[Publish-Updating] domain.txt STATUS=updating written ($domainPath)."
+        Write-NextGpuStatusLog -Event 'DOMAIN_STATUS' -Data @{ status = 'updating'; file = $domainPath }
     }
     catch {
-        Write-Host "[Publish-Updating] ERROR: writing STATUS=updating: $($_.Exception.Message)"
+        Write-NextGpuCommonLog "[Publish-Updating] ERROR: writing STATUS=updating: $($_.Exception.Message)"
+        Write-NextGpuStatusLog -Event 'PUBLISH_FAIL' -Data @{ status = 'updating'; reason = "write domain.txt: $($_.Exception.Message)" }
         return $false
     }
 
@@ -353,7 +383,7 @@ function Publish-UpdatingAtEndSession {
         Set-Content -LiteralPath $statusFlag -Value 'updating' -Encoding ASCII -Force
     }
     catch {
-        Write-Host "[Publish-Updating] WARN: could not write machine_status_flag.txt: $($_.Exception.Message)"
+        Write-NextGpuCommonLog "[Publish-Updating] WARN: could not write machine_status_flag.txt: $($_.Exception.Message)"
     }
 
     $payload = @{
@@ -363,15 +393,13 @@ function Publish-UpdatingAtEndSession {
         status        = 'updating'
     } | ConvertTo-Json -Compress
 
+    Write-NextGpuCommonLog "[Publish-Updating] POST updateStatus $payload"
     try {
-        Invoke-RestMethod -Method Post `
-            -Uri 'https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus' `
-            -ContentType 'application/json' `
-            -Body $payload | Out-Null
-        Write-Host '[Publish-Updating] updateStatus updating posted.'
+        $response = Invoke-NextGpuStatusApiPost -Uri $script:NextGpuUpdateStatusUrl -Body $payload
+        Write-NextGpuCommonLog "[Publish-Updating] updateStatus updating posted. Response: $response"
     }
     catch {
-        Write-Host "[Publish-Updating] ERROR: updateStatus updating failed: $($_.Exception.Message)"
+        Write-NextGpuCommonLog "[Publish-Updating] ERROR: updateStatus updating failed: $($_.Exception.Message)"
         return $false
     }
 
@@ -391,15 +419,18 @@ function Publish-OnlineAtStartup {
     if (Test-Path -LiteralPath $identityHelper) {
         . $identityHelper
         try {
-            $null = Repair-NextGpuDomainTxtIfNeeded
+            if (Repair-NextGpuDomainTxtIfNeeded) {
+                Write-NextGpuCommonLog '[Publish-Online] domain.txt rewritten from machine identity.'
+            }
         }
         catch {
-            Write-Host "[Publish-Online] WARN: Repair-NextGpuDomainTxtIfNeeded: $($_.Exception.Message)"
+            Write-NextGpuCommonLog "[Publish-Online] WARN: Repair-NextGpuDomainTxtIfNeeded: $($_.Exception.Message)"
         }
     }
 
     $computerName = $null
     $publicIp = $null
+    $identitySource = 'machine-identity.env'
 
     if (Get-Command -Name Read-NextGpuMachineIdentity -ErrorAction SilentlyContinue) {
         try {
@@ -408,16 +439,18 @@ function Publish-OnlineAtStartup {
             $publicIp = [string]$identity.PUBLIC_IP
         }
         catch {
-            Write-Host "[Publish-Online] WARN: Read-NextGpuMachineIdentity: $($_.Exception.Message)"
+            Write-NextGpuCommonLog "[Publish-Online] WARN: Read-NextGpuMachineIdentity: $($_.Exception.Message)"
         }
     }
 
     if ([string]::IsNullOrWhiteSpace($computerName) -or [string]::IsNullOrWhiteSpace($publicIp)) {
         $domainPath = Resolve-NextGpuDomainTxtPath
         if (-not $domainPath) {
-            Write-Host "[Publish-Online] ERROR: domain.txt not found; cannot publish online."
+            Write-NextGpuCommonLog "[Publish-Online] ERROR: domain.txt not found; cannot publish online."
+            Write-NextGpuStatusLog -Event 'PUBLISH_FAIL' -Data @{ status = 'online'; reason = 'domain.txt not found' }
             return $false
         }
+        $identitySource = $domainPath
         try {
             foreach ($line in Get-Content -LiteralPath $domainPath -ErrorAction Stop) {
                 if ($line -match '^\s*COMPUTER_NAME\s*=\s*(.+)\s*$') { $computerName = $Matches[1].Trim() }
@@ -425,30 +458,37 @@ function Publish-OnlineAtStartup {
             }
         }
         catch {
-            Write-Host "[Publish-Online] ERROR: reading domain.txt: $($_.Exception.Message)"
+            Write-NextGpuCommonLog "[Publish-Online] ERROR: reading domain.txt: $($_.Exception.Message)"
+            Write-NextGpuStatusLog -Event 'PUBLISH_FAIL' -Data @{ status = 'online'; reason = "read domain.txt: $($_.Exception.Message)" }
             return $false
         }
     }
 
     if ([string]::IsNullOrWhiteSpace($computerName) -or [string]::IsNullOrWhiteSpace($publicIp)) {
-        Write-Host '[Publish-Online] ERROR: COMPUTER_NAME or PUBLIC_IP missing in identity/domain.txt.'
+        Write-NextGpuCommonLog '[Publish-Online] ERROR: COMPUTER_NAME or PUBLIC_IP missing in identity/domain.txt.'
+        Write-NextGpuStatusLog -Event 'PUBLISH_FAIL' -Data @{ status = 'online'; reason = 'COMPUTER_NAME or PUBLIC_IP missing' }
         return $false
     }
 
     $privateIp = Get-NextGpuPrivateIp
+    Write-NextGpuCommonLog "[Publish-Online] identity: source=$identitySource computer_name=$computerName publicIP=$publicIp privateIP=$privateIp"
+    if ($privateIp -eq '127.0.0.1') {
+        Write-NextGpuCommonLog '[Publish-Online] WARN: no 192.168.1.x address yet (network may not be ready); sending privateIP=127.0.0.1.'
+    }
 
     if (Get-Command -Name Set-NextGpuMachineStatus -ErrorAction SilentlyContinue) {
         try {
             $null = Set-NextGpuMachineStatus -Status 'online'
-            Write-Host '[Publish-Online] machine-status.flag=online written.'
+            Write-NextGpuCommonLog '[Publish-Online] machine-status.flag=online written.'
         }
         catch {
-            Write-Host "[Publish-Online] ERROR: writing machine-status.flag: $($_.Exception.Message)"
+            Write-NextGpuCommonLog "[Publish-Online] ERROR: writing machine-status.flag: $($_.Exception.Message)"
+            Write-NextGpuStatusLog -Event 'PUBLISH_FAIL' -Data @{ status = 'online'; reason = "write machine-status.flag: $($_.Exception.Message)" }
             return $false
         }
     }
     else {
-        Write-Host '[Publish-Online] WARN: NextGpuMachineIdentity.ps1 not loaded; status flag not updated.'
+        Write-NextGpuCommonLog '[Publish-Online] WARN: NextGpuMachineIdentity.ps1 not loaded; status flag not updated.'
     }
 
     $payload = @{
@@ -458,15 +498,13 @@ function Publish-OnlineAtStartup {
         status        = 'online'
     } | ConvertTo-Json -Compress
 
+    Write-NextGpuCommonLog "[Publish-Online] POST updateStatus $payload"
     try {
-        Invoke-RestMethod -Method Post `
-            -Uri 'https://oa0bwhfkqk.execute-api.ap-southeast-1.amazonaws.com/updateStatus' `
-            -ContentType 'application/json' `
-            -Body $payload | Out-Null
-        Write-Host '[Publish-Online] updateStatus online posted.'
+        $response = Invoke-NextGpuStatusApiPost -Uri $script:NextGpuUpdateStatusUrl -Body $payload
+        Write-NextGpuCommonLog "[Publish-Online] updateStatus online posted. Response: $response"
     }
     catch {
-        Write-Host "[Publish-Online] ERROR: updateStatus online failed: $($_.Exception.Message)"
+        Write-NextGpuCommonLog "[Publish-Online] ERROR: updateStatus online failed: $($_.Exception.Message)"
         return $false
     }
 
@@ -474,14 +512,14 @@ function Publish-OnlineAtStartup {
     if (Test-Path -LiteralPath $secretsHelper) {
         . $secretsHelper
         Clear-NextGpuStatusCoordinationFlags
-        Write-Host '[Publish-Online] Cleared heartbeat-suspended and startup-publish-pending flags.'
+        Write-NextGpuCommonLog '[Publish-Online] Cleared heartbeat-suspended and startup-publish-pending flags.'
     }
     else {
         $suspend = Join-Path $script:NextGpuProgramDataDir 'heartbeat-suspended.flag'
         $pending = Join-Path $script:NextGpuProgramDataDir 'startup-publish-pending.flag'
         if (Test-Path -LiteralPath $suspend) { Remove-Item -LiteralPath $suspend -Force -ErrorAction SilentlyContinue }
         if (Test-Path -LiteralPath $pending) { Remove-Item -LiteralPath $pending -Force -ErrorAction SilentlyContinue }
-        Write-Host '[Publish-Online] Cleared coordination flags (inline).'
+        Write-NextGpuCommonLog '[Publish-Online] Cleared coordination flags (inline).'
     }
 
     return $true
