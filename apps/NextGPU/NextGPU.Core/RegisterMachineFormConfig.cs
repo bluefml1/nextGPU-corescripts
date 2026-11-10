@@ -26,6 +26,9 @@ public sealed class RegisterMachineFormConfig
     [JsonPropertyName("vendorId")]
     public string? VendorId { get; set; }
 
+    [JsonPropertyName("vendorAccount")]
+    public string? VendorAccount { get; set; }
+
     [JsonPropertyName("vendorShutdownApiKey")]
     public string? VendorShutdownApiKey { get; set; }
 

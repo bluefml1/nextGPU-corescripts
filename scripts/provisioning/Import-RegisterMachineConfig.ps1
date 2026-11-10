@@ -45,6 +45,7 @@ $apiKey = [string]$config.apiKey
 $computerName = [string]$config.computerName
 $price = [string]$config.price
 $vendorId = if ($null -ne $config.vendorId) { [string]$config.vendorId } else { '' }
+$vendorAccount = if ($null -ne $config.vendorAccount) { [string]$config.vendorAccount } else { '' }
 $vendorShutdownApiKey = if ($null -ne $config.vendorShutdownApiKey) { [string]$config.vendorShutdownApiKey } else { '' }
 $adminAccount = if ($null -ne $config.adminAccountName) { ([string]$config.adminAccountName).Trim() } else { '' }
 $adminPasswordEncrypted = if ($null -ne $config.adminPasswordEncrypted) { [string]$config.adminPasswordEncrypted } else { '' }
@@ -94,6 +95,10 @@ if (-not [string]::IsNullOrWhiteSpace($adminPasswordEncrypted)) {
 }
 
 $vendorId = $vendorId.Trim()
+$vendorAccount = $vendorAccount.Trim()
+if ([string]::IsNullOrWhiteSpace($vendorId)) {
+    $vendorAccount = ''
+}
 $vendorShutdownApiKey = $vendorShutdownApiKey.Trim()
 $computerLower = $computerName.Trim().ToLowerInvariant()
 
@@ -149,6 +154,7 @@ $lines = @(
     "set `"COMPUTER_NAME_CUSTOM=$(Escape-CmdSetValue $computerName.Trim())`"",
     "set `"PRICE=$(Escape-CmdSetValue $price.Trim())`"",
     "set `"VENDOR_ID=$(Escape-CmdSetValue $vendorId)`"",
+    "set `"VENDOR_ACCOUNT=$(Escape-CmdSetValue $vendorAccount)`"",
     "set `"ADMIN_ACCOUNT_NAME=$(Escape-CmdSetValue $adminAccount)`"",
     "set `"COMPUTER_NAME_LOWER=$(Escape-CmdSetValue $computerLower)`"",
     'set "RM_UI_CONFIG=1"'

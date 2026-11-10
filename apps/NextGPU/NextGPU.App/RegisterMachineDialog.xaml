@@ -67,6 +67,11 @@
                     <TextBlock Text="VENDOR ID (OPTIONAL)" Style="{StaticResource LabelCaptionText}"/>
                     <TextBox x:Name="VendorIdBox" Margin="0,0,0,4" TextChanged="VendorIdBox_TextChanged"/>
                     <StackPanel x:Name="VendorShutdownPanel" Visibility="Collapsed" Margin="0,0,0,14">
+                        <TextBlock Text="VENDOR ACCOUNT (OPTIONAL)" Style="{StaticResource LabelCaptionText}"/>
+                        <TextBox x:Name="VendorAccountBox" Margin="0,0,0,4"/>
+                        <TextBlock Text="Sent as account in the registerMachine payload. Leave blank to omit."
+                                   Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,14"/>
+
                         <TextBlock Text="VENDOR API KEY (REQUIRED)" Style="{StaticResource LabelCaptionText}"/>
                         <Grid Margin="0,0,0,4">
                             <PasswordBox x:Name="VendorShutdownApiKeyBox"/>

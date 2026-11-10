@@ -154,8 +154,13 @@ if "%PRICE%"=="" (echo ERROR: Price cannot be empty! & goto input_price)
 
 :input_vendor_id
 set "VENDOR_ID="
+set "VENDOR_ACCOUNT="
 set /p "VENDOR_ID=Enter Vendor ID (optional, press Enter to skip): "
 for /f "delims=" %%V in ('powershell -NoLogo -NoProfile -Command "$v='%VENDOR_ID%'; if([string]::IsNullOrWhiteSpace($v)){''} else {$v.Trim()}"') do set "VENDOR_ID=%%V"
+if not defined VENDOR_ID goto input_admin_account
+if "!VENDOR_ID!"=="" goto input_admin_account
+set /p "VENDOR_ACCOUNT=Enter Vendor Account (optional, press Enter to skip): "
+for /f "delims=" %%V in ('powershell -NoLogo -NoProfile -Command "$v='%VENDOR_ACCOUNT%'; if([string]::IsNullOrWhiteSpace($v)){''} else {$v.Trim()}"') do set "VENDOR_ACCOUNT=%%V"
 
 :input_admin_account
 echo Some machines cannot rename the local admin username.
@@ -177,6 +182,9 @@ echo - API Token: %CF_API_TOKEN:~0,10%...
 echo - Account ID: %ACCOUNT_ID%
 echo - Price: $%PRICE%
 if defined VENDOR_ID if not "!VENDOR_ID!"=="" (echo - Vendor ID: !VENDOR_ID!) else (echo - Vendor ID: ^(not set^))
+if defined VENDOR_ID if not "!VENDOR_ID!"=="" (
+    if defined VENDOR_ACCOUNT if not "!VENDOR_ACCOUNT!"=="" (echo - Vendor account: !VENDOR_ACCOUNT!) else (echo - Vendor account: ^(not set^))
+)
 if "!ADMIN_ACCOUNT_NAME!"=="" (echo - Admin account: username unchanged) else (echo - Admin account: !ADMIN_ACCOUNT_NAME! -^> NextGPU-Authority)
 echo.
 if "!RM_UI_CONFIG!"=="1" goto :config_confirmed
@@ -800,7 +808,10 @@ if exist "%GAMES_OUTPUT_FILE%" (
 )
 
 set "VENDOR_FIELD="
-if defined VENDOR_ID if not "!VENDOR_ID!"=="" set "VENDOR_FIELD=,\"vendor_id\":\"!VENDOR_ID!\""
+if defined VENDOR_ID if not "!VENDOR_ID!"=="" (
+    set "VENDOR_FIELD=,\"vendor_id\":\"!VENDOR_ID!\""
+    if defined VENDOR_ACCOUNT if not "!VENDOR_ACCOUNT!"=="" set "VENDOR_FIELD=!VENDOR_FIELD!,\"account\":\"!VENDOR_ACCOUNT!\""
+)
 
 if defined GAMES_JSON (
     set PAYLOAD={\"computer_name\":\"%NAME%\",\"publicIP\":\"%PUBLIC_IP%\",\"privateIP\":\"%PRIVATE_IP%\",\"status\":\"%STATUS%\",\"domain\":\"%DOMAIN%\",\"Operation_system\":\"%OS_NAME%\",\"Processor\":\"%CPU%\",\"RAM\":\"%TotalPhysicalMemory% GB\",\"GPU_name\":\"%GPU_NAME%\",\"bench_mark_cpu\":\"%BENCH_MARK_CPU%\",\"bench_mark_gpu\":\"%BENCH_MARK_GPU%\",\"original_price\":\"%PRICE%\"!VENDOR_FIELD!,\"last_checkin\":\"%LAST_CHECKIN%\",\"notes\":\"%NOTES%\",!GAMES_JSON!}

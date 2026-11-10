@@ -34,6 +34,7 @@ public partial class RegisterMachineDialog : Window
         VendorShutdownPanel.Visibility = hasVendor ? Visibility.Visible : Visibility.Collapsed;
         if (!hasVendor)
         {
+            VendorAccountBox.Text = string.Empty;
             VendorShutdownApiKeyBox.Password = string.Empty;
         }
     }
@@ -85,6 +86,7 @@ public partial class RegisterMachineDialog : Window
         var priceText = PriceBox.Text.Trim();
         var adminAccount = AdminAccountBox.Text.Trim();
         var vendorId = VendorIdBox.Text.Trim();
+        var vendorAccount = VendorAccountBox.Text.Trim();
         var vendorShutdownApiKey = VendorShutdownApiKeyBox.Password.Trim();
         var adminPassword = AdminPasswordBox.Password;
 
@@ -154,6 +156,7 @@ public partial class RegisterMachineDialog : Window
             ComputerName = computerName,
             Price = priceText,
             VendorId = string.IsNullOrWhiteSpace(vendorId) ? null : vendorId,
+            VendorAccount = string.IsNullOrWhiteSpace(vendorId) || string.IsNullOrWhiteSpace(vendorAccount) ? null : vendorAccount,
             VendorShutdownApiKey = string.IsNullOrWhiteSpace(vendorShutdownApiKey) ? null : vendorShutdownApiKey,
             AdminAccountName = renameAdmin ? adminAccount : "",
             AdminPasswordEncrypted = EncryptWithDpapi(adminPassword)
